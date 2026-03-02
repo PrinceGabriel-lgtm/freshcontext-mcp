@@ -69,6 +69,10 @@ server.registerTool(
 );
 
 // ─── Start ───────────────────────────────────────────────────────────────────
-const transport = new StdioServerTransport();
-await server.connect(transport);
-console.error("freshcontext-mcp running on stdio");
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("freshcontext-mcp running on stdio");
+}
+
+main().catch(console.error);
