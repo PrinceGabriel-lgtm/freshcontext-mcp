@@ -1,10 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { githubAdapter } from "./adapters/github";
-import { scholarAdapter } from "./adapters/scholar";
-import { hackerNewsAdapter } from "./adapters/hackernews";
-import { stampFreshness, formatForLLM } from "./tools/freshnessStamp";
+import { githubAdapter } from "./adapters/github.js";
+import { scholarAdapter } from "./adapters/scholar.js";
+import { hackerNewsAdapter } from "./adapters/hackernews.js";
+import { stampFreshness, formatForLLM } from "./tools/freshnessStamp.js";
 
 const server = new McpServer({
   name: "freshcontext-mcp",

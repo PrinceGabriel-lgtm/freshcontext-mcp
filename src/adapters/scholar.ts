@@ -1,5 +1,5 @@
 import { chromium } from "playwright";
-import { AdapterResult, ExtractOptions } from "../types";
+import { AdapterResult, ExtractOptions } from "../types.js";
 
 export async function scholarAdapter(options: ExtractOptions): Promise<AdapterResult> {
   const browser = await chromium.launch({ headless: true });
@@ -12,26 +12,29 @@ export async function scholarAdapter(options: ExtractOptions): Promise<AdapterRe
 
   await page.goto(options.url, { waitUntil: "domcontentloaded", timeout: 20000 });
 
-  const data = await page.evaluate(() => {
-    const results = Array.from(document.querySelectorAll(".gs_r.gs_or.gs_scl")).map((el) => {
-      const title = el.querySelector(".gs_rt")?.textContent?.trim();
-      const authors = el.querySelector(".gs_a")?.textContent?.trim();
-      const snippet = el.querySelector(".gs_rs")?.textContent?.trim();
-      const link = el.querySelector(".gs_rt a")?.getAttribute("href");
-
-      // Parse year from authors/date line e.g. "Smith, J - Journal, 2023 - publisher"
-      const yearMatch = authors?.match(/\b(19|20)\d{2}\b/);
-      const year = yearMatch ? yearMatch[0] : null;
-
-      return { title, authors, snippet, link, year };
+  const data = await page.evaluate(`(function() {
+    var items = Array.from(document.querySelectorAll('.gs_r.gs_or.gs_scl'));
+    var results = items.map(function(el) {
+      var titleEl = el.querySelector('.gs_rt');
+      var title = titleEl ? titleEl.textContent.trim() : null;
+      var authorsEl = el.querySelector('.gs_a');
+      var authors = authorsEl ? authorsEl.textContent.trim() : null;
+      var snippetEl = el.querySelector('.gs_rs');
+      var snippet = snippetEl ? snippetEl.textContent.trim() : null;
+      var linkEl = el.querySelector('.gs_rt a');
+      var link = linkEl ? linkEl.getAttribute('href') : null;
+      var yearMatch = authors ? authors.match(/\\b(19|20)\\d{2}\\b/) : null;
+      var year = yearMatch ? yearMatch[0] : null;
+      return { title: title, authors: authors, snippet: snippet, link: link, year: year };
     });
-
     return results;
-  });
+  })()`);
 
   await browser.close();
 
-  if (!data.length) {
+  const typedData = data as Array<{ title: string | null; authors: string | null; snippet: string | null; link: string | null; year: string | null }>;
+
+  if (!typedData.length) {
     return {
       raw: "No results found on this Scholar page.",
       content_date: null,
@@ -39,7 +42,7 @@ export async function scholarAdapter(options: ExtractOptions): Promise<AdapterRe
     };
   }
 
-  const raw = data
+  const raw = typedData
     .map((r, i) =>
       [
         `[${i + 1}] ${r.title ?? "Untitled"}`,
@@ -51,7 +54,7 @@ export async function scholarAdapter(options: ExtractOptions): Promise<AdapterRe
     )
     .join("\n\n");
 
-  const years = data.map((r) => r.year).filter(Boolean) as string[];
+  const years = typedData.map((r) => r.year).filter(Boolean) as string[];
   const newestYear = years.sort().reverse()[0] ?? null;
 
   return {
