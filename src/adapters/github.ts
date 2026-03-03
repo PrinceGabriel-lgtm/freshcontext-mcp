@@ -1,5 +1,5 @@
 import { chromium } from "playwright";
-import { AdapterResult, ExtractOptions } from "../types";
+import { AdapterResult, ExtractOptions } from "../types.js";
 
 export async function githubAdapter(options: ExtractOptions): Promise<AdapterResult> {
   const browser = await chromium.launch({ headless: true });

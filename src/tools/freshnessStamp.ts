@@ -1,4 +1,4 @@
-import { FreshContext, AdapterResult, ExtractOptions } from "../types";
+import { FreshContext, AdapterResult, ExtractOptions } from "../types.js";
 
 export function stampFreshness(
   result: AdapterResult,
