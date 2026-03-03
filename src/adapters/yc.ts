@@ -5,32 +5,57 @@ export async function ycAdapter(options: ExtractOptions): Promise<AdapterResult>
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 
-  // Support both YC batch pages and search
-  await page.goto(options.url, { waitUntil: "domcontentloaded", timeout: 30000 });
+  // YC company directory is React-rendered — wait for network to settle
+  await page.goto(options.url, { waitUntil: "networkidle", timeout: 30000 });
+
+  // Wait for company cards to appear
+  await page.waitForSelector('a[href*="/companies/"]', { timeout: 15000 }).catch(() => null);
 
   const data = await page.evaluate(`(function() {
-    // YC company cards on ycombinator.com/companies
-    var cards = Array.from(document.querySelectorAll('._company_86jzd_338, .company-card, [class*="company"]')).slice(0, 30);
+    // YC company cards — robust multi-strategy extraction
+    var results = [];
+
+    // Strategy 1: structured company divs with name + description + batch
+    var cards = Array.from(document.querySelectorAll('div[class*="_company_"]'));
 
     if (cards.length === 0) {
-      // Fallback: try the YC startup directory structure
-      cards = Array.from(document.querySelectorAll('a[href*="/companies/"]')).slice(0, 30);
+      // Strategy 2: anchor links to /companies/* pages
+      cards = Array.from(document.querySelectorAll('a[href*="/companies/"]'))
+        .filter(function(el) {
+          return el.querySelector('span, p, div');
+        });
     }
 
-    var results = cards.map(function(el) {
-      var name = el.querySelector('span[class*="coName"], .company-name, h3, h2') || el;
-      var desc = el.querySelector('span[class*="coDescription"], .company-description, p');
-      var batch = el.querySelector('span[class*="coBatch"], .batch, [class*="batch"]');
-      var tags = Array.from(el.querySelectorAll('span[class*="coTag"], .tag, [class*="tag"]')).map(function(t) { return t.textContent.trim(); });
-      var link = el.tagName === 'A' ? el.getAttribute('href') : (el.querySelector('a') ? el.querySelector('a').getAttribute('href') : null);
-      return {
-        name: name ? name.textContent.trim() : null,
-        description: desc ? desc.textContent.trim() : null,
-        batch: batch ? batch.textContent.trim() : null,
-        tags: tags.slice(0, 5),
-        link: link
-      };
-    }).filter(function(r) { return r.name && r.name.length > 1; });
+    cards.slice(0, 25).forEach(function(el) {
+      var allText = el.innerText || el.textContent || "";
+      var lines = allText.split('\\n').map(function(l) { return l.trim(); }).filter(Boolean);
+
+      // Try to find structured spans
+      var spans = Array.from(el.querySelectorAll('span'));
+      var name = null, description = null, batch = null;
+      var tags = [];
+
+      spans.forEach(function(s) {
+        var t = s.textContent.trim();
+        if (!t) return;
+        if (s.className && s.className.toString().includes('Name')) name = t;
+        else if (s.className && s.className.toString().includes('Desc')) description = t;
+        else if (s.className && s.className.toString().includes('Batch')) batch = t;
+        else if (s.className && s.className.toString().includes('Tag')) tags.push(t);
+      });
+
+      // Fallback to line parsing
+      if (!name && lines.length > 0) name = lines[0];
+      if (!description && lines.length > 1) description = lines[1];
+
+      var link = el.tagName === 'A'
+        ? el.getAttribute('href')
+        : (el.querySelector('a') ? el.querySelector('a').getAttribute('href') : null);
+
+      if (name && name.length > 1 && name.length < 80) {
+        results.push({ name, description, batch, tags, link });
+      }
+    });
 
     return results;
   })()`);
@@ -47,7 +72,7 @@ export async function ycAdapter(options: ExtractOptions): Promise<AdapterResult>
 
   if (!typedData.length) {
     return {
-      raw: "No YC companies found. Try https://www.ycombinator.com/companies?query=YOUR_KEYWORD",
+      raw: "No YC companies found — page may have changed structure. Try visiting: " + options.url,
       content_date: null,
       freshness_confidence: "low",
     };
@@ -58,9 +83,9 @@ export async function ycAdapter(options: ExtractOptions): Promise<AdapterResult>
       [
         `[${i + 1}] ${r.name ?? "Unknown"}`,
         `Batch: ${r.batch ?? "Unknown"}`,
-        `Tags: ${r.tags.join(", ") || "none"}`,
+        `Tags: ${r.tags?.join(", ") || "none"}`,
         `Description: ${r.description ?? "N/A"}`,
-        `Link: ${r.link ? "https://www.ycombinator.com" + r.link : "N/A"}`,
+        `Link: ${r.link ? (r.link.startsWith("http") ? r.link : "https://www.ycombinator.com" + r.link) : "N/A"}`,
       ].join("\n")
     )
     .join("\n\n")

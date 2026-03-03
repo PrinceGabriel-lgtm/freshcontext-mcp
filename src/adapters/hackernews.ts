@@ -2,10 +2,53 @@ import { chromium } from "playwright";
 import { AdapterResult, ExtractOptions } from "../types.js";
 
 export async function hackerNewsAdapter(options: ExtractOptions): Promise<AdapterResult> {
+  // If it's an Algolia API URL or search query, use the REST API directly (no browser)
+  const url = options.url;
+
+  if (url.includes("hn.algolia.com/api/") || url.startsWith("hn-search:")) {
+    const query = url.startsWith("hn-search:")
+      ? url.replace("hn-search:", "").trim()
+      : url;
+
+    const apiUrl = url.includes("hn.algolia.com/api/")
+      ? url
+      : `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=20`;
+
+    const res = await fetch(apiUrl);
+    if (!res.ok) throw new Error(`HN Algolia API error: ${res.status}`);
+    const data = await res.json() as {
+      hits: Array<{
+        title: string;
+        url: string | null;
+        points: number;
+        num_comments: number;
+        author: string;
+        created_at: string;
+        objectID: string;
+      }>;
+    };
+
+    const raw = data.hits
+      .map((r, i) =>
+        [
+          `[${i + 1}] ${r.title ?? "Untitled"}`,
+          `URL: ${r.url ?? `https://news.ycombinator.com/item?id=${r.objectID}`}`,
+          `Score: ${r.points} points | ${r.num_comments} comments`,
+          `Author: ${r.author} | Posted: ${r.created_at}`,
+        ].join("\n")
+      )
+      .join("\n\n")
+      .slice(0, options.maxLength ?? 4000);
+
+    const newest = data.hits.map((r) => r.created_at).sort().reverse()[0] ?? null;
+    return { raw, content_date: newest, freshness_confidence: newest ? "high" : "medium" };
+  }
+
+  // Default: browser-based scrape for HN front page or search pages
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 
-  await page.goto(options.url, { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
 
   const data = await page.evaluate(`(function() {
     var items = Array.from(document.querySelectorAll('.athing')).slice(0, 20);

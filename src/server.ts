@@ -146,7 +146,7 @@ server.registerTool(
     const [ycResult, repoResult, hnResult, pkgResult] = await Promise.allSettled([
       ycAdapter({ url: `https://www.ycombinator.com/companies?query=${encodeURIComponent(topic)}`, maxLength: perSection }),
       repoSearchAdapter({ url: topic, maxLength: perSection }),
-      hackerNewsAdapter({ url: `https://hn.algolia.com/?q=${encodeURIComponent(topic)}&dateRange=pastMonth`, maxLength: perSection }),
+      hackerNewsAdapter({ url: `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(topic)}&tags=story&hitsPerPage=15`, maxLength: perSection }),
       packageTrendsAdapter({ url: topic, maxLength: perSection }),
     ]);
 
