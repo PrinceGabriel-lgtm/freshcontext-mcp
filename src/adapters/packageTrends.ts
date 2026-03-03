@@ -1,10 +1,10 @@
 import { AdapterResult, ExtractOptions } from "../types.js";
+import { sanitizePackages } from "../security.js";
 
 // Uses npm registry API + PyPI JSON API (no auth needed)
 export async function packageTrendsAdapter(options: ExtractOptions): Promise<AdapterResult> {
-  // options.url is the package name or a comma-separated list
-  // e.g. "langchain" or "npm:langchain" or "pypi:langchain"
-  const raw_input = options.url.replace(/^https?:\/\//, "").trim();
+  // Sanitize package input
+  const raw_input = sanitizePackages(options.url.replace(/^https?:\/\//, "").trim());
 
   // Parse ecosystem prefix
   const parts = raw_input.split(",").map((s) => s.trim());

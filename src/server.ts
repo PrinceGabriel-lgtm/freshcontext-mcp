@@ -8,6 +8,7 @@ import { ycAdapter } from "./adapters/yc.js";
 import { repoSearchAdapter } from "./adapters/repoSearch.js";
 import { packageTrendsAdapter } from "./adapters/packageTrends.js";
 import { stampFreshness, formatForLLM } from "./tools/freshnessStamp.js";
+import { SecurityError, formatSecurityError } from "./security.js";
 
 const server = new McpServer({
   name: "freshcontext-mcp",
@@ -27,9 +28,13 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
   async ({ url, max_length }) => {
-    const result = await githubAdapter({ url, maxLength: max_length });
-    const ctx = stampFreshness(result, { url, maxLength: max_length }, "github");
-    return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    try {
+      const result = await githubAdapter({ url, maxLength: max_length });
+      const ctx = stampFreshness(result, { url, maxLength: max_length }, "github");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
   }
 );
 
@@ -46,9 +51,13 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
   async ({ url, max_length }) => {
-    const result = await scholarAdapter({ url, maxLength: max_length });
-    const ctx = stampFreshness(result, { url, maxLength: max_length }, "google_scholar");
-    return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    try {
+      const result = await scholarAdapter({ url, maxLength: max_length });
+      const ctx = stampFreshness(result, { url, maxLength: max_length }, "google_scholar");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
   }
 );
 
@@ -65,9 +74,13 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
   async ({ url, max_length }) => {
-    const result = await hackerNewsAdapter({ url, maxLength: max_length });
-    const ctx = stampFreshness(result, { url, maxLength: max_length }, "hackernews");
-    return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    try {
+      const result = await hackerNewsAdapter({ url, maxLength: max_length });
+      const ctx = stampFreshness(result, { url, maxLength: max_length }, "hackernews");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
   }
 );
 
@@ -84,9 +97,13 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
   async ({ url, max_length }) => {
-    const result = await ycAdapter({ url, maxLength: max_length });
-    const ctx = stampFreshness(result, { url, maxLength: max_length }, "ycombinator");
-    return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    try {
+      const result = await ycAdapter({ url, maxLength: max_length });
+      const ctx = stampFreshness(result, { url, maxLength: max_length }, "ycombinator");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
   }
 );
 
@@ -103,9 +120,13 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
   async ({ query, max_length }) => {
-    const result = await repoSearchAdapter({ url: query, maxLength: max_length });
-    const ctx = stampFreshness(result, { url: query, maxLength: max_length }, "github_search");
-    return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    try {
+      const result = await repoSearchAdapter({ url: query, maxLength: max_length });
+      const ctx = stampFreshness(result, { url: query, maxLength: max_length }, "github_search");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
   }
 );
 
@@ -122,9 +143,13 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
   async ({ packages, max_length }) => {
-    const result = await packageTrendsAdapter({ url: packages, maxLength: max_length });
-    const ctx = stampFreshness(result, { url: packages, maxLength: max_length }, "package_registry");
-    return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    try {
+      const result = await packageTrendsAdapter({ url: packages, maxLength: max_length });
+      const ctx = stampFreshness(result, { url: packages, maxLength: max_length }, "package_registry");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
   }
 );
 

@@ -1,7 +1,11 @@
 import { chromium } from "playwright";
 import { AdapterResult, ExtractOptions } from "../types.js";
+import { validateUrl } from "../security.js";
 
 export async function githubAdapter(options: ExtractOptions): Promise<AdapterResult> {
+  const safeUrl = validateUrl(options.url, "github");
+  options = { ...options, url: safeUrl };
+
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 

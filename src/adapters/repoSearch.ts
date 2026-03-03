@@ -1,10 +1,11 @@
 import { AdapterResult, ExtractOptions } from "../types.js";
+import { sanitizeQuery } from "../security.js";
 
 // Uses GitHub Search API (no auth needed for basic search)
 export async function repoSearchAdapter(options: ExtractOptions): Promise<AdapterResult> {
-  // options.url is treated as the search query string
-  // e.g. "mcp server typescript" or a full GitHub search URL
-  let query = options.url;
+  // Sanitize query input
+  const query_input = sanitizeQuery(options.url);
+  let query = query_input;
 
   // If it's a full URL, extract the query param
   try {

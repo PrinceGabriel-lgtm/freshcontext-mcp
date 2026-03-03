@@ -1,8 +1,10 @@
 import { chromium } from "playwright";
 import { AdapterResult, ExtractOptions } from "../types.js";
+import { validateUrl } from "../security.js";
 
 export async function hackerNewsAdapter(options: ExtractOptions): Promise<AdapterResult> {
-  // If it's an Algolia API URL or search query, use the REST API directly (no browser)
+  // Validate URL — allow both HN and Algolia domains
+  validateUrl(options.url, "hackernews");
   const url = options.url;
 
   if (url.includes("hn.algolia.com/api/") || url.startsWith("hn-search:")) {

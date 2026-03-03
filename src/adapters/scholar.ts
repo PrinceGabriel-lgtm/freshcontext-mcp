@@ -1,7 +1,11 @@
 import { chromium } from "playwright";
 import { AdapterResult, ExtractOptions } from "../types.js";
+import { validateUrl } from "../security.js";
 
 export async function scholarAdapter(options: ExtractOptions): Promise<AdapterResult> {
+  const safeUrl = validateUrl(options.url, "scholar");
+  options = { ...options, url: safeUrl };
+
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 
