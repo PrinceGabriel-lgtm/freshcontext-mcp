@@ -4,6 +4,9 @@ import { z } from "zod";
 import { githubAdapter } from "./adapters/github.js";
 import { scholarAdapter } from "./adapters/scholar.js";
 import { hackerNewsAdapter } from "./adapters/hackernews.js";
+import { ycAdapter } from "./adapters/yc.js";
+import { repoSearchAdapter } from "./adapters/repoSearch.js";
+import { packageTrendsAdapter } from "./adapters/packageTrends.js";
 import { stampFreshness, formatForLLM } from "./tools/freshnessStamp.js";
 
 const server = new McpServer({
@@ -65,6 +68,104 @@ server.registerTool(
     const result = await hackerNewsAdapter({ url, maxLength: max_length });
     const ctx = stampFreshness(result, { url, maxLength: max_length }, "hackernews");
     return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+  }
+);
+
+// ─── Tool: extract_yc ──────────────────────────────────────────────────────────
+server.registerTool(
+  "extract_yc",
+  {
+    description:
+      "Scrape YC company listings. Use https://www.ycombinator.com/companies?query=KEYWORD to find startups in a space. Returns name, batch, tags, description per company with freshness timestamp.",
+    inputSchema: z.object({
+      url: z.string().url().describe("YC companies URL e.g. https://www.ycombinator.com/companies?query=mcp"),
+      max_length: z.number().optional().default(6000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ url, max_length }) => {
+    const result = await ycAdapter({ url, maxLength: max_length });
+    const ctx = stampFreshness(result, { url, maxLength: max_length }, "ycombinator");
+    return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+  }
+);
+
+// ─── Tool: search_repos ──────────────────────────────────────────────────────
+server.registerTool(
+  "search_repos",
+  {
+    description:
+      "Search GitHub for repositories matching a keyword or topic. Returns top results by stars with activity signals. Use to find competitors, similar tools, or related projects.",
+    inputSchema: z.object({
+      query: z.string().describe("Search query e.g. 'mcp server typescript' or 'cashflow prediction python'"),
+      max_length: z.number().optional().default(6000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ query, max_length }) => {
+    const result = await repoSearchAdapter({ url: query, maxLength: max_length });
+    const ctx = stampFreshness(result, { url: query, maxLength: max_length }, "github_search");
+    return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+  }
+);
+
+// ─── Tool: package_trends ────────────────────────────────────────────────────
+server.registerTool(
+  "package_trends",
+  {
+    description:
+      "Look up npm and PyPI package metadata — version history, release cadence, last updated. Use to gauge ecosystem activity around a tool or dependency. Supports comma-separated list of packages.",
+    inputSchema: z.object({
+      packages: z.string().describe("Package name(s) e.g. 'langchain' or 'npm:zod,pypi:fastapi'"),
+      max_length: z.number().optional().default(5000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ packages, max_length }) => {
+    const result = await packageTrendsAdapter({ url: packages, maxLength: max_length });
+    const ctx = stampFreshness(result, { url: packages, maxLength: max_length }, "package_registry");
+    return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+  }
+);
+
+// ─── Tool: extract_landscape ─────────────────────────────────────────────────
+server.registerTool(
+  "extract_landscape",
+  {
+    description:
+      "Composite intelligence tool. Given a project idea or keyword, simultaneously queries YC startups, GitHub repos, HN sentiment, and package activity to answer: Who is building this? Is it funded? What's getting traction? Returns a unified timestamped landscape report.",
+    inputSchema: z.object({
+      topic: z.string().describe("Your project idea or keyword e.g. 'mcp server' or 'cashflow prediction'"),
+      max_length: z.number().optional().default(8000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ topic, max_length }) => {
+    const perSection = Math.floor((max_length ?? 8000) / 4);
+
+    const [ycResult, repoResult, hnResult, pkgResult] = await Promise.allSettled([
+      ycAdapter({ url: `https://www.ycombinator.com/companies?query=${encodeURIComponent(topic)}`, maxLength: perSection }),
+      repoSearchAdapter({ url: topic, maxLength: perSection }),
+      hackerNewsAdapter({ url: `https://hn.algolia.com/?q=${encodeURIComponent(topic)}&dateRange=pastMonth`, maxLength: perSection }),
+      packageTrendsAdapter({ url: topic, maxLength: perSection }),
+    ]);
+
+    const section = (label: string, result: PromiseSettledResult<{ raw: string; content_date: string | null; freshness_confidence: string }>) =>
+      result.status === "fulfilled"
+        ? `## ${label}\n${result.value.raw}`
+        : `## ${label}\n[Error: ${(result as PromiseRejectedResult).reason}]`;
+
+    const combined = [
+      `# Landscape Report: "${topic}"`,
+      `Generated: ${new Date().toISOString()}`,
+      "",
+      section("🚀 YC Startups in this space", ycResult),
+      section("📦 Top GitHub repos", repoResult),
+      section("💬 HN sentiment (last month)", hnResult),
+      section("📊 Package ecosystem", pkgResult),
+    ].join("\n\n");
+
+    return { content: [{ type: "text", text: combined }] };
   }
 );
 
