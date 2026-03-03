@@ -1,8 +1,21 @@
 {
   "name": "freshcontext-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Real-time web extraction MCP server with freshness timestamps for AI agents",
-  "keywords": ["mcp", "mcp-server", "ai-agents", "llm", "freshness", "web-scraping", "github-analytics", "hackernews", "yc", "typescript", "context", "model-context-protocol"],
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "ai-agents",
+    "llm",
+    "freshness",
+    "web-scraping",
+    "github-analytics",
+    "hackernews",
+    "yc",
+    "typescript",
+    "context",
+    "model-context-protocol"
+  ],
   "homepage": "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp",
   "repository": {
     "type": "git",
