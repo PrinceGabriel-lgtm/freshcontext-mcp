@@ -21,14 +21,14 @@ Every piece of data extracted by `freshcontext-mcp` is wrapped in a structured e
 [FRESHCONTEXT]
 Source: https://github.com/owner/repo
 Published: 2024-11-03
-Retrieved: 2026-03-03T10:14:00Z
+Retrieved: 2026-03-04T10:14:00Z
 Confidence: high
 ---
 ... content ...
 [/FRESHCONTEXT]
 ```
 
-The AI agent always knows **when it's looking at data**, not just what the data says. This is the difference between a hallucinated recency claim and a verifiable one.
+The AI agent always knows **when it's looking at data**, not just what the data says.
 
 ---
 
@@ -60,13 +60,33 @@ The AI agent always knows **when it's looking at data**, not just what the data 
 
 ## Quick Start
 
-### Install via npm
+### Option A — Cloud (no install, works immediately)
 
-```bash
-npx freshcontext-mcp
+No Node, no Playwright, nothing to install. Just add this to your Claude Desktop config and restart.
+
+**Mac:** open `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows:** open `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "freshcontext": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://freshcontext-mcp.gimmanuel73.workers.dev/mcp"]
+    }
+  }
+}
 ```
 
-### Or clone and run locally
+Restart Claude Desktop. The freshcontext tools will appear in your session.
+
+> **Note:** If `claude_desktop_config.json` doesn't exist yet, create it with the content above.
+
+---
+
+### Option B — Local (full Playwright, faster for heavy use)
+
+**Prerequisites:** Node.js 18+ ([nodejs.org](https://nodejs.org))
 
 ```bash
 git clone https://github.com/PrinceGabriel-lgtm/freshcontext-mcp
@@ -76,38 +96,55 @@ npx playwright install chromium
 npm run build
 ```
 
-### Connect to Claude Desktop
+Then add to your Claude Desktop config:
 
-Add to your `claude_desktop_config.json`:
-
-**Mac:** `~/Library/Application Support/Claude/claude_desktop_config.json`  
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-
+**Mac** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "freshcontext-local": {
+    "freshcontext": {
       "command": "node",
-      "args": ["/absolute/path/to/freshcontext-mcp/dist/server.js"]
+      "args": ["/Users/YOUR_USERNAME/path/to/freshcontext-mcp/dist/server.js"]
     }
   }
 }
 ```
 
-Restart Claude Desktop. You'll see the freshcontext tools available in your session.
-
-### Or use the Cloudflare edge deployment (no install needed)
-
+**Windows** (`%APPDATA%\Claude\claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "freshcontext-cloud": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://freshcontext-worker.gimmanuel73.workers.dev/mcp"]
+    "freshcontext": {
+      "command": "node",
+      "args": ["C:\\Users\\YOUR_USERNAME\\path\\to\\freshcontext-mcp\\dist\\server.js"]
     }
   }
 }
 ```
+
+Restart Claude Desktop.
+
+---
+
+### Troubleshooting (Mac)
+
+**"command not found: node"** — Node isn't on your PATH inside Claude Desktop's environment. Use the full path:
+```bash
+which node   # copy this output
+```
+Then replace `"command": "node"` with `"command": "/usr/local/bin/node"` (or whatever `which node` returned).
+
+**"npx: command not found"** — Same issue. Run `which npx` and use the full path for Option A:
+```json
+"command": "/usr/local/bin/npx"
+```
+
+**Config file doesn't exist** — Create it. On Mac:
+```bash
+mkdir -p ~/Library/Application\ Support/Claude
+touch ~/Library/Application\ Support/Claude/claude_desktop_config.json
+```
+Then paste the config JSON above into it.
 
 ---
 
@@ -162,12 +199,12 @@ This makes freshness **verifiable**, not assumed.
 Uses headless Chromium via Playwright. Full browser rendering for JavaScript-heavy sites.
 
 ### Cloud (Cloudflare Workers)
-The `worker/` directory contains a Cloudflare Workers deployment using the Browser Rendering REST API. No Playwright dependency — runs at the edge globally.
+The `worker/` directory contains a Cloudflare Workers deployment. No Playwright dependency — runs at the edge globally.
 
 ```bash
 cd worker
 npm install
-npx wrangler secret put CF_API_TOKEN
+npx wrangler secret put API_KEY
 npx wrangler deploy
 ```
 
@@ -180,15 +217,16 @@ freshcontext-mcp/
 ├── src/
 │   ├── server.ts              # MCP server, all tool registrations
 │   ├── types.ts               # FreshContext interfaces
+│   ├── security.ts            # Input validation, domain allowlists
 │   ├── adapters/
-│   │   ├── github.ts          # GitHub repo extraction
-│   │   ├── hackernews.ts      # HN front page + Algolia API
-│   │   ├── scholar.ts         # Google Scholar scraping
-│   │   ├── yc.ts              # YC company directory
-│   │   ├── repoSearch.ts      # GitHub Search API
-│   │   └── packageTrends.ts   # npm + PyPI registries
+│   │   ├── github.ts
+│   │   ├── hackernews.ts
+│   │   ├── scholar.ts
+│   │   ├── yc.ts
+│   │   ├── repoSearch.ts
+│   │   └── packageTrends.ts
 │   └── tools/
-│       └── freshnessStamp.ts  # FreshContext envelope builder
+│       └── freshnessStamp.ts
 └── worker/                    # Cloudflare Workers deployment
     └── src/worker.ts
 ```
@@ -205,17 +243,17 @@ freshcontext-mcp/
 - [x] npm/PyPI package trends
 - [x] `extract_landscape` composite tool
 - [x] Cloudflare Workers deployment
+- [x] Worker auth + rate limiting + domain allowlists
 - [ ] Product Hunt launches adapter
-- [ ] Crunchbase/funding signals adapter
+- [ ] Finance/market data adapter
 - [ ] TTL-based caching layer
 - [ ] `freshness_score` numeric metric
-- [ ] Webhook support for real-time updates
 
 ---
 
 ## Contributing
 
-PRs welcome. New adapters are the highest-value contribution — see the existing adapters in `src/adapters/` for the pattern. Each adapter returns `{ raw, content_date, freshness_confidence }`.
+PRs welcome. New adapters are the highest-value contribution — see `src/adapters/` for the pattern. Each adapter returns `{ raw, content_date, freshness_confidence }`.
 
 ---
 

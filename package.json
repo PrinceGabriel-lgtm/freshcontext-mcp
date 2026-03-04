@@ -1,6 +1,6 @@
 {
   "name": "freshcontext-mcp",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Real-time web extraction MCP server with freshness timestamps for AI agents",
   "keywords": [
     "mcp",
@@ -24,6 +24,9 @@
   "license": "MIT",
   "type": "module",
   "main": "dist/server.js",
+  "bin": {
+    "freshcontext-mcp": "dist/server.js"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/server.ts",
