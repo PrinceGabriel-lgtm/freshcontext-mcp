@@ -6,5 +6,11 @@
   "compatibility_flags": ["nodejs_compat_v2"],
   "browser": {
     "binding": "BROWSER"
-  }
+  },
+  "kv_namespaces": [
+    {
+      "binding": "RATE_LIMITER",
+      "id": "7b74255ddbee42a99feea5898a11842b"
+    }
+  ]
 }
