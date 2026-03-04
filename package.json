@@ -1,6 +1,6 @@
 {
   "name": "freshcontext-mcp",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Real-time web extraction MCP server with freshness timestamps for AI agents",
   "keywords": [
     "mcp",
