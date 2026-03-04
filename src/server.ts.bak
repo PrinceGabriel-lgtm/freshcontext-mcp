@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -8,9 +7,6 @@ import { hackerNewsAdapter } from "./adapters/hackernews.js";
 import { ycAdapter } from "./adapters/yc.js";
 import { repoSearchAdapter } from "./adapters/repoSearch.js";
 import { packageTrendsAdapter } from "./adapters/packageTrends.js";
-import { redditAdapter } from "./adapters/reddit.js";
-import { productHuntAdapter } from "./adapters/productHunt.js";
-import { financeAdapter } from "./adapters/finance.js";
 import { stampFreshness, formatForLLM } from "./tools/freshnessStamp.js";
 import { SecurityError, formatSecurityError } from "./security.js";
 
@@ -206,6 +202,3 @@ async function main() {
 }
 
 main().catch(console.error);
-
-
-

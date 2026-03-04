@@ -10,8 +10,11 @@ export const ALLOWED_DOMAINS: Record<string, string[]> = {
   scholar: ["scholar.google.com"],
   hackernews: ["news.ycombinator.com", "hn.algolia.com"],
   yc: ["www.ycombinator.com", "ycombinator.com"],
-  repoSearch: [], // uses GitHub API directly, no browser
+  repoSearch: [],    // uses GitHub API directly, no browser
   packageTrends: [], // uses npm/PyPI APIs directly, no browser
+  reddit: [],        // uses public Reddit JSON API, no browser
+  finance: [],       // uses Yahoo Finance API, no browser
+  productHunt: ["www.producthunt.com", "producthunt.com"],
 };
 
 // ─── Blocked IP ranges and internal hostnames ────────────────────────────────
@@ -159,3 +162,4 @@ export function formatSecurityError(err: unknown): string {
   }
   return "[Error] Unknown error occurred";
 }
+
