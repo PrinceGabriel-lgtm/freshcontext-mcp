@@ -41,31 +41,41 @@ The AI agent always knows **when it's looking at data**, not just what the data 
 | `extract_github` | README, stars, forks, language, topics, last commit from any GitHub repo |
 | `extract_hackernews` | Top stories or search results from HN with scores and timestamps |
 | `extract_scholar` | Research paper titles, authors, years, and snippets from Google Scholar |
+| `extract_reddit` | Posts and community sentiment from any subreddit or Reddit search |
 
 ### 🚀 Competitive Intelligence Tools
 
 | Tool | Description |
 |---|---|
 | `extract_yc` | Scrape YC company listings by keyword — find who's funded in your space |
+| `extract_producthunt` | Recent Product Hunt launches by keyword or topic |
 | `search_repos` | Search GitHub for similar/competing repos, ranked by stars with activity signals |
 | `package_trends` | npm and PyPI package metadata — version history, release cadence, last updated |
+
+### 📈 Market Data
+
+| Tool | Description |
+|---|---|
+| `extract_finance` | Live stock data via Yahoo Finance — price, market cap, P/E, 52w range, sector, company summary |
 
 ### 🗺️ Composite Tool
 
 | Tool | Description |
 |---|---|
-| `extract_landscape` | **One call. Full picture.** Queries YC startups + GitHub repos + HN sentiment + package ecosystem simultaneously. Returns a unified landscape report. |
+| `extract_landscape` | **One call. Full picture.** Queries YC + GitHub + HN + npm/PyPI simultaneously. Returns a unified timestamped landscape report. |
 
 ---
 
 ## Quick Start
 
-### Option A — Cloud (no install, works immediately)
+### Option A — Cloud (recommended, no install needed)
 
-No Node, no Playwright, nothing to install. Just add this to your Claude Desktop config and restart.
+Visit **[freshcontext-site.pages.dev](https://freshcontext-site.pages.dev)** for a guided 3-step install with copy-paste config. No terminal, no downloads, no antivirus alerts.
 
-**Mac:** open `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows:** open `%APPDATA%\Claude\claude_desktop_config.json`
+Or add this manually to your Claude Desktop config and restart:
+
+**Mac:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
 {
@@ -80,11 +90,11 @@ No Node, no Playwright, nothing to install. Just add this to your Claude Desktop
 
 Restart Claude Desktop. The freshcontext tools will appear in your session.
 
-> **Note:** If `claude_desktop_config.json` doesn't exist yet, create it with the content above.
+> If `claude_desktop_config.json` doesn't exist yet, create it with the content above.
 
 ---
 
-### Option B — Local (full Playwright, faster for heavy use)
+### Option B — Local (full Playwright, for heavy use)
 
 **Prerequisites:** Node.js 18+ ([nodejs.org](https://nodejs.org))
 
@@ -98,7 +108,7 @@ npm run build
 
 Then add to your Claude Desktop config:
 
-**Mac** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+**Mac:**
 ```json
 {
   "mcpServers": {
@@ -110,7 +120,7 @@ Then add to your Claude Desktop config:
 }
 ```
 
-**Windows** (`%APPDATA%\Claude\claude_desktop_config.json`):
+**Windows:**
 ```json
 {
   "mcpServers": {
@@ -122,58 +132,48 @@ Then add to your Claude Desktop config:
 }
 ```
 
-Restart Claude Desktop.
-
 ---
 
 ### Troubleshooting (Mac)
 
-**"command not found: node"** — Node isn't on your PATH inside Claude Desktop's environment. Use the full path:
+**"command not found: node"** — Node isn't on Claude Desktop's PATH. Use the full path:
 ```bash
 which node   # copy this output
 ```
-Then replace `"command": "node"` with `"command": "/usr/local/bin/node"` (or whatever `which node` returned).
+Replace `"command": "node"` with `"command": "/usr/local/bin/node"` (or whatever `which node` returned).
 
-**"npx: command not found"** — Same issue. Run `which npx` and use the full path for Option A:
-```json
-"command": "/usr/local/bin/npx"
-```
+**"npx: command not found"** — Same fix. Run `which npx` and use the full path.
 
-**Config file doesn't exist** — Create it. On Mac:
+**Config file doesn't exist** — Create it:
 ```bash
 mkdir -p ~/Library/Application\ Support/Claude
 touch ~/Library/Application\ Support/Claude/claude_desktop_config.json
 ```
-Then paste the config JSON above into it.
 
 ---
 
 ## Usage Examples
 
 ### Check if anyone is already building what you're building
-
 ```
 Use extract_landscape with topic "cashflow prediction mcp"
 ```
-
 Returns a unified report: who's funded (YC), what's trending (HN), what repos exist (GitHub), what packages are active (npm/PyPI). All timestamped.
 
-### Analyse a specific repo
-
+### Get community sentiment on a topic
 ```
-Use extract_github on https://github.com/anthropics/anthropic-sdk-python
-```
-
-### Find research papers on a topic
-
-```
-Use extract_scholar on https://scholar.google.com/scholar?q=llm+context+freshness
+Use extract_reddit with url "r/MachineLearning"
+Use extract_hackernews with url "https://hn.algolia.com/api/v1/search?query=mcp+server&tags=story"
 ```
 
-### Check package ecosystem health
-
+### Check a company's stock
 ```
-Use package_trends with packages "npm:@modelcontextprotocol/sdk,pypi:langchain"
+Use extract_finance with url "NVDA,MSFT,GOOG"
+```
+
+### Find what just launched in your space
+```
+Use extract_producthunt with url "AI developer tools"
 ```
 
 ---
@@ -189,24 +189,14 @@ FreshContext treats **retrieval time as first-class metadata**. Every adapter re
 - `freshness_confidence` — `high`, `medium`, or `low` based on signal quality
 - `adapter` — which source the data came from
 
-This makes freshness **verifiable**, not assumed.
-
 ---
 
-## Deployment
+## Security
 
-### Local (Playwright-based)
-Uses headless Chromium via Playwright. Full browser rendering for JavaScript-heavy sites.
-
-### Cloud (Cloudflare Workers)
-The `worker/` directory contains a Cloudflare Workers deployment. No Playwright dependency — runs at the edge globally.
-
-```bash
-cd worker
-npm install
-npx wrangler secret put API_KEY
-npx wrangler deploy
-```
+- Input sanitization and domain allowlists on all adapters
+- SSRF prevention (blocked private IP ranges)
+- KV-backed global rate limiting: 60 requests/minute per IP across all edge nodes
+- No credentials required for public data sources
 
 ---
 
@@ -217,17 +207,20 @@ freshcontext-mcp/
 ├── src/
 │   ├── server.ts              # MCP server, all tool registrations
 │   ├── types.ts               # FreshContext interfaces
-│   ├── security.ts            # Input validation, domain allowlists
+│   ├── security.ts            # Input validation, domain allowlists, SSRF prevention
 │   ├── adapters/
 │   │   ├── github.ts
 │   │   ├── hackernews.ts
 │   │   ├── scholar.ts
 │   │   ├── yc.ts
 │   │   ├── repoSearch.ts
-│   │   └── packageTrends.ts
+│   │   ├── packageTrends.ts
+│   │   ├── reddit.ts
+│   │   ├── productHunt.ts
+│   │   └── finance.ts
 │   └── tools/
 │       └── freshnessStamp.ts
-└── worker/                    # Cloudflare Workers deployment
+└── worker/                    # Cloudflare Workers deployment (all 10 tools)
     └── src/worker.ts
 ```
 
@@ -243,9 +236,11 @@ freshcontext-mcp/
 - [x] npm/PyPI package trends
 - [x] `extract_landscape` composite tool
 - [x] Cloudflare Workers deployment
-- [x] Worker auth + rate limiting + domain allowlists
-- [ ] Product Hunt launches adapter
-- [ ] Finance/market data adapter
+- [x] Worker auth + KV-backed global rate limiting
+- [x] Reddit community sentiment adapter
+- [x] Product Hunt launches adapter
+- [x] Yahoo Finance market data adapter
+- [ ] `extract_arxiv` — structured arXiv API (more reliable than Scholar)
 - [ ] TTL-based caching layer
 - [ ] `freshness_score` numeric metric
 
