@@ -125,7 +125,7 @@ function stamp(content: string, url: string, date: string | null, confidence: "h
 // ─── Server Factory ───────────────────────────────────────────────────────────
 
 function createServer(env: Env): McpServer {
-  const server = new McpServer({ name: "freshcontext-mcp", version: "0.1.6" });
+  const server = new McpServer({ name: "freshcontext-mcp", version: "0.1.7" });
 
   // ── extract_github ──────────────────────────────────────────────────────────
   server.registerTool("extract_github", {
@@ -410,7 +410,7 @@ function createServer(env: Env): McpServer {
 
   // ── extract_landscape ───────────────────────────────────────────────────────
   server.registerTool("extract_landscape", {
-    description: "Composite tool. Queries YC + GitHub + HN + npm/PyPI simultaneously for a topic. Returns a unified timestamped landscape report.",
+    description: "Composite tool. Queries YC + GitHub + HN + Reddit + Product Hunt + npm/PyPI simultaneously. Returns a unified 6-source timestamped landscape report.",
     inputSchema: z.object({ topic: z.string().describe("Project idea or keyword e.g. 'mcp server'") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ topic }) => {
@@ -460,3 +460,4 @@ export default {
     return transport.handleRequest(request);
   },
 } satisfies ExportedHandler<Env>;
+

@@ -11,6 +11,7 @@ import { packageTrendsAdapter } from "./adapters/packageTrends.js";
 import { redditAdapter } from "./adapters/reddit.js";
 import { productHuntAdapter } from "./adapters/productHunt.js";
 import { financeAdapter } from "./adapters/finance.js";
+import { arxivAdapter } from "./adapters/arxiv.js";
 import { stampFreshness, formatForLLM } from "./tools/freshnessStamp.js";
 import { SecurityError, formatSecurityError } from "./security.js";
 
@@ -162,10 +163,10 @@ server.registerTool(
   "extract_landscape",
   {
     description:
-      "Composite intelligence tool. Given a project idea or keyword, simultaneously queries YC startups, GitHub repos, HN sentiment, and package activity to answer: Who is building this? Is it funded? What's getting traction? Returns a unified timestamped landscape report.",
+      "Composite intelligence tool. Given a project idea or keyword, simultaneously queries YC startups, GitHub repos, HN, Reddit, Product Hunt, and package registries to answer: Who is building this? Is it funded? What's getting traction? Returns a unified 6-source timestamped landscape report.",
     inputSchema: z.object({
       topic: z.string().describe("Your project idea or keyword e.g. 'mcp server' or 'cashflow prediction'"),
-      max_length: z.number().optional().default(8000),
+      max_length: z.number().optional().default(10000),
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
@@ -206,6 +207,9 @@ async function main() {
 }
 
 main().catch(console.error);
+
+
+
 
 
 
