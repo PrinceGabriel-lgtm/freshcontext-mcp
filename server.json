@@ -1,0 +1,28 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.PrinceGabriel-lgtm/freshcontext",
+  "description": "Real-time web intelligence for AI agents. 11 tools, no API keys. GitHub, HN, Reddit, arXiv & more.",
+  "repository": {
+    "url": "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp",
+    "source": "github"
+  },
+  "version": "0.1.7",
+  "website_url": "https://freshcontext-site.pages.dev",
+  "packages": [
+    {
+      "registry_type": "npm",
+      "registry_base_url": "https://registry.npmjs.org",
+      "identifier": "freshcontext-mcp",
+      "version": "0.1.7",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://freshcontext-mcp.gimmanuel73.workers.dev/mcp"
+    }
+  ]
+}

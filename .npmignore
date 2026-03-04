@@ -1,0 +1,19 @@
+# Build tools
+mcp-publisher.exe
+mcp-publisher
+
+# Auth tokens (never publish these)
+.mcpregistry_github_token
+.mcpregistry_registry_token
+.mcp_publisher_token
+
+# Source (already in dist/)
+src/
+
+# Worker (not part of npm package)
+worker/
+
+# Misc
+*.bat
+.env*
+tsconfig.json
