@@ -1,78 +1,71 @@
 # freshcontext-mcp
 
-> Timestamped web intelligence for AI agents. Every result is wrapped in a **FreshContext envelope** — so your agent always knows *when* it's looking at data, not just *what*.
+I asked Claude to help me find a job. It gave me a list of openings. I applied to three of them. Two didn't exist anymore. One had been closed for two years.
+
+Claude had no idea. It presented everything with the same confidence.
+
+That's the problem freshcontext fixes.
 
 [![npm version](https://img.shields.io/npm/v/freshcontext-mcp)](https://www.npmjs.com/package/freshcontext-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
-## The Problem
+## What it does
 
-LLMs hallucinate recency. They'll cite a 2022 job posting as "current", recall outdated API docs as if they're live, or tell you a project is active when it hasn't been touched in two years. This happens because they have no reliable signal for *when* data was retrieved vs. when it was published.
-
-Existing MCP servers return raw content. No timestamp. No confidence signal. No way for the agent to know if it's looking at something from this morning or three years ago.
-
-## The Fix: FreshContext Envelope
-
-Every piece of data extracted by `freshcontext-mcp` is wrapped in a structured envelope:
+Every MCP server returns data. freshcontext returns data **plus when it was retrieved and how confident that date is** — wrapped in a FreshContext envelope:
 
 ```
 [FRESHCONTEXT]
 Source: https://github.com/owner/repo
 Published: 2024-11-03
-Retrieved: 2026-03-04T10:14:00Z
+Retrieved: 2026-03-05T09:19:00Z
 Confidence: high
 ---
 ... content ...
 [/FRESHCONTEXT]
 ```
 
-The AI agent always knows **when it's looking at data**, not just what the data says.
+Claude now knows the difference between something from this morning and something from two years ago. You do too.
 
 ---
 
-## Tools
+## 11 tools. No API keys.
 
-### 🔬 Intelligence Tools
-
-| Tool | Description |
+### Intelligence
+| Tool | What it gets you |
 |---|---|
-| `extract_github` | README, stars, forks, language, topics, last commit from any GitHub repo |
-| `extract_hackernews` | Top stories or search results from HN with scores and timestamps |
-| `extract_scholar` | Research paper titles, authors, years, and snippets from Google Scholar |
-| `extract_reddit` | Posts and community sentiment from any subreddit or Reddit search |
+| `extract_github` | README, stars, forks, language, topics, last commit |
+| `extract_hackernews` | Top stories or search results with scores and timestamps |
+| `extract_scholar` | Research papers — titles, authors, years, snippets |
+| `extract_arxiv` | arXiv papers via official API — more reliable than Scholar |
+| `extract_reddit` | Posts and community sentiment from any subreddit |
 
-### 🚀 Competitive Intelligence Tools
-
-| Tool | Description |
+### Competitive research
+| Tool | What it gets you |
 |---|---|
-| `extract_yc` | Scrape YC company listings by keyword — find who's funded in your space |
-| `extract_producthunt` | Recent Product Hunt launches by keyword or topic |
-| `search_repos` | Search GitHub for similar/competing repos, ranked by stars with activity signals |
-| `package_trends` | npm and PyPI package metadata — version history, release cadence, last updated |
+| `extract_yc` | YC company listings by keyword — who's funded in your space |
+| `extract_producthunt` | Recent launches by topic |
+| `search_repos` | GitHub repos ranked by stars with activity signals |
+| `package_trends` | npm and PyPI metadata — version history, release cadence |
 
-### 📈 Market Data
-
-| Tool | Description |
+### Market data
+| Tool | What it gets you |
 |---|---|
-| `extract_finance` | Live stock data via Yahoo Finance — price, market cap, P/E, 52w range, sector, company summary |
+| `extract_finance` | Live stock data — price, market cap, P/E, 52w range |
 
-### 🗺️ Composite Tool
-
-| Tool | Description |
+### Composite
+| Tool | What it gets you |
 |---|---|
-| `extract_landscape` | **One call. Full picture.** Queries YC + GitHub + HN + npm/PyPI simultaneously. Returns a unified timestamped landscape report. |
+| `extract_landscape` | One call. YC + GitHub + HN + Reddit + Product Hunt + npm in parallel. Full timestamped picture. |
 
 ---
 
 ## Quick Start
 
-### Option A — Cloud (recommended, no install needed)
+### Option A — Cloud (no install)
 
-Visit **[freshcontext-site.pages.dev](https://freshcontext-site.pages.dev)** for a guided 3-step install with copy-paste config. No terminal, no downloads, no antivirus alerts.
-
-Or add this manually to your Claude Desktop config and restart:
+Add to your Claude Desktop config and restart:
 
 **Mac:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
@@ -88,15 +81,15 @@ Or add this manually to your Claude Desktop config and restart:
 }
 ```
 
-Restart Claude Desktop. The freshcontext tools will appear in your session.
+Restart Claude. Done.
 
-> If `claude_desktop_config.json` doesn't exist yet, create it with the content above.
+> Prefer a guided setup? Visit **[freshcontext-site.pages.dev](https://freshcontext-site.pages.dev)** — 3 steps, no terminal.
 
 ---
 
-### Option B — Local (full Playwright, for heavy use)
+### Option B — Local (full Playwright)
 
-**Prerequisites:** Node.js 18+ ([nodejs.org](https://nodejs.org))
+**Requires:** Node.js 18+ ([nodejs.org](https://nodejs.org))
 
 ```bash
 git clone https://github.com/PrinceGabriel-lgtm/freshcontext-mcp
@@ -106,7 +99,7 @@ npx playwright install chromium
 npm run build
 ```
 
-Then add to your Claude Desktop config:
+Add to Claude Desktop config:
 
 **Mac:**
 ```json
@@ -136,13 +129,10 @@ Then add to your Claude Desktop config:
 
 ### Troubleshooting (Mac)
 
-**"command not found: node"** — Node isn't on Claude Desktop's PATH. Use the full path:
+**"command not found: node"** — Use the full path:
 ```bash
-which node   # copy this output
+which node  # copy this output, replace "node" in config
 ```
-Replace `"command": "node"` with `"command": "/usr/local/bin/node"` (or whatever `which node` returned).
-
-**"npx: command not found"** — Same fix. Run `which npx` and use the full path.
 
 **Config file doesn't exist** — Create it:
 ```bash
@@ -152,42 +142,40 @@ touch ~/Library/Application\ Support/Claude/claude_desktop_config.json
 
 ---
 
-## Usage Examples
+## Usage examples
 
-### Check if anyone is already building what you're building
+**Is anyone already building what you're building?**
 ```
-Use extract_landscape with topic "cashflow prediction mcp"
+Use extract_landscape with topic "cashflow prediction saas"
 ```
-Returns a unified report: who's funded (YC), what's trending (HN), what repos exist (GitHub), what packages are active (npm/PyPI). All timestamped.
+Returns who's funded, what's trending, what repos exist, what packages are moving — all timestamped.
 
-### Get community sentiment on a topic
+**What's the community actually saying right now?**
 ```
-Use extract_reddit with url "r/MachineLearning"
-Use extract_hackernews with url "https://hn.algolia.com/api/v1/search?query=mcp+server&tags=story"
-```
-
-### Check a company's stock
-```
-Use extract_finance with url "NVDA,MSFT,GOOG"
+Use extract_reddit on r/MachineLearning
+Use extract_hackernews to search "mcp server 2026"
 ```
 
-### Find what just launched in your space
+**Did that company actually ship recently?**
 ```
-Use extract_producthunt with url "AI developer tools"
+Use extract_github on https://github.com/some-org/some-repo
 ```
+Check `Published` vs `Retrieved`. If the gap is 18 months, Claude will tell you.
 
 ---
 
-## Why FreshContext?
+## How freshness works
 
-Most AI agents retrieve data but don't timestamp it. This creates a silent failure mode: the agent presents stale information with the same confidence as fresh information. The user has no way to know the difference.
+Most AI tools retrieve data silently. No timestamp, no signal, no way for the agent to know how old it is.
 
-FreshContext treats **retrieval time as first-class metadata**. Every adapter returns:
+freshcontext treats **retrieval time as first-class metadata**. Every adapter returns:
 
-- `retrieved_at` — exact ISO timestamp of when the data was fetched
+- `retrieved_at` — exact ISO timestamp of the fetch
 - `content_date` — best estimate of when the content was originally published
 - `freshness_confidence` — `high`, `medium`, or `low` based on signal quality
 - `adapter` — which source the data came from
+
+When confidence is `high`, the date came from a structured field (API, metadata). When it's `medium` or `low`, freshcontext tells you why.
 
 ---
 
@@ -195,60 +183,27 @@ FreshContext treats **retrieval time as first-class metadata**. Every adapter re
 
 - Input sanitization and domain allowlists on all adapters
 - SSRF prevention (blocked private IP ranges)
-- KV-backed global rate limiting: 60 requests/minute per IP across all edge nodes
-- No credentials required for public data sources
-
----
-
-## Project Structure
-
-```
-freshcontext-mcp/
-├── src/
-│   ├── server.ts              # MCP server, all tool registrations
-│   ├── types.ts               # FreshContext interfaces
-│   ├── security.ts            # Input validation, domain allowlists, SSRF prevention
-│   ├── adapters/
-│   │   ├── github.ts
-│   │   ├── hackernews.ts
-│   │   ├── scholar.ts
-│   │   ├── yc.ts
-│   │   ├── repoSearch.ts
-│   │   ├── packageTrends.ts
-│   │   ├── reddit.ts
-│   │   ├── productHunt.ts
-│   │   └── finance.ts
-│   └── tools/
-│       └── freshnessStamp.ts
-└── worker/                    # Cloudflare Workers deployment (all 10 tools)
-    └── src/worker.ts
-```
+- KV-backed global rate limiting: 60 req/min per IP across all edge nodes
+- No credentials required — all public data sources
 
 ---
 
 ## Roadmap
 
-- [x] GitHub adapter
-- [x] Hacker News adapter
-- [x] Google Scholar adapter
-- [x] YC startup scraper
-- [x] GitHub repo search
-- [x] npm/PyPI package trends
-- [x] `extract_landscape` composite tool
+- [x] GitHub, HN, Scholar, YC, Reddit, Product Hunt, Finance, arXiv adapters
+- [x] `extract_landscape` — 6-source composite tool
 - [x] Cloudflare Workers deployment
-- [x] Worker auth + KV-backed global rate limiting
-- [x] Reddit community sentiment adapter
-- [x] Product Hunt launches adapter
-- [x] Yahoo Finance market data adapter
-- [ ] `extract_arxiv` — structured arXiv API (more reliable than Scholar)
+- [x] KV-backed global rate limiting
+- [x] Listed on official MCP Registry
 - [ ] TTL-based caching layer
 - [ ] `freshness_score` numeric metric
+- [ ] Job search adapter (the tool that started all this)
 
 ---
 
 ## Contributing
 
-PRs welcome. New adapters are the highest-value contribution — see `src/adapters/` for the pattern. Each adapter returns `{ raw, content_date, freshness_confidence }`.
+PRs welcome. New adapters are the highest-value contribution — see `src/adapters/` for the pattern.
 
 ---
 
