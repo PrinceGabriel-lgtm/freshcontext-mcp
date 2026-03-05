@@ -408,6 +408,78 @@ function createServer(env: Env): McpServer {
     } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
   });
 
+  // ── search_jobs ─────────────────────────────────────────────────────────────
+  server.registerTool("search_jobs", {
+    description: "Search for real-time job listings with publication dates on every result — so you never apply to a role that closed 2 years ago. Sources: Remotive (remote jobs) + HN 'Who is Hiring' (community). Returns timestamped freshcontext.",
+    inputSchema: z.object({
+      query: z.string().describe("Job search query e.g. 'typescript remote', 'senior python', 'mcp developer'"),
+      max_length: z.number().optional().default(6000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  }, async ({ query, max_length }) => {
+    try {
+      const q = query.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
+      const perSource = Math.floor((max_length ?? 6000) / 2);
+
+      const [remotiveRes, hnRes] = await Promise.allSettled([
+        fetch(`https://remotive.com/api/remote-jobs?search=${encodeURIComponent(q)}&limit=10`, {
+          headers: { "User-Agent": "freshcontext-mcp/0.1.9", "Accept": "application/json" },
+        }).then(r => r.json()),
+        fetch(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(q + " hiring")}&tags=comment&hitsPerPage=8`).then(r => r.json()),
+      ]);
+
+      const sections: string[] = [
+        `# Job Search: "${q}"`,
+        `⚠️  Every listing below includes its publication date. Check it before you apply.`,
+        "",
+      ];
+
+      let newestDate: string | null = null;
+
+      // Remotive
+      if (remotiveRes.status === "fulfilled") {
+        const jobs = (remotiveRes.value as any).jobs ?? [];
+        if (jobs.length) {
+          const listings = jobs.slice(0, 10).map((job: any, i: number) => [
+            `[${i + 1}] ${job.title} — ${job.company_name}`,
+            `Type: ${job.job_type || "N/A"} | Location: ${job.candidate_required_location || "Remote"}`,
+            `Posted: ${job.publication_date}`,
+            job.salary ? `Salary: ${job.salary}` : null,
+            job.tags?.length ? `Tags: ${job.tags.slice(0, 5).join(", ")}` : null,
+            `Apply: ${job.url}`,
+          ].filter(Boolean).join("\n")).join("\n\n").slice(0, perSource);
+          sections.push(`## 🌐 Remote Jobs (Remotive)\n${listings}`);
+          const dates = jobs.map((j: any) => j.publication_date).filter(Boolean).sort().reverse();
+          if (dates[0]) newestDate = dates[0] > (newestDate ?? "") ? dates[0] : newestDate;
+        }
+      }
+
+      // HN Who is Hiring
+      if (hnRes.status === "fulfilled") {
+        const hits = ((hnRes.value as any).hits ?? []).filter((h: any) => {
+          const t = (h.comment_text ?? "").toLowerCase();
+          return t.includes("hiring") || t.includes("remote") || t.includes("full-time") || t.includes("salary");
+        });
+        if (hits.length) {
+          const listings = hits.slice(0, 6).map((hit: any, i: number) => {
+            const text = (hit.comment_text ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 300);
+            return [
+              `[${i + 1}] Posted by ${hit.author} on ${hit.created_at?.slice(0, 10)}`,
+              text + (text.length >= 300 ? "…" : ""),
+              `Source: https://news.ycombinator.com/item?id=${hit.objectID}`,
+            ].join("\n");
+          }).join("\n\n").slice(0, perSource);
+          sections.push(`## 💬 HN "Who is Hiring" (Community)\n${listings}`);
+          const dates = hits.map((h: any) => h.created_at).sort().reverse();
+          if (dates[0]) newestDate = dates[0] > (newestDate ?? "") ? dates[0].slice(0, 10) : newestDate;
+        }
+      }
+
+      const raw = sections.join("\n\n");
+      return { content: [{ type: "text", text: stamp(raw, `jobs:${q}`, newestDate ?? new Date().toISOString(), newestDate ? "high" : "medium", "jobs") }] };
+    } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+  });
+
   // ── extract_landscape ───────────────────────────────────────────────────────
   server.registerTool("extract_landscape", {
     description: "Composite tool. Queries YC + GitHub + HN + Reddit + Product Hunt + npm/PyPI simultaneously. Returns a unified 6-source timestamped landscape report.",

@@ -12,6 +12,7 @@ import { redditAdapter } from "./adapters/reddit.js";
 import { productHuntAdapter } from "./adapters/productHunt.js";
 import { financeAdapter } from "./adapters/finance.js";
 import { arxivAdapter } from "./adapters/arxiv.js";
+import { jobsAdapter } from "./adapters/jobs.js";
 import { stampFreshness, formatForLLM } from "./tools/freshnessStamp.js";
 import { SecurityError, formatSecurityError } from "./security.js";
 
@@ -196,6 +197,29 @@ server.registerTool(
     ].join("\n\n");
 
     return { content: [{ type: "text", text: combined }] };
+  }
+);
+
+// ─── Tool: search_jobs ───────────────────────────────────────────────────────
+server.registerTool(
+  "search_jobs",
+  {
+    description:
+      "Search for real-time job listings with publication dates on every result — so you never apply to a role that closed 2 years ago. Sources: Remotive (remote jobs) + HN 'Who is Hiring' (community). Returns timestamped freshcontext.",
+    inputSchema: z.object({
+      query: z.string().describe("Job search query e.g. 'typescript remote', 'senior python', 'mcp developer'"),
+      max_length: z.number().optional().default(6000).describe("Max content length"),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ query, max_length }) => {
+    try {
+      const result = await jobsAdapter({ url: query, maxLength: max_length });
+      const ctx = stampFreshness(result, { url: query, maxLength: max_length }, "jobs");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
   }
 );
 
