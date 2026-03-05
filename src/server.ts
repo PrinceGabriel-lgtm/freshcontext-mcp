@@ -205,16 +205,27 @@ server.registerTool(
   "search_jobs",
   {
     description:
-      "Search for real-time job listings with publication dates on every result — so you never apply to a role that closed 2 years ago. Sources: Remotive (remote jobs) + HN 'Who is Hiring' (community). Returns timestamped freshcontext.",
+      "Search for real-time job listings with freshness badges on every result — so you never apply to a role that closed months ago. Sources: Remotive + RemoteOK + The Muse + HN 'Who is Hiring'. Supports location filtering, remote-only mode, keyword spotting (e.g. FIFO), and max age filtering. Returns timestamped freshcontext sorted freshest first.",
     inputSchema: z.object({
-      query: z.string().describe("Job search query e.g. 'typescript remote', 'senior python', 'mcp developer'"),
-      max_length: z.number().optional().default(6000).describe("Max content length"),
+      query: z.string().describe("Job search query e.g. 'typescript', 'mining engineer', 'FIFO operator', 'data analyst'"),
+      location: z.string().optional().describe("Country, city, or 'remote' / 'worldwide' e.g. 'South Africa', 'Australia', 'remote'"),
+      remote_only: z.boolean().optional().default(false).describe("Only return remote-friendly listings"),
+      max_age_days: z.number().optional().default(60).describe("Hide listings older than N days (default 60, use 7 for very fresh only)"),
+      keywords: z.array(z.string()).optional().default([]).describe("Keywords to highlight in results e.g. ['FIFO', 'underground', 'contract']"),
+      max_length: z.number().optional().default(8000),
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
-  async ({ query, max_length }) => {
+  async ({ query, location, remote_only, max_age_days, keywords, max_length }) => {
     try {
-      const result = await jobsAdapter({ url: query, maxLength: max_length });
+      const result = await jobsAdapter({
+        url: query,
+        maxLength: max_length,
+        location: location ?? "",
+        remoteOnly: remote_only,
+        maxAgeDays: max_age_days,
+        keywords: keywords ?? [],
+      });
       const ctx = stampFreshness(result, { url: query, maxLength: max_length }, "jobs");
       return { content: [{ type: "text", text: formatForLLM(ctx) }] };
     } catch (err) {
