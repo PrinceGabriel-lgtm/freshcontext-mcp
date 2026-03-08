@@ -616,6 +616,142 @@ function createServer(env: Env): McpServer {
   return server;
 }
 
+// ─── Cron: Scheduled Intelligence Scraper ─────────────────────────────────────
+
+// Simple hash — no crypto needed, just dedup fingerprint
+function simpleHash(str: string): string {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(31, h) + str.charCodeAt(i) | 0;
+  }
+  return Math.abs(h).toString(36);
+}
+
+// Maps adapter name → the right fetch function
+async function runAdapter(adapter: string, query: string, filters: Record<string, any>): Promise<string> {
+  const base = "https://freshcontext-mcp.gimmanuel73.workers.dev";
+
+  // We call our own worker's adapters via internal fetch
+  // Each adapter maps to a tool — we simulate the call by hitting the upstream APIs directly
+  // This keeps cron self-contained without MCP overhead
+
+  switch (adapter) {
+    case "jobs": {
+      // Inline Remotive call for cron (no adapter import needed)
+      const url = `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(query)}&limit=10`;
+      const res = await fetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron", "Accept": "application/json" } });
+      if (!res.ok) return `Remotive error ${res.status}`;
+      const data = await res.json() as any;
+      const location = filters.location ?? "";
+      return (data.jobs ?? [])
+        .filter((j: any) => !location || (j.candidate_required_location ?? "").toLowerCase().includes(location.toLowerCase()))
+        .slice(0, 10)
+        .map((j: any) => `${j.title} — ${j.company_name} | ${j.candidate_required_location} | ${j.publication_date}`)
+        .join("\n");
+    }
+    case "hackernews": {
+      const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=10`;
+      const res = await fetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron" } });
+      const data = await res.json() as any;
+      return data.hits?.map((h: any) => `${h.title} — ${h.created_at}`).join("\n") ?? "";
+    }
+    case "reposearch": {
+      const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&per_page=10`;
+      const res = await fetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron", "Accept": "application/vnd.github.v3+json" } });
+      const data = await res.json() as any;
+      return data.items?.map((r: any) => `${r.full_name} ⭐${r.stargazers_count} — ${r.updated_at}`).join("\n") ?? "";
+    }
+    case "github": {
+      // query is the repo URL — fetch basic stats via API
+      const match = query.match(/github\.com\/([^/]+\/[^/]+)/);
+      if (!match) return "";
+      const url = `https://api.github.com/repos/${match[1]}`;
+      const res = await fetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron", "Accept": "application/vnd.github.v3+json" } });
+      const data = await res.json() as any;
+      return `Stars:${data.stargazers_count} Forks:${data.forks_count} Updated:${data.updated_at} Issues:${data.open_issues_count}`;
+    }
+    case "finance": {
+      // Use Yahoo Finance quote API (no auth needed for basic quotes)
+      const symbol = query.replace(/[^A-Z0-9=^.-]/gi, "");
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+      const res = await fetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron" } });
+      const data = await res.json() as any;
+      const price = data.chart?.result?.[0]?.meta?.regularMarketPrice;
+      return price ? `${symbol}: ${price} @ ${new Date().toISOString()}` : `No price data for ${symbol}`;
+    }
+    default:
+      return `[adapter ${adapter} not yet implemented in cron]`;
+  }
+}
+
+async function runScheduledScrape(env: Env): Promise<void> {
+  // 1. Load all enabled watched queries
+  const { results: queries } = await env.DB.prepare(
+    `SELECT * FROM watched_queries WHERE enabled = 1 ORDER BY last_run_at ASC NULLS FIRST LIMIT 20`
+  ).all<{
+    id: string; adapter: string; query: string;
+    filters: string; user_id: string; label: string | null;
+  }>();
+
+  if (!queries.length) return;
+
+  const adaptersRun: string[] = [];
+  let newCount = 0;
+
+  for (const wq of queries) {
+    try {
+      const filters = JSON.parse(wq.filters ?? "{}");
+
+      // 2. Run the adapter
+      const raw = await runAdapter(wq.adapter, wq.query, filters);
+      if (!raw) continue;
+
+      // 3. Hash result for deduplication
+      const hash = simpleHash(raw);
+
+      // 4. Check if this is a new result (different hash from last run)
+      const last = await env.DB.prepare(
+        `SELECT result_hash FROM scrape_results
+         WHERE watched_query_id = ?
+         ORDER BY scraped_at DESC LIMIT 1`
+      ).first<{ result_hash: string }>(wq.id);
+
+      const isNew = !last || last.result_hash !== hash;
+
+      // 5. Store result
+      const resultId = `sr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      await env.DB.prepare(
+        `INSERT INTO scrape_results (id, watched_query_id, adapter, query, raw_content, result_hash, is_new, scraped_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+      ).bind(resultId, wq.id, wq.adapter, wq.query, raw.slice(0, 8000), hash, isNew ? 1 : 0).run();
+
+      // 6. Update last_run_at
+      await env.DB.prepare(
+        `UPDATE watched_queries SET last_run_at = datetime('now') WHERE id = ?`
+      ).bind(wq.id).run();
+
+      if (isNew) {
+        newCount++;
+        if (!adaptersRun.includes(wq.adapter)) adaptersRun.push(wq.adapter);
+      }
+
+    } catch (err: any) {
+      // Log error but don't stop the whole run
+      console.error(`Cron error for query ${wq.id} (${wq.adapter}): ${err.message}`);
+    }
+  }
+
+  // 7. Write a briefing summary to DB
+  if (newCount > 0) {
+    const briefingId = `br_${Date.now()}`;
+    const summary = `Cron run ${new Date().toISOString()}: ${newCount} new result(s) detected across ${adaptersRun.join(", ")}. ${queries.length} queries checked.`;
+    await env.DB.prepare(
+      `INSERT INTO briefings (id, user_id, summary, new_results_count, adapters_run, created_at)
+       VALUES (?, 'default', ?, ?, ?, datetime('now'))`
+    ).bind(briefingId, summary, newCount, JSON.stringify(adaptersRun)).run();
+  }
+}
+
 // ─── Worker Export ────────────────────────────────────────────────────────────
 
 export default {
@@ -633,6 +769,10 @@ export default {
     const server = createServer(env);
     await server.connect(transport);
     return transport.handleRequest(request);
+  },
+
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runScheduledScrape(env));
   },
 } satisfies ExportedHandler<Env>;
 
