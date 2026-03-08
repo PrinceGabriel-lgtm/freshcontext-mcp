@@ -754,6 +754,115 @@ async function runScheduledScrape(env: Env): Promise<void> {
   }
 }
 
+// ─── Layer 4: Claude Synthesis ────────────────────────────────────────────────
+
+async function synthesizeBriefing(db: D1Database, anthropicKey: string): Promise<string> {
+  // 1. Load user profile
+  const profile = await db.prepare(
+    `SELECT * FROM user_profiles WHERE id = 'default' LIMIT 1`
+  ).first<{
+    name: string; skills: string; certifications: string;
+    targets: string; location: string; context: string;
+  }>();
+
+  // 2. Load all new results since last briefing
+  const { results: newRows } = await db.prepare(`
+    SELECT sr.adapter, sr.query, sr.raw_content, sr.scraped_at, wq.label
+    FROM scrape_results sr
+    JOIN watched_queries wq ON sr.watched_query_id = wq.id
+    WHERE sr.is_new = 1
+    ORDER BY sr.scraped_at DESC
+    LIMIT 30
+  `).all<{
+    adapter: string; query: string; raw_content: string;
+    scraped_at: string; label: string | null;
+  }>();
+
+  if (!newRows.length) return "No new signals since last run.";
+
+  // 3. Build the context payload for Claude
+  const profileSummary = profile ? [
+    `Name: ${profile.name}`,
+    `Location: ${profile.location}`,
+    `Skills: ${profile.skills}`,
+    `Certifications: ${profile.certifications}`,
+    `Targets: ${profile.targets}`,
+    `Context: ${profile.context}`,
+  ].join("\n") : "No profile found.";
+
+  const resultsSummary = newRows.map(r =>
+    `[${r.adapter.toUpperCase()}] ${r.label ?? r.query} (${r.scraped_at.slice(0, 10)})\n${r.raw_content.slice(0, 600)}`
+  ).join("\n\n---\n\n");
+
+  const prompt = `You are a personal intelligence assistant. Your job is to read new data signals and produce a short, sharp morning briefing for the user.
+
+USER PROFILE:
+${profileSummary}
+
+NEW SIGNALS (${newRows.length} items across ${[...new Set(newRows.map(r => r.adapter))].join(", ")}):
+${resultsSummary}
+
+INSTRUCTIONS:
+- Write a concise briefing (under 300 words)
+- Lead with what matters most to this person given their profile
+- Group by category: Jobs, Repo Activity, Market/Finance, Tech Signals
+- Only include categories that have new data
+- Flag anything that directly matches their targets or skills
+- Use plain language, no fluff
+- End with 1-2 actionable next steps
+
+Write the briefing now:`;
+
+  // 4. Call Claude API
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": anthropicKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",  // fast + cheap for briefings
+      max_tokens: 600,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Claude API error ${response.status}: ${err.slice(0, 200)}`);
+  }
+
+  const data = await response.json() as {
+    content: Array<{ type: string; text: string }>;
+  };
+
+  const briefingText = data.content
+    .filter(c => c.type === "text")
+    .map(c => c.text)
+    .join("\n");
+
+  // 5. Mark results as no longer "new" (consumed by briefing)
+  await db.prepare(
+    `UPDATE scrape_results SET is_new = 0
+     WHERE is_new = 1 AND scraped_at <= datetime('now')`
+  ).run();
+
+  // 6. Store the AI-generated briefing
+  const briefingId = `br_ai_${Date.now()}`;
+  await db.prepare(
+    `INSERT INTO briefings (id, user_id, summary, new_results_count, adapters_run, created_at)
+     VALUES (?, 'default', ?, ?, ?, datetime('now'))`
+  ).bind(
+    briefingId,
+    briefingText,
+    newRows.length,
+    JSON.stringify([...new Set(newRows.map(r => r.adapter))])
+  ).run();
+
+  return briefingText;
+}
+
 // ─── Worker Export ────────────────────────────────────────────────────────────
 
 export default {
