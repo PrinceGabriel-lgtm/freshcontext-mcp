@@ -2,6 +2,7 @@ import puppeteer from "@cloudflare/puppeteer";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
+import { synthesizeBriefing } from "./synthesize.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -11,6 +12,7 @@ interface Env {
   CACHE: KVNamespace;
   DB: D1Database;
   API_KEY?: string;
+  ANTHROPIC_KEY?: string;
 }
 
 // ─── Cache Layer ──────────────────────────────────────────────────────────────
@@ -756,6 +758,58 @@ async function runScheduledScrape(env: Env): Promise<void> {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+
+    // ── GET /briefing — latest briefing or trigger synthesis on demand ─────────
+    if (url.pathname === "/briefing") {
+      try {
+        checkAuth(request, env);
+      } catch (err: any) {
+        return errResponse(err.message, 401);
+      }
+      try {
+        // Return latest stored briefing
+        const latest = await env.DB.prepare(`
+          SELECT * FROM briefings
+          ORDER BY created_at DESC LIMIT 1
+        `).first<{ id: string; summary: string; new_results_count: number; adapters_run: string; created_at: string }>();
+
+        if (!latest) {
+          return new Response(JSON.stringify({ message: "No briefings yet. Cron runs every 6h." }), {
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        return new Response(JSON.stringify({
+          ...latest,
+          adapters_run: JSON.parse(latest.adapters_run ?? "[]"),
+        }), { headers: { "Content-Type": "application/json" } });
+      } catch (err: any) {
+        return errResponse(err.message, 500);
+      }
+    }
+
+    // ── POST /briefing/now — trigger synthesis immediately ────────────────────
+    if (url.pathname === "/briefing/now" && request.method === "POST") {
+      try {
+        checkAuth(request, env);
+      } catch (err: any) {
+        return errResponse(err.message, 401);
+      }
+      try {
+        await runScheduledScrape(env);
+        const briefing = env.ANTHROPIC_KEY
+          ? await synthesizeBriefing(env.DB, env.ANTHROPIC_KEY)
+          : null;
+        return new Response(JSON.stringify(briefing ?? { message: "Scrape complete. Set ANTHROPIC_KEY for synthesis." }), {
+          headers: { "Content-Type": "application/json" }
+        });
+      } catch (err: any) {
+        return errResponse(err.message, 500);
+      }
+    }
+
+    // ── MCP transport (default) ────────────────────────────────────────────────
     try {
       checkAuth(request, env);
       const ip = getClientIp(request);
@@ -772,7 +826,18 @@ export default {
   },
 
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(runScheduledScrape(env));
+    ctx.waitUntil((async () => {
+      // Layer 3: scrape all watched queries
+      await runScheduledScrape(env);
+      // Layer 4: synthesize briefing from new results
+      if (env.ANTHROPIC_KEY) {
+        try {
+          await synthesizeBriefing(env.DB, env.ANTHROPIC_KEY);
+        } catch (err: any) {
+          console.error("Synthesis error:", err.message);
+        }
+      }
+    })());
   },
 } satisfies ExportedHandler<Env>;
 
