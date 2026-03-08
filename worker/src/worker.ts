@@ -9,6 +9,7 @@ interface Env {
   BROWSER: Fetcher;
   RATE_LIMITER: KVNamespace;
   CACHE: KVNamespace;
+  DB: D1Database;
   API_KEY?: string;
 }
 

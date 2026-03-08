@@ -7,6 +7,13 @@
   "browser": {
     "binding": "BROWSER"
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "freshcontext-db",
+      "database_id": "d9898d65-f67e-4dcb-abdc-7f7b53f2d444"
+    }
+  ],
   "kv_namespaces": [
     {
       "binding": "RATE_LIMITER",
