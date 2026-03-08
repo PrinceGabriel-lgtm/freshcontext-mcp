@@ -8,7 +8,60 @@ import { z } from "zod";
 interface Env {
   BROWSER: Fetcher;
   RATE_LIMITER: KVNamespace;
+  CACHE: KVNamespace;
   API_KEY?: string;
+}
+
+// ─── Cache Layer ──────────────────────────────────────────────────────────────
+// Per-adapter TTLs (seconds). Balances freshness vs. redundant upstream calls.
+const CACHE_TTL: Record<string, number> = {
+  jobs:          60 * 60 * 2,   // 2 hours  — job boards update infrequently
+  github:        60 * 30,       // 30 min   — repos change, but not constantly
+  hackernews:    60 * 15,       // 15 min   — HN moves fast
+  scholar:       60 * 60 * 6,   // 6 hours  — academic data is very stable
+  arxiv:         60 * 60 * 4,   // 4 hours
+  yc:            60 * 60 * 4,   // 4 hours  — YC batches don't change mid-day
+  producthunt:   60 * 30,       // 30 min
+  reddit:        60 * 20,       // 20 min
+  finance:       60 * 5,        // 5 min    — prices change constantly
+  reposearch:    60 * 30,       // 30 min
+  packagetrends: 60 * 60 * 2,   // 2 hours
+};
+const DEFAULT_TTL = 60 * 30; // 30 min fallback
+
+function cacheKey(adapter: string, input: string): string {
+  // Normalize input to avoid case/whitespace misses
+  const normalized = input.trim().toLowerCase().slice(0, 200);
+  return `cache:${adapter}:${normalized}`;
+}
+
+async function getFromCache(
+  kv: KVNamespace, adapter: string, input: string
+): Promise<FreshContext | null> {
+  try {
+    const key = cacheKey(adapter, input);
+    const raw = await kv.get(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as FreshContext & { _cached_at: string };
+    // Attach a note so the caller knows it came from cache
+    parsed.content = `[⚡ Cached — retrieved at ${parsed._cached_at}]\n\n` + parsed.content;
+    return parsed;
+  } catch {
+    return null; // cache miss or corrupt entry — proceed normally
+  }
+}
+
+async function setInCache(
+  kv: KVNamespace, adapter: string, input: string, result: FreshContext
+): Promise<void> {
+  try {
+    const key = cacheKey(adapter, input);
+    const ttl = CACHE_TTL[adapter.toLowerCase()] ?? DEFAULT_TTL;
+    const payload = JSON.stringify({ ...result, _cached_at: new Date().toISOString() });
+    await kv.put(key, payload, { expirationTtl: ttl });
+  } catch {
+    // Non-fatal — if caching fails, the response still goes through
+  }
 }
 
 interface FreshContext {
@@ -124,6 +177,34 @@ function stamp(content: string, url: string, date: string | null, confidence: "h
 
 // ─── Server Factory ───────────────────────────────────────────────────────────
 
+// withCache: wraps any tool handler to check KV cache before hitting upstream.
+// Returns cached result if fresh, otherwise runs the handler and caches output.
+async function withCache(
+  adapter: string,
+  cacheInput: string,
+  kv: KVNamespace,
+  handler: () => Promise<{ content: Array<{ type: string; text: string }> }>
+): Promise<{ content: Array<{ type: string; text: string }> }> {
+  // Cache check
+  const cached = await getFromCache(kv, adapter, cacheInput);
+  if (cached) {
+    return { content: [{ type: "text", text: cached.content }] };
+  }
+  // Cache miss — run the real handler
+  const result = await handler();
+  // Store result in cache (fire-and-forget, non-blocking)
+  const text = result.content[0]?.text ?? "";
+  setInCache(kv, adapter, cacheInput, {
+    content: text,
+    source_url: cacheInput,
+    content_date: null,
+    retrieved_at: new Date().toISOString(),
+    freshness_confidence: "medium",
+    adapter,
+  }).catch(() => {}); // never let cache errors bubble up
+  return result;
+}
+
 function createServer(env: Env): McpServer {
   const server = new McpServer({ name: "freshcontext-mcp", version: "0.1.7" });
 
@@ -133,8 +214,8 @@ function createServer(env: Env): McpServer {
     inputSchema: z.object({ url: z.string().url().describe("Full GitHub repo URL e.g. https://github.com/owner/repo") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
+    return withCache("github", url, env.CACHE, async () => {
     try {
-      const safeUrl = validateUrl(url, "github");
       const browser = await puppeteer.launch(env.BROWSER);
       const page = await browser.newPage();
       await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36");
@@ -159,6 +240,7 @@ function createServer(env: Env): McpServer {
       const raw = [`Description: ${d.description ?? "N/A"}`, `Stars: ${d.stars ?? "N/A"} | Forks: ${d.forks ?? "N/A"}`, `Language: ${d.language ?? "N/A"}`, `Last commit: ${d.lastCommit ?? "N/A"}`, `Topics: ${d.topics?.join(", ") ?? "none"}`, `\n--- README ---\n${d.readme ?? "No README"}`].join("\n");
       return { content: [{ type: "text", text: stamp(raw, safeUrl, d.lastCommit ?? null, d.lastCommit ? "high" : "medium", "github") }] };
     } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+    }); // end withCache
   });
 
   // ── extract_hackernews ──────────────────────────────────────────────────────
@@ -167,6 +249,7 @@ function createServer(env: Env): McpServer {
     inputSchema: z.object({ url: z.string().url().describe("HN URL e.g. https://news.ycombinator.com or https://hn.algolia.com/?q=...") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
+    return withCache("hackernews", url, env.CACHE, async () => {
     try {
       // Use Algolia API for search URLs — no browser needed
       if (url.includes("hn.algolia.com")) {
@@ -199,6 +282,7 @@ function createServer(env: Env): McpServer {
       const newest = items.map(r => r.age).filter(Boolean).sort().reverse()[0] ?? null;
       return { content: [{ type: "text", text: stamp(raw, safeUrl, newest, newest ? "high" : "medium", "hackernews") }] };
     } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+    }); // end withCache
   });
 
   // ── extract_scholar ─────────────────────────────────────────────────────────
@@ -207,6 +291,7 @@ function createServer(env: Env): McpServer {
     inputSchema: z.object({ url: z.string().url().describe("Google Scholar search URL") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
+    return withCache("scholar", url, env.CACHE, async () => {
     try {
       const safeUrl = validateUrl(url, "scholar");
       const browser = await puppeteer.launch(env.BROWSER);
@@ -228,6 +313,7 @@ function createServer(env: Env): McpServer {
       const newest = items.map(r => r.year).filter(Boolean).sort().reverse()[0] ?? null;
       return { content: [{ type: "text", text: stamp(raw, safeUrl, newest ? `${newest}-01-01` : null, newest ? "high" : "low", "google_scholar") }] };
     } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+    }); // end withCache
   });
 
   // ── extract_yc ──────────────────────────────────────────────────────────────
@@ -236,6 +322,7 @@ function createServer(env: Env): McpServer {
     inputSchema: z.object({ url: z.string().url().describe("YC URL e.g. https://www.ycombinator.com/companies?query=mcp") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
+    return withCache("yc", url, env.CACHE, async () => {
     try {
       const safeUrl = validateUrl(url, "yc");
       const browser = await puppeteer.launch(env.BROWSER);
@@ -256,6 +343,7 @@ function createServer(env: Env): McpServer {
       const raw = items.map((c, i) => `[${i+1}] ${c.name ?? "Unknown"} (${c.batch ?? "N/A"})\n${c.desc ?? "No description"}\nTags: ${c.tags?.join(", ") ?? "none"}`).join("\n\n");
       return { content: [{ type: "text", text: stamp(raw, safeUrl, new Date().toISOString().slice(0, 10), "medium", "ycombinator") }] };
     } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+    }); // end withCache
   });
 
   // ── search_repos ────────────────────────────────────────────────────────────
@@ -264,6 +352,7 @@ function createServer(env: Env): McpServer {
     inputSchema: z.object({ query: z.string().describe("Search query e.g. 'mcp server typescript'") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ query }) => {
+    return withCache("reposearch", query, env.CACHE, async () => {
     try {
       const q = query.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
       const res = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&sort=stars&order=desc&per_page=15`, {
@@ -277,6 +366,7 @@ function createServer(env: Env): McpServer {
       const newest = json.items.map((r: any) => r.updated_at).filter(Boolean).sort().reverse()[0] ?? null;
       return { content: [{ type: "text", text: stamp(raw, `https://github.com/search?q=${encodeURIComponent(q)}`, newest, newest ? "high" : "medium", "github_search") }] };
     } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+    }); // end withCache
   });
 
   // ── package_trends ──────────────────────────────────────────────────────────
@@ -285,6 +375,7 @@ function createServer(env: Env): McpServer {
     inputSchema: z.object({ packages: z.string().describe("Package name(s) e.g. 'langchain' or 'npm:zod,pypi:fastapi'") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ packages }) => {
+    return withCache("packagetrends", packages, env.CACHE, async () => {
     try {
       const entries = packages.split(",").map(s => s.trim()).filter(Boolean).slice(0, 5);
       const results: string[] = [];
@@ -308,6 +399,7 @@ function createServer(env: Env): McpServer {
       const raw = results.join("\n\n─────────────\n\n");
       return { content: [{ type: "text", text: stamp(raw, "package-registries", new Date().toISOString(), "high", "package_registry") }] };
     } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+    }); // end withCache
   });
 
   // ── extract_reddit ──────────────────────────────────────────────────────────
@@ -316,6 +408,7 @@ function createServer(env: Env): McpServer {
     inputSchema: z.object({ url: z.string().describe("Subreddit name e.g. 'r/MachineLearning' or search URL") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
+    return withCache("reddit", url, env.CACHE, async () => {
     try {
       let apiUrl = url;
       if (!apiUrl.startsWith("http")) {
@@ -338,6 +431,7 @@ function createServer(env: Env): McpServer {
       const date = newest ? new Date(newest * 1000).toISOString() : null;
       return { content: [{ type: "text", text: stamp(raw, apiUrl, date, date ? "high" : "medium", "reddit") }] };
     } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+    }); // end withCache
   });
 
   // ── extract_producthunt ─────────────────────────────────────────────────────
@@ -346,6 +440,7 @@ function createServer(env: Env): McpServer {
     inputSchema: z.object({ url: z.string().describe("Search query e.g. 'AI writing tools' or a PH topic URL") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
+    return withCache("producthunt", url, env.CACHE, async () => {
     try {
       const isUrl = url.startsWith("http");
       const gql = `{ posts(first: 20, order: VOTES${isUrl ? "" : `, search: ${JSON.stringify(url)}`}) { edges { node { name tagline url votesCount commentsCount createdAt topics { edges { node { name } } } } } } }`;
@@ -365,6 +460,7 @@ function createServer(env: Env): McpServer {
       const newest = posts.map((e: any) => e.node.createdAt).filter(Boolean).sort().reverse()[0] ?? null;
       return { content: [{ type: "text", text: stamp(raw, url, newest, newest ? "high" : "medium", "producthunt") }] };
     } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+    }); // end withCache
   });
 
   // ── extract_finance ─────────────────────────────────────────────────────────
@@ -373,6 +469,7 @@ function createServer(env: Env): McpServer {
     inputSchema: z.object({ url: z.string().describe("Ticker symbol(s) e.g. 'AAPL' or 'MSFT,GOOG,AMZN'") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
+    return withCache("finance", url, env.CACHE, async () => {
     try {
       const tickers = url.split(",").map(t => t.trim().toUpperCase()).filter(Boolean).slice(0, 5);
       const results: string[] = [];
@@ -406,6 +503,7 @@ function createServer(env: Env): McpServer {
       const date = latestTs ? new Date(latestTs * 1000).toISOString() : new Date().toISOString();
       return { content: [{ type: "text", text: stamp(raw, `yahoo-finance:${tickers.join(",")}`, date, "high", "yahoo_finance") }] };
     } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+    }); // end withCache
   });
 
   // ── search_jobs ─────────────────────────────────────────────────────────────
@@ -417,6 +515,7 @@ function createServer(env: Env): McpServer {
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ query, max_length }) => {
+    return withCache("jobs", query, env.CACHE, async () => {
     try {
       const q = query.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
       const perSource = Math.floor((max_length ?? 6000) / 2);
@@ -478,6 +577,7 @@ function createServer(env: Env): McpServer {
       const raw = sections.join("\n\n");
       return { content: [{ type: "text", text: stamp(raw, `jobs:${q}`, newestDate ?? new Date().toISOString(), newestDate ? "high" : "medium", "jobs") }] };
     } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+    }); // end withCache
   });
 
   // ── extract_landscape ───────────────────────────────────────────────────────
@@ -486,6 +586,7 @@ function createServer(env: Env): McpServer {
     inputSchema: z.object({ topic: z.string().describe("Project idea or keyword e.g. 'mcp server'") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ topic }) => {
+    return withCache("landscape", topic, env.CACHE, async () => {
     try {
       const t = topic.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
       const [hn, repos, pkg] = await Promise.allSettled([
@@ -508,6 +609,7 @@ function createServer(env: Env): McpServer {
       ].join("\n");
       return { content: [{ type: "text", text: sections }] };
     } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+    }); // end withCache
   });
 
   return server;
