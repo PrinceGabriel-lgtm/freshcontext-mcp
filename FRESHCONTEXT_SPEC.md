@@ -1,0 +1,178 @@
+# The FreshContext Specification
+**Version 1.0 — March 2026**
+*Authored by Immanuel Gabriel (Prince Gabriel) — Grootfontein, Namibia*
+
+---
+
+## What This Is
+
+The FreshContext Specification defines a standard envelope format for AI-retrieved web data.
+
+It exists to solve one problem: **AI models present stale data with the same confidence as fresh data, and users have no way to tell the difference.**
+
+FreshContext fixes this by wrapping every piece of retrieved content in a structured envelope that carries three guarantees:
+
+1. **When** the data was retrieved (exact ISO 8601 timestamp)
+2. **Where** it came from (canonical source URL)
+3. **How confident** we are that the content date is accurate (freshness confidence)
+
+Any tool, agent, or system that implements this spec is **FreshContext-compatible**.
+
+---
+
+## The Envelope Format
+
+Every FreshContext-compatible response MUST wrap its content in the following envelope:
+
+```
+[FRESHCONTEXT]
+Source: <canonical_url>
+Published: <content_date_or_"unknown">
+Retrieved: <iso8601_timestamp>
+Confidence: <high|medium|low>
+---
+<content>
+[/FRESHCONTEXT]
+```
+
+### Field Definitions
+
+| Field | Required | Format | Description |
+|---|---|---|---|
+| `Source` | Yes | Valid URL | The canonical URL of the original source |
+| `Published` | Yes | ISO 8601 date or `"unknown"` | Best estimate of when the content was originally published |
+| `Retrieved` | Yes | ISO 8601 datetime with timezone | Exact timestamp when this data was fetched |
+| `Confidence` | Yes | `high`, `medium`, or `low` | Confidence level of the `Published` date estimate |
+
+---
+
+## Confidence Levels
+
+### `high`
+The publication date was sourced from a structured, machine-readable field — an API response, HTML metadata tag, RSS feed, or official timestamp. The date is reliable.
+
+*Examples: GitHub API `pushed_at`, arXiv submission date, Hacker News `created_at`*
+
+### `medium`
+The publication date was inferred from page signals — visible date strings, URL patterns, or content heuristics. Likely correct but not guaranteed.
+
+*Examples: Blog post date parsed from HTML, URL containing `/2025/03/`, footer copyright year*
+
+### `low`
+No reliable date signal was found. The date is an estimate based on indirect signals or is entirely unknown.
+
+*Examples: Static page with no date, scraped content with no metadata, cached result of unknown age*
+
+---
+
+## Structured Form (JSON)
+
+Implementations MAY additionally expose freshness metadata as structured JSON alongside the text envelope:
+
+```json
+{
+  "freshcontext": {
+    "source_url": "https://github.com/owner/repo",
+    "content_date": "2026-03-05",
+    "retrieved_at": "2026-03-16T09:19:00.000Z",
+    "freshness_confidence": "high",
+    "adapter": "github",
+    "freshness_score": 94
+  },
+  "content": "..."
+}
+```
+
+### `freshness_score` (optional)
+
+A numeric representation of data freshness from 0–100, calculated as:
+
+```
+freshness_score = max(0, 100 - (days_since_retrieved × decay_rate))
+```
+
+Where `decay_rate` defaults to `1.5` for general web content. Implementations MAY use domain-specific decay rates (e.g., financial data decays faster than academic papers).
+
+| Score | Interpretation |
+|---|---|
+| 90–100 | Retrieved within hours — treat as current |
+| 70–89 | Retrieved within days — reliable for most uses |
+| 50–69 | Retrieved within weeks — verify before acting |
+| Below 50 | Retrieved more than a month ago — use with caution |
+
+---
+
+## Adapter Contract
+
+Any data source that feeds into a FreshContext-compatible system is called an **adapter**. Adapters MUST:
+
+1. Return raw content plus a `content_date` (or `null` if unknown)
+2. Set a `freshness_confidence` level based on how the date was determined
+3. Never fabricate or forward-date content timestamps
+4. Clearly identify which source system produced the data via the `adapter` field
+
+Adapters SHOULD:
+
+- Prefer structured API sources over scraped content when both are available
+- Log retrieval errors without silently returning cached or stale data
+- Surface rate-limit or access-denied errors explicitly rather than returning empty content
+
+---
+
+## Why This Matters for AI Agents
+
+Large language models have no internal clock. When an agent retrieves web data, it cannot distinguish between something published this morning and something published three years ago — unless that information is explicitly surfaced.
+
+Without FreshContext (or equivalent):
+- An agent recommending job listings may recommend roles that no longer exist
+- An agent summarising market trends may cite conditions from a previous cycle
+- An agent checking a competitor's pricing may act on outdated information
+
+With FreshContext:
+- Every piece of retrieved data carries its own timestamp
+- The agent can reason about data age before acting
+- Users can see exactly how fresh their AI's information is
+
+---
+
+## Compatibility
+
+A tool, server, or API is **FreshContext-compatible** if:
+
+- Its responses include the `[FRESHCONTEXT]...[/FRESHCONTEXT]` envelope, OR
+- Its responses include the structured JSON form with `freshcontext.retrieved_at` and `freshcontext.freshness_confidence` fields
+
+Partial implementations that include only `retrieved_at` without `freshness_confidence` are considered **FreshContext-aware** but not fully compatible.
+
+---
+
+## Reference Implementation
+
+The canonical reference implementation of this specification is:
+
+**freshcontext-mcp** — an MCP server with 11 adapters covering GitHub, Hacker News, Google Scholar, arXiv, Reddit, YC Companies, Product Hunt, npm/PyPI, financial markets, and a composite landscape tool.
+
+- npm: `freshcontext-mcp`
+- GitHub: https://github.com/PrinceGabriel-lgtm/freshcontext-mcp
+- Cloud endpoint: `https://freshcontext-mcp.gimmanuel73.workers.dev/mcp`
+
+---
+
+## Versioning
+
+This document is version 1.0 of the FreshContext Specification.
+
+Future versions will be tagged in this repository. Breaking changes to the envelope format will increment the major version. Additive changes (new optional fields, new confidence levels) will increment the minor version.
+
+---
+
+## License
+
+This specification is published under the MIT License.
+Implementations may be proprietary or open source.
+Attribution to the FreshContext Specification is appreciated but not required.
+
+---
+
+*"The work isn't gone. It's just waiting to be continued."*
+*— Prince Gabriel, Grootfontein, Namibia*
