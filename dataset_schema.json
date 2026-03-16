@@ -1,0 +1,41 @@
+{
+  "actorSpecification": 1,
+  "fields": [
+    {
+      "fieldId": "adapter",
+      "fieldType": "String",
+      "title": "Adapter",
+      "description": "The source adapter used to retrieve the data (e.g. github, hackernews, reddit, yc, scholar)."
+    },
+    {
+      "fieldId": "source_url",
+      "fieldType": "String",
+      "title": "Source URL",
+      "description": "The URL of the original source the data was retrieved from."
+    },
+    {
+      "fieldId": "content",
+      "fieldType": "String",
+      "title": "Content",
+      "description": "The retrieved content from the source, truncated to max_length characters."
+    },
+    {
+      "fieldId": "retrieved_at",
+      "fieldType": "String",
+      "title": "Retrieved at",
+      "description": "ISO 8601 timestamp of when FreshContext fetched this data. Always reflects the actual retrieval time."
+    },
+    {
+      "fieldId": "content_date",
+      "fieldType": "String",
+      "title": "Content date",
+      "description": "Best estimate of when the original content was published. Null if unknown."
+    },
+    {
+      "fieldId": "freshness_confidence",
+      "fieldType": "String",
+      "title": "Freshness confidence",
+      "description": "Confidence level of the content_date estimate. One of: high (from structured API/metadata), medium (inferred from page signals), low (estimated or unknown)."
+    }
+  ]
+}
