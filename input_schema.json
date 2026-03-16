@@ -1,0 +1,49 @@
+{
+  "title": "FreshContext MCP Input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "tool": {
+      "title": "Tool",
+      "type": "string",
+      "description": "The FreshContext tool to run.",
+      "enum": [
+        "extract_github",
+        "extract_hackernews",
+        "extract_scholar",
+        "extract_arxiv",
+        "extract_reddit",
+        "extract_yc",
+        "extract_producthunt",
+        "search_repos",
+        "package_trends",
+        "extract_finance",
+        "extract_landscape"
+      ],
+      "default": "extract_landscape",
+      "editor": "select"
+    },
+    "url": {
+      "title": "URL",
+      "type": "string",
+      "description": "URL to extract from. Required for: extract_github, extract_hackernews, extract_scholar, extract_reddit. E.g. https://github.com/owner/repo",
+      "editor": "textfield"
+    },
+    "query": {
+      "title": "Query",
+      "type": "string",
+      "description": "Search query. Required for: extract_landscape, search_repos, extract_yc, extract_producthunt, package_trends, extract_finance.",
+      "editor": "textfield"
+    },
+    "max_length": {
+      "title": "Max content length",
+      "type": "integer",
+      "description": "Maximum characters returned per result. Default: 6000.",
+      "default": 6000,
+      "minimum": 500,
+      "maximum": 20000,
+      "editor": "number"
+    }
+  },
+  "required": ["tool"]
+}
