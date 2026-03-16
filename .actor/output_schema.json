@@ -1,0 +1,13 @@
+{
+  "actorOutputSchemaVersion": 1,
+  "title": "FreshContext MCP Output",
+  "description": "Timestamped web intelligence results wrapped in FreshContext envelopes.",
+  "properties": {
+    "results": {
+      "type": "string",
+      "title": "Results",
+      "description": "FreshContext envelopes with content, source URL, retrieval timestamp, and freshness confidence.",
+      "template": "{{links.apiDefaultDatasetUrl}}/items"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "actorSpecification": 1,
+  "name": "freshcontext-mcp",
+  "title": "FreshContext MCP",
+  "version": "0.3.1",
+  "input": "../input_schema.json",
+  "output": "./output_schema.json"
+}
