@@ -14,6 +14,7 @@ import { financeAdapter } from "./adapters/finance.js";
 import { arxivAdapter } from "./adapters/arxiv.js";
 import { jobsAdapter } from "./adapters/jobs.js";
 import { changelogAdapter } from "./adapters/changelog.js";
+import { govContractsAdapter } from "./adapters/govcontracts.js";
 import { stampFreshness, formatForLLM } from "./tools/freshnessStamp.js";
 import { SecurityError, formatSecurityError } from "./security.js";
 
@@ -253,6 +254,31 @@ server.registerTool(
     try {
       const result = await changelogAdapter({ url, maxLength: max_length });
       const ctx = stampFreshness(result, { url, maxLength: max_length }, "changelog");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
+  }
+);
+
+// ─── Tool: extract_govcontracts ────────────────────────────────────────────
+server.registerTool(
+  "extract_govcontracts",
+  {
+    description:
+      "Fetch US federal government contract awards from USASpending.gov. No API key required. Search by company name (e.g. 'Palantir'), keyword (e.g. 'AI infrastructure'), or NAICS code (e.g. '541511'). Returns award amounts, dates, awarding agency, NAICS code, and contract descriptions — all timestamped. Use this to find buying intent signals (a company that just won a $5M DoD contract is actively hiring and spending), competitive intelligence, or GTM targeting.",
+    inputSchema: z.object({
+      url: z.string().describe(
+        "Company name (e.g. 'Cloudflare'), keyword (e.g. 'machine learning'), NAICS code (e.g. '541511'), or direct USASpending API URL."
+      ),
+      max_length: z.number().optional().default(6000).describe("Max content length"),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ url, max_length }) => {
+    try {
+      const result = await govContractsAdapter({ url, maxLength: max_length });
+      const ctx = stampFreshness(result, { url, maxLength: max_length }, "govcontracts");
       return { content: [{ type: "text", text: formatForLLM(ctx) }] };
     } catch (err) {
       return { content: [{ type: "text", text: formatSecurityError(err) }] };
