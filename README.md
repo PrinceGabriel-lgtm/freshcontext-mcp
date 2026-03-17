@@ -9,6 +9,10 @@ That's the problem freshcontext fixes.
 [![npm version](https://img.shields.io/npm/v/freshcontext-mcp)](https://www.npmjs.com/package/freshcontext-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+<a href="https://glama.ai/mcp/servers/@PrinceGabriel-lgtm/freshcontext-mcp">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@PrinceGabriel-lgtm/freshcontext-mcp/badge" alt="freshcontext-mcp MCP server" />
+</a>
+
 ---
 
 ## What it does
