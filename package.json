@@ -1,7 +1,7 @@
 {
   "name": "freshcontext-mcp",
   "mcpName": "io.github.PrinceGabriel-lgtm/freshcontext",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "description": "Real-time web extraction MCP server with freshness timestamps for AI agents",
   "keywords": [
     "mcp",
@@ -20,7 +20,7 @@
   "homepage": "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp.git"
+    "url": "git+https://github.com/PrinceGabriel-lgtm/freshcontext-mcp.git"
   },
   "license": "MIT",
   "type": "module",

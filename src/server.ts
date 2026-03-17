@@ -13,6 +13,7 @@ import { productHuntAdapter } from "./adapters/productHunt.js";
 import { financeAdapter } from "./adapters/finance.js";
 import { arxivAdapter } from "./adapters/arxiv.js";
 import { jobsAdapter } from "./adapters/jobs.js";
+import { changelogAdapter } from "./adapters/changelog.js";
 import { stampFreshness, formatForLLM } from "./tools/freshnessStamp.js";
 import { SecurityError, formatSecurityError } from "./security.js";
 
@@ -227,6 +228,31 @@ server.registerTool(
         keywords: keywords ?? [],
       });
       const ctx = stampFreshness(result, { url: query, maxLength: max_length }, "jobs");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
+  }
+);
+
+// ─── Tool: extract_changelog ────────────────────────────────────────────────
+server.registerTool(
+  "extract_changelog",
+  {
+    description:
+      "Extract update history from any product, repo, or package. Accepts a GitHub URL (uses Releases API), an npm package name, or any website URL (auto-discovers /changelog, /releases, /CHANGELOG.md). Returns version numbers, release dates, and entry content — all timestamped. Use this to check if a tool is actively maintained, when a feature shipped, or how fast a team moves.",
+    inputSchema: z.object({
+      url: z.string().describe(
+        "GitHub repo URL (https://github.com/owner/repo), npm package name (e.g. 'freshcontext-mcp'), or any website URL (https://example.com). Auto-discovers changelog paths."
+      ),
+      max_length: z.number().optional().default(6000).describe("Max content length"),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ url, max_length }) => {
+    try {
+      const result = await changelogAdapter({ url, maxLength: max_length });
+      const ctx = stampFreshness(result, { url, maxLength: max_length }, "changelog");
       return { content: [{ type: "text", text: formatForLLM(ctx) }] };
     } catch (err) {
       return { content: [{ type: "text", text: formatSecurityError(err) }] };
