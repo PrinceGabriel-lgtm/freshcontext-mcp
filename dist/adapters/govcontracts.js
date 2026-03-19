@@ -65,22 +65,37 @@ async function searchByRecipient(query, maxLength) {
         order: "desc",
         subawards: false,
     };
-    const res = await fetch("https://api.usaspending.gov/api/v2/search/spending_by_award/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "User-Agent": "freshcontext-mcp" },
-        body: JSON.stringify(body),
-    });
-    if (!res.ok)
-        throw new Error(`USASpending API error: ${res.status}`);
-    const data = await res.json();
-    if (!data.results?.length) {
-        return {
-            raw: `No federal contracts found for "${query}" in the last 2 years.\n\nThis could mean:\n- The company name differs from the registered recipient name\n- The company operates under a subsidiary name\n- No contracts awarded in this period\n\nTry searching by parent company name or NAICS code.`,
-            content_date: null,
-            freshness_confidence: "high",
-        };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+        const res = await fetch("https://api.usaspending.gov/api/v2/search/spending_by_award/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "Mozilla/5.0 (compatible; freshcontext-mcp/1.0)",
+                "Origin": "https://www.usaspending.gov",
+                "Referer": "https://www.usaspending.gov/",
+            },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (!res.ok)
+            throw new Error(`USASpending API error: ${res.status} ${res.statusText}`);
+        const data = await res.json();
+        if (!data.results?.length) {
+            return {
+                raw: `No federal contracts found for "${query}" in the last 2 years.\n\nThis could mean:\n- The company name differs from the registered recipient name\n- The company operates under a subsidiary name\n- No contracts awarded in this period\n\nTry searching by parent company name or NAICS code.`,
+                content_date: null,
+                freshness_confidence: "high",
+            };
+        }
+        return formatResults(data.results, `Federal contracts — ${query}`, maxLength);
     }
-    return formatResults(data.results, `Federal contracts — ${query}`, maxLength);
+    finally {
+        clearTimeout(timeout);
+    }
 }
 // ─── Search by keyword ────────────────────────────────────────────────────────
 async function searchByKeyword(keyword, maxLength) {
@@ -107,22 +122,37 @@ async function searchByKeyword(keyword, maxLength) {
         order: "desc",
         subawards: false,
     };
-    const res = await fetch("https://api.usaspending.gov/api/v2/search/spending_by_award/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "User-Agent": "freshcontext-mcp" },
-        body: JSON.stringify(body),
-    });
-    if (!res.ok)
-        throw new Error(`USASpending keyword search error: ${res.status}`);
-    const data = await res.json();
-    if (!data.results?.length) {
-        return {
-            raw: `No federal contracts found matching keyword "${keyword}" in the last year.`,
-            content_date: null,
-            freshness_confidence: "high",
-        };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+        const res = await fetch("https://api.usaspending.gov/api/v2/search/spending_by_award/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "Mozilla/5.0 (compatible; freshcontext-mcp/1.0)",
+                "Origin": "https://www.usaspending.gov",
+                "Referer": "https://www.usaspending.gov/",
+            },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (!res.ok)
+            throw new Error(`USASpending keyword search error: ${res.status} ${res.statusText}`);
+        const data = await res.json();
+        if (!data.results?.length) {
+            return {
+                raw: `No federal contracts found matching keyword "${keyword}" in the last year.`,
+                content_date: null,
+                freshness_confidence: "high",
+            };
+        }
+        return formatResults(data.results, `Federal contracts matching "${keyword}"`, maxLength);
     }
-    return formatResults(data.results, `Federal contracts matching "${keyword}"`, maxLength);
+    finally {
+        clearTimeout(timeout);
+    }
 }
 // ─── Format results ───────────────────────────────────────────────────────────
 function formatResults(results, title, maxLength) {
