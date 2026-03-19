@@ -6,11 +6,13 @@ import { AdapterResult, ExtractOptions } from "../types.js";
  * No other MCP server has this. USASpending.gov is the official US Treasury
  * database of all federal contract awards. Updated daily.
  *
+ * FIELD NAMING: USASpending API uses space-separated field names e.g. "Award ID",
+ * "Recipient Name", "Award Amount" — NOT underscores.
+ *
  * Accepts:
  *   - Company name: "Palantir" → contracts awarded to that company
  *   - Keyword: "AI infrastructure" → contracts with that keyword in description
  *   - NAICS code: "541511" → all software publisher contracts
- *   - Direct URL: https://api.usaspending.gov/... → direct API call
  */
 
 function sanitize(s: string): string {
@@ -29,22 +31,39 @@ function formatUSD(amount: number | null): string {
 const HEADERS = {
   "Content-Type": "application/json",
   "Accept": "application/json",
-  "User-Agent": "Mozilla/5.0 (compatible; freshcontext-mcp/1.0; +https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)",
+  "User-Agent": "Mozilla/5.0 (compatible; freshcontext-mcp/1.0)",
 };
 
-async function fetchJSON(url: string, body?: object): Promise<unknown> {
+// USASpending API field names — space-separated, not underscores
+const CONTRACT_FIELDS = [
+  "Award ID",
+  "Recipient Name",
+  "Award Amount",
+  "Award Date",
+  "Start Date",
+  "End Date",
+  "Awarding Agency",
+  "Awarding Sub Agency",
+  "Description",
+  "Place of Performance State Code",
+  "Place of Performance City Name",
+  "naics_code",
+  "naics_description",
+];
+
+async function postJSON(url: string, body: object): Promise<unknown> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
   try {
     const res = await fetch(url, {
-      method: body ? "POST" : "GET",
+      method: "POST",
       headers: HEADERS,
-      body: body ? JSON.stringify(body) : undefined,
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
+      throw new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`);
     }
     return await res.json();
   } finally {
@@ -52,65 +71,75 @@ async function fetchJSON(url: string, body?: object): Promise<unknown> {
   }
 }
 
-// ─── Search by recipient name using autocomplete then awards ─────────────────
-async function searchByRecipient(name: string, maxLength: number): Promise<AdapterResult> {
-  // Step 1: Use autocomplete to get the exact recipient name USASpending knows
-  let recipientName = name;
+async function getJSON(url: string): Promise<unknown> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
   try {
-    const autoRes = await fetchJSON(
-      "https://api.usaspending.gov/api/v2/autocomplete/recipient/",
-      { search_text: name, limit: 1 }
-    ) as { results?: Array<{ recipient_name: string }> };
-
-    if (autoRes.results?.length) {
-      recipientName = autoRes.results[0].recipient_name;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: HEADERS,
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`);
     }
-  } catch {
-    // Use original name if autocomplete fails
+    return await res.json();
+  } finally {
+    clearTimeout(timeout);
   }
+}
 
-  // Step 2: Search awards with the resolved recipient name
-  const body = {
+// ─── Build award search body ──────────────────────────────────────────────────
+function buildSearchBody(filters: object): object {
+  return {
     filters: {
-      recipient_search_text: [recipientName],
+      ...filters,
       time_period: [{
         start_date: new Date(Date.now() - 365 * 2 * 86400000).toISOString().slice(0, 10),
         end_date: new Date().toISOString().slice(0, 10),
       }],
       award_type_codes: ["A", "B", "C", "D"],
     },
-    fields: [
-      "Award_ID", "Recipient_Name", "Award_Amount",
-      "Award_Date", "Start_Date", "End_Date",
-      "Awarding_Agency_Name", "Awarding_Sub_Agency_Name",
-      "Description", "recipient_location_state_name",
-      "recipient_location_city_name", "naics_code", "naics_description",
-    ],
+    fields: CONTRACT_FIELDS,
     page: 1,
     limit: 10,
-    sort: "Award_ID",
+    sort: "Award Amount",  // space-separated — matches field name exactly
     order: "desc",
     subawards: false,
   };
+}
 
-  const data = await fetchJSON(
+// ─── Resolve company name via autocomplete ────────────────────────────────────
+async function resolveRecipientName(name: string): Promise<string> {
+  try {
+    const data = await postJSON(
+      "https://api.usaspending.gov/api/v2/autocomplete/recipient/",
+      { search_text: name, limit: 1 }
+    ) as { results?: Array<{ recipient_name: string }> };
+    if (data.results?.length) return data.results[0].recipient_name;
+  } catch { /* fall through */ }
+  return name;
+}
+
+// ─── Search by recipient name ─────────────────────────────────────────────────
+async function searchByRecipient(name: string, maxLength: number): Promise<AdapterResult> {
+  const recipientName = await resolveRecipientName(name);
+
+  const data = await postJSON(
     "https://api.usaspending.gov/api/v2/search/spending_by_award/",
-    body
+    buildSearchBody({ recipient_search_text: [recipientName] })
   ) as { results?: unknown[] };
 
   if (!data.results?.length) {
     return {
-      raw: `No federal contracts found for "${name}" (searched as "${recipientName}") in the last 2 years.\n\nTips:\n- Try the full legal company name (e.g. "Palantir Technologies Inc")\n- Try a keyword search instead (e.g. "AI data analytics")\n- Try a NAICS code (e.g. 541511 for software)`,
+      raw: `No federal contracts found for "${name}" (resolved to "${recipientName}") in the last 2 years.\n\nTips:\n- Try a keyword instead: "AI data analytics"\n- Try a NAICS code: "541511" (software)\n- Try the full legal name: "Palantir Technologies Inc"`,
       content_date: null,
       freshness_confidence: "high",
     };
   }
 
-  return formatResults(
-    data.results as Award[],
-    `Federal contracts — ${recipientName}`,
-    maxLength
-  );
+  return formatResults(data.results as Award[], `Federal contracts — ${recipientName}`, maxLength);
 }
 
 // ─── Search by keyword ────────────────────────────────────────────────────────
@@ -124,21 +153,15 @@ async function searchByKeyword(keyword: string, maxLength: number): Promise<Adap
       }],
       award_type_codes: ["A", "B", "C", "D"],
     },
-    fields: [
-      "Award_ID", "Recipient_Name", "Award_Amount",
-      "Award_Date", "Start_Date", "End_Date",
-      "Awarding_Agency_Name", "Awarding_Sub_Agency_Name",
-      "Description", "recipient_location_state_name",
-      "naics_code", "naics_description",
-    ],
+    fields: CONTRACT_FIELDS,
     page: 1,
     limit: 10,
-    sort: "Award_ID",
+    sort: "Award Amount",
     order: "desc",
     subawards: false,
   };
 
-  const data = await fetchJSON(
+  const data = await postJSON(
     "https://api.usaspending.gov/api/v2/search/spending_by_award/",
     body
   ) as { results?: unknown[] };
@@ -151,28 +174,24 @@ async function searchByKeyword(keyword: string, maxLength: number): Promise<Adap
     };
   }
 
-  return formatResults(
-    data.results as Award[],
-    `Federal contracts matching "${keyword}"`,
-    maxLength
-  );
+  return formatResults(data.results as Award[], `Federal contracts matching "${keyword}"`, maxLength);
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Award {
-  Award_ID?: string;
-  Recipient_Name?: string;
-  Award_Amount?: number;
-  Description?: string;
-  Award_Date?: string;
-  Start_Date?: string;
-  End_Date?: string;
-  Awarding_Agency_Name?: string;
-  Awarding_Sub_Agency_Name?: string;
-  recipient_location_state_name?: string;
-  recipient_location_city_name?: string;
-  naics_code?: string;
-  naics_description?: string;
+  "Award ID"?: string;
+  "Recipient Name"?: string;
+  "Award Amount"?: number;
+  "Description"?: string;
+  "Award Date"?: string;
+  "Start Date"?: string;
+  "End Date"?: string;
+  "Awarding Agency"?: string;
+  "Awarding Sub Agency"?: string;
+  "Place of Performance State Code"?: string;
+  "Place of Performance City Name"?: string;
+  "naics_code"?: string;
+  "naics_description"?: string;
 }
 
 // ─── Format results ───────────────────────────────────────────────────────────
@@ -180,28 +199,36 @@ function formatResults(results: Award[], title: string, maxLength: number): Adap
   const lines: string[] = [title, ""];
 
   results.forEach((award, i) => {
-    const desc = sanitize(award.Description ?? "No description").slice(0, 300);
-    const location = [award.recipient_location_city_name, award.recipient_location_state_name]
-      .filter(Boolean).join(", ") || "N/A";
+    const desc = sanitize(award["Description"] ?? "No description").slice(0, 300);
+    const location = [
+      award["Place of Performance City Name"],
+      award["Place of Performance State Code"],
+    ].filter(Boolean).join(", ") || "N/A";
+    const subAgency = award["Awarding Sub Agency"];
+    const agency = award["Awarding Agency"];
 
-    lines.push(`[${i + 1}] ${sanitize(award.Recipient_Name ?? "Unknown")}`);
-    lines.push(`    Amount: ${formatUSD(award.Award_Amount ?? null)}`);
-    lines.push(`    Awarded: ${award.Award_Date?.slice(0, 10) ?? "unknown"}`);
-    lines.push(`    Period: ${award.Start_Date?.slice(0, 10) ?? "?"} → ${award.End_Date?.slice(0, 10) ?? "?"}`);
-    lines.push(`    Agency: ${sanitize(award.Awarding_Agency_Name ?? "N/A")}`);
-    if (award.Awarding_Sub_Agency_Name !== award.Awarding_Agency_Name && award.Awarding_Sub_Agency_Name) {
-      lines.push(`    Sub-agency: ${sanitize(award.Awarding_Sub_Agency_Name)}`);
+    lines.push(`[${i + 1}] ${sanitize(award["Recipient Name"] ?? "Unknown")}`);
+    lines.push(`    Amount:  ${formatUSD(award["Award Amount"] ?? null)}`);
+    lines.push(`    Awarded: ${award["Award Date"]?.slice(0, 10) ?? "unknown"}`);
+    lines.push(`    Period:  ${award["Start Date"]?.slice(0, 10) ?? "?"} → ${award["End Date"]?.slice(0, 10) ?? "?"}`);
+    lines.push(`    Agency:  ${sanitize(agency ?? "N/A")}`);
+    if (subAgency && subAgency !== agency) {
+      lines.push(`    Sub:     ${sanitize(subAgency)}`);
     }
-    if (award.naics_code) {
-      lines.push(`    NAICS: ${award.naics_code} — ${sanitize(award.naics_description ?? "")}`);
+    if (award["naics_code"]) {
+      lines.push(`    NAICS:   ${award["naics_code"]} — ${sanitize(award["naics_description"] ?? "")}`);
     }
     lines.push(`    Location: ${location}`);
-    lines.push(`    Description: ${desc}`);
+    lines.push(`    Desc:    ${desc}`);
     lines.push("");
   });
 
   const raw = lines.join("\n").slice(0, maxLength);
-  const dates = results.map(r => r.Award_Date).filter(Boolean).sort().reverse();
+  const dates = results
+    .map(r => r["Award Date"])
+    .filter((d): d is string => Boolean(d))
+    .sort()
+    .reverse();
 
   return {
     raw,
@@ -217,9 +244,9 @@ export async function govContractsAdapter(options: ExtractOptions): Promise<Adap
 
   if (!input) throw new Error("Query required: company name, keyword, or NAICS code");
 
-  // Direct API URL
-  if (input.startsWith("https://api.usaspending.gov")) {
-    const data = await fetchJSON(input);
+  // Direct GET endpoint (non-search URLs)
+  if (input.startsWith("https://api.usaspending.gov") && !input.includes("spending_by_award")) {
+    const data = await getJSON(input);
     return {
       raw: JSON.stringify(data, null, 2).slice(0, maxLength),
       content_date: new Date().toISOString(),
@@ -227,21 +254,19 @@ export async function govContractsAdapter(options: ExtractOptions): Promise<Adap
     };
   }
 
-  // NAICS code (6 digits) — treat as keyword
+  // NAICS code (6 digits)
   if (/^\d{6}$/.test(input)) {
     return searchByKeyword(input, maxLength);
   }
 
-  // Multi-word input or known company name → try recipient first, fall back to keyword
+  // Company name or keyword — try recipient first, fall back to keyword
   try {
     const result = await searchByRecipient(input, maxLength);
     if (!result.raw.includes("No federal contracts found")) return result;
-    // Fall back to keyword search
     const kwResult = await searchByKeyword(input, maxLength);
     if (!kwResult.raw.includes("No federal contracts found")) return kwResult;
-    return result; // Return the "not found" message from recipient search
-  } catch (err) {
-    // If recipient search fails entirely, try keyword
+    return result;
+  } catch {
     return searchByKeyword(input, maxLength);
   }
 }
