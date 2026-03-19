@@ -60,9 +60,26 @@ export function stampFreshness(result, options, adapter) {
         adapter,
     };
 }
+// ─── Structured JSON form ─────────────────────────────────────────────────────
+// Returns the spec-compliant JSON object defined in FRESHCONTEXT_SPEC.md.
+// Programmatic consumers can parse this without touching the text envelope.
+export function toStructuredJSON(ctx) {
+    return {
+        freshcontext: {
+            source_url: ctx.source_url,
+            content_date: ctx.content_date,
+            retrieved_at: ctx.retrieved_at,
+            freshness_confidence: ctx.freshness_confidence,
+            freshness_score: ctx.freshness_score,
+            adapter: ctx.adapter,
+        },
+        content: ctx.content,
+    };
+}
 // ─── Text envelope formatter ──────────────────────────────────────────────────
-// Produces the [FRESHCONTEXT]...[/FRESHCONTEXT] envelope defined in the spec.
-// The freshness_score line is only included when a score could be calculated.
+// Produces the [FRESHCONTEXT]...[/FRESHCONTEXT] envelope defined in the spec,
+// followed by a [FRESHCONTEXT_JSON]...[/FRESHCONTEXT_JSON] block so both the
+// human-readable envelope and the machine-parseable JSON travel together.
 export function formatForLLM(ctx) {
     const dateInfo = ctx.content_date
         ? `Published: ${ctx.content_date}`
@@ -70,7 +87,7 @@ export function formatForLLM(ctx) {
     const scoreLine = ctx.freshness_score !== null
         ? `Score: ${ctx.freshness_score}/100 (${scoreLabel(ctx.freshness_score)})`
         : `Score: unknown`;
-    return [
+    const textEnvelope = [
         `[FRESHCONTEXT]`,
         `Source: ${ctx.source_url}`,
         `${dateInfo}`,
@@ -81,4 +98,12 @@ export function formatForLLM(ctx) {
         ctx.content,
         `[/FRESHCONTEXT]`,
     ].join("\n");
+    // Append the structured JSON block so programmatic consumers
+    // can extract metadata without parsing the text envelope.
+    const jsonBlock = [
+        `[FRESHCONTEXT_JSON]`,
+        JSON.stringify(toStructuredJSON(ctx), null, 2),
+        `[/FRESHCONTEXT_JSON]`,
+    ].join("\n");
+    return `${textEnvelope}\n\n${jsonBlock}`;
 }
