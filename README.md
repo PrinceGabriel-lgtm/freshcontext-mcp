@@ -59,11 +59,15 @@ Claude now knows the difference between something from this morning and somethin
 |---|---|
 | `extract_landscape` | One call. YC + GitHub + HN + Reddit + Product Hunt + npm in parallel. Full timestamped picture. |
 
-### Unique — not available in any other MCP server
+### Update intelligence — unique to FreshContext
 | Tool | What it gets you |
 |---|---|
-| `extract_changelog` | Update history from any GitHub repo, npm package, or website. Version numbers, release dates, entry content — all timestamped. Use this to check if a tool is actively maintained or when a feature shipped. |
-| `extract_govcontracts` | US federal contract awards from USASpending.gov. Search by company name, keyword, or NAICS code. Returns award amounts, agencies, dates, and descriptions. A company that just won a $10M DoD contract is hiring and spending — that's a buying intent signal no other MCP server surfaces. |
+| `extract_changelog` | Update history from any GitHub repo, npm package, or website. Accepts a GitHub URL (uses the Releases API), an npm package name, or any website URL — auto-discovers `/changelog`, `/releases`, and `CHANGELOG.md`. Returns version numbers, release dates, and entry content, all timestamped. Use this to check if a dependency is still actively maintained, or to find out exactly when a feature shipped before referencing it. |
+
+### Government intelligence — unique to FreshContext
+| Tool | What it gets you |
+|---|---|
+| `extract_govcontracts` | US federal contract awards pulled live from USASpending.gov — the official US Treasury database, updated daily. Search by company name, keyword, or NAICS code. Returns award amounts, awarding agency, period of performance, and contract description, all timestamped. A company that just won a $10M DoD contract is actively hiring and spending — that is a buying intent signal no other MCP server surfaces. |
 
 ---
 
