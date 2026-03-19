@@ -35,7 +35,7 @@ Cost: zero.
 
 ---
 
-## [ ] Upgrade 4 — D1 deduplication in the cron job
+## [x] Upgrade 4 — D1 deduplication in the cron job  ← DONE (hash-based dedup already in runScheduledScrape)
 Before inserting a new scrape result, check if the same source_url was already
 stored in the last 24 hours. If yes, skip the insert.
 Prevents the scrape_results table from filling with duplicate data across
