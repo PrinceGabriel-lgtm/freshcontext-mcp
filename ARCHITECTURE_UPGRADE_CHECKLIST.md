@@ -46,7 +46,7 @@ Cost: zero.
 
 ---
 
-## [ ] Upgrade 5 — Structured JSON response form
+## [x] Upgrade 5 — Structured JSON response form  ← DONE 2026-03-19
 Add the optional JSON form defined in FRESHCONTEXT_SPEC.md alongside the text
 envelope in every adapter response. The JSON form has: source_url, content_date,
 retrieved_at, freshness_confidence, adapter, freshness_score.
