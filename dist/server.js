@@ -8,6 +8,8 @@ import { hackerNewsAdapter } from "./adapters/hackernews.js";
 import { ycAdapter } from "./adapters/yc.js";
 import { repoSearchAdapter } from "./adapters/repoSearch.js";
 import { packageTrendsAdapter } from "./adapters/packageTrends.js";
+import { redditAdapter } from "./adapters/reddit.js";
+import { financeAdapter } from "./adapters/finance.js";
 import { jobsAdapter } from "./adapters/jobs.js";
 import { changelogAdapter } from "./adapters/changelog.js";
 import { govContractsAdapter } from "./adapters/govcontracts.js";
@@ -219,6 +221,101 @@ server.registerTool("extract_govcontracts", {
     catch (err) {
         return { content: [{ type: "text", text: formatSecurityError(err) }] };
     }
+});
+// ─── Tool: extract_gov_landscape ───────────────────────────────────────────
+// "Gov contracts for developers" — the full picture on any company or keyword
+// in the US federal market. Contracts alone tell you who won money. This tool
+// also tells you whether they're actually shipping, and whether the developer
+// community knows they exist. Unique: no other MCP server has this.
+server.registerTool("extract_gov_landscape", {
+    description: "Composite government intelligence tool. Given a company name, keyword, or NAICS code, simultaneously queries: (1) USASpending.gov for federal contract awards, (2) GitHub for the company's repo activity, (3) Hacker News for developer community awareness, and (4) their product changelog for release velocity. Answers: Who is winning government contracts in this space? Are they actually building? Does the dev community know about them? Returns a unified 4-source timestamped report. Unique — not available in any other MCP server.",
+    inputSchema: z.object({
+        query: z.string().describe("Company name (e.g. 'Palantir'), keyword (e.g. 'artificial intelligence'), or NAICS code (e.g. '541511'). For GitHub and changelog sections, also optionally provide a GitHub URL."),
+        github_url: z.string().optional().describe("Optional GitHub repo URL for the company (e.g. 'https://github.com/palantir/palantir-java-format'). If omitted, GitHub and changelog sections use the query as a search term."),
+        max_length: z.number().optional().default(12000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+}, async ({ query, github_url, max_length }) => {
+    const perSection = Math.floor((max_length ?? 12000) / 4);
+    // All four sources fire in parallel — if one fails the others still return
+    const [contractsResult, hnResult, repoResult, changelogResult] = await Promise.allSettled([
+        // 1. The anchor: who is actually winning federal money in this space
+        govContractsAdapter({ url: query, maxLength: perSection }),
+        // 2. Dev community signal: does anyone in tech know about these companies
+        hackerNewsAdapter({
+            url: `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=10`,
+            maxLength: perSection,
+        }),
+        // 3. GitHub activity: are they actually building, or contract farmers
+        repoSearchAdapter({ url: github_url ?? query, maxLength: perSection }),
+        // 4. Release velocity: how fast are they shipping product
+        changelogAdapter({ url: github_url ?? query, maxLength: perSection }),
+    ]);
+    const section = (label, result) => result.status === "fulfilled"
+        ? `## ${label}\n${result.value.raw}`
+        : `## ${label}\n[Unavailable: ${result.reason}]`;
+    const combined = [
+        `# Government Intelligence Landscape: "${query}"`,
+        `Generated: ${new Date().toISOString()}`,
+        `Sources: USASpending.gov · Hacker News · GitHub · Changelog`,
+        "",
+        section("🏛️ Federal Contract Awards (USASpending.gov)", contractsResult),
+        section("💬 Developer Community Awareness (Hacker News)", hnResult),
+        section("📦 GitHub Repository Activity", repoResult),
+        section("🔄 Product Release Velocity (Changelog)", changelogResult),
+    ].join("\n\n");
+    return { content: [{ type: "text", text: combined }] };
+});
+// ─── Tool: extract_finance_landscape ─────────────────────────────────────────
+// "Finance for developers" — a stock price is a lagging indicator. This tool
+// combines price data with the signals only developers can read: GitHub activity,
+// community sentiment, repo ecosystem size, and product release velocity.
+// Unique: Bloomberg Terminal doesn't read commit history as a company health signal.
+server.registerTool("extract_finance_landscape", {
+    description: "Composite financial intelligence tool for developers. Given one or more ticker symbols, simultaneously queries: (1) Yahoo Finance for live price/market data, (2) Hacker News for developer community sentiment, (3) Reddit for investor and tech community discussion, (4) GitHub for repo ecosystem activity around the company's tech, and (5) their product changelog for release velocity as a company health signal. Answers: What's the price? What are developers saying? Is the company actually shipping? Returns a unified 5-source timestamped report. Bloomberg Terminal doesn't give you this.",
+    inputSchema: z.object({
+        tickers: z.string().describe("One or more ticker symbols e.g. 'PLTR' or 'PLTR,MSFT,GOOG'. Up to 5 tickers."),
+        company_name: z.string().optional().describe("Company name for HN/Reddit/GitHub searches e.g. 'Palantir'. If omitted, derived from the ticker."),
+        github_query: z.string().optional().describe("GitHub search query or repo URL for the company's tech ecosystem e.g. 'palantir' or 'https://github.com/palantir/foundry'. If omitted, uses company_name."),
+        max_length: z.number().optional().default(12000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+}, async ({ tickers, company_name, github_query, max_length }) => {
+    const perSection = Math.floor((max_length ?? 12000) / 5);
+    // Derive a search term: prefer explicit company_name, fall back to first ticker
+    const searchTerm = company_name ?? tickers.split(",")[0].trim();
+    const repoQuery = github_query ?? searchTerm;
+    // All five sources fire in parallel
+    const [priceResult, hnResult, redditResult, repoResult, changelogResult] = await Promise.allSettled([
+        // 1. The anchor: live price, market cap, P/E, 52w range
+        financeAdapter({ url: tickers, maxLength: perSection }),
+        // 2. Developer sentiment: what engineers think of this company's tech
+        hackerNewsAdapter({
+            url: `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(searchTerm)}&tags=story&hitsPerPage=10`,
+            maxLength: perSection,
+        }),
+        // 3. Broader community: investor and tech community discussion on Reddit
+        redditAdapter({ url: `https://www.reddit.com/search.json?q=${encodeURIComponent(searchTerm)}&sort=new&limit=15`, maxLength: perSection }),
+        // 4. Repo ecosystem: how many GitHub projects orbit this company's technology
+        repoSearchAdapter({ url: repoQuery, maxLength: perSection }),
+        // 5. Release velocity: is the company actually shipping product right now
+        changelogAdapter({ url: repoQuery, maxLength: perSection }),
+    ]);
+    const section = (label, result) => result.status === "fulfilled"
+        ? `## ${label}\n${result.value.raw}`
+        : `## ${label}\n[Unavailable: ${result.reason}]`;
+    const combined = [
+        `# Finance + Developer Intelligence: "${tickers}"${company_name ? ` (${company_name})` : ""}`,
+        `Generated: ${new Date().toISOString()}`,
+        `Sources: Yahoo Finance · Hacker News · Reddit · GitHub · Changelog`,
+        "",
+        section("📈 Market Data (Yahoo Finance)", priceResult),
+        section("💬 Developer Sentiment (Hacker News)", hnResult),
+        section("🗣️ Community Discussion (Reddit)", redditResult),
+        section("📦 Repo Ecosystem (GitHub)", repoResult),
+        section("🔄 Product Release Velocity (Changelog)", changelogResult),
+    ].join("\n\n");
+    return { content: [{ type: "text", text: combined }] };
 });
 // ─── Start ───────────────────────────────────────────────────────────────────
 async function main() {
