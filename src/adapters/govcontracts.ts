@@ -88,7 +88,7 @@ async function searchByRecipient(name: string, maxLength: number): Promise<Adapt
     ],
     page: 1,
     limit: 10,
-    sort: "Award_Amount",
+    sort: "Award ID",
     order: "desc",
     subawards: false,
   };
@@ -133,7 +133,7 @@ async function searchByKeyword(keyword: string, maxLength: number): Promise<Adap
     ],
     page: 1,
     limit: 10,
-    sort: "Award_Amount",
+    sort: "Award ID",
     order: "desc",
     subawards: false,
   };
