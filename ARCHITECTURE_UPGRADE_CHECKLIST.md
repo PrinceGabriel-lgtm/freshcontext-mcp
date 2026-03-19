@@ -15,7 +15,7 @@ Cost: zero.
 
 ---
 
-## [ ] Upgrade 2 — Cloudflare KV response caching
+## [x] Upgrade 2 — Cloudflare KV response caching  ← DONE (already implemented in worker.ts)
 Cache adapter results in KV with adapter-specific TTLs so the same query
 hitting the Worker twice doesn't make two upstream API calls.
 Cache key: sha256(tool + ":" + url)
