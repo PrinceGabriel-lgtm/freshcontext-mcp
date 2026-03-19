@@ -82,7 +82,7 @@ async function searchByRecipient(name, maxLength) {
         ],
         page: 1,
         limit: 10,
-        sort: "Award ID",
+        sort: "Award_ID",
         order: "desc",
         subawards: false,
     };
@@ -116,7 +116,7 @@ async function searchByKeyword(keyword, maxLength) {
         ],
         page: 1,
         limit: 10,
-        sort: "Award ID",
+        sort: "Award_ID",
         order: "desc",
         subawards: false,
     };
