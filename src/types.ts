@@ -6,6 +6,7 @@ export interface FreshContext {
   content_date: string | null;   // When the content was originally published
   retrieved_at: string;           // When WE fetched it (always now)
   freshness_confidence: "high" | "medium" | "low";
+  freshness_score: number | null; // 0-100 numeric score per FreshContext Spec v1.0
   adapter: string;
 }
 
