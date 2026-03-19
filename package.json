@@ -1,7 +1,7 @@
 {
   "name": "freshcontext-mcp",
   "mcpName": "io.github.PrinceGabriel-lgtm/freshcontext",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Real-time web extraction MCP server with freshness timestamps for AI agents",
   "keywords": [
     "mcp",

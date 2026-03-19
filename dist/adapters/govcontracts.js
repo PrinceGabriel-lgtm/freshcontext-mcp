@@ -1,62 +1,117 @@
 /**
  * Government Contracts adapter — fetches awarded contract data from USASpending.gov
  *
- * Why this is unique:
- *   No other MCP server exposes government contract data.
- *   For GTM teams, VC investors, and competitive researchers, knowing when a
- *   company wins a government contract is a high-signal buying intent indicator.
- *   A company that just won a $2M DoD contract is hiring, spending, and building.
+ * No other MCP server has this. USASpending.gov is the official US Treasury
+ * database of all federal contract awards. Updated daily.
  *
  * Accepts:
- *   - Company name: "Cloudflare" → finds contracts awarded to that company
- *   - NAICS code: "541511" → software publishers contracts
- *   - Agency name: "Department of Defense" → all DoD contracts
- *   - Keyword: "AI infrastructure" → contracts with that keyword
- *   - A URL: https://api.usaspending.gov/... → direct API call
- *
- * Data source: USASpending.gov public API (no API key required)
- * Coverage: All US federal contracts, grants, and awards
- * Freshness: Updated daily by the US Treasury
- *
- * What it returns:
- *   - Award recipient name and location
- *   - Contract amount (obligated)
- *   - Award date (high confidence timestamp)
- *   - Awarding agency and sub-agency
- *   - Contract description / award title
- *   - NAICS code and description
- *   - Period of performance dates
+ *   - Company name: "Palantir" → contracts awarded to that company
+ *   - Keyword: "AI infrastructure" → contracts with that keyword in description
+ *   - NAICS code: "541511" → all software publisher contracts
+ *   - Direct URL: https://api.usaspending.gov/... → direct API call
  */
 function sanitize(s) {
     return s.replace(/[^\x20-\x7E]/g, "").trim();
 }
 function formatUSD(amount) {
-    if (amount === null || isNaN(amount))
+    if (amount === null || amount === undefined || isNaN(amount))
         return "N/A";
-    if (Math.abs(amount) >= 1_000_000)
+    const abs = Math.abs(amount);
+    if (abs >= 1_000_000_000)
+        return `$${(amount / 1_000_000_000).toFixed(2)}B`;
+    if (abs >= 1_000_000)
         return `$${(amount / 1_000_000).toFixed(2)}M`;
-    if (Math.abs(amount) >= 1_000)
+    if (abs >= 1_000)
         return `$${(amount / 1_000).toFixed(1)}K`;
     return `$${amount.toFixed(0)}`;
 }
-// ─── Search by recipient (company name) ──────────────────────────────────────
-async function searchByRecipient(query, maxLength) {
+const HEADERS = {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "User-Agent": "Mozilla/5.0 (compatible; freshcontext-mcp/1.0; +https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)",
+};
+async function fetchJSON(url, body) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+        const res = await fetch(url, {
+            method: body ? "POST" : "GET",
+            headers: HEADERS,
+            body: body ? JSON.stringify(body) : undefined,
+            signal: controller.signal,
+        });
+        if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
+        }
+        return await res.json();
+    }
+    finally {
+        clearTimeout(timeout);
+    }
+}
+// ─── Search by recipient name using autocomplete then awards ─────────────────
+async function searchByRecipient(name, maxLength) {
+    // Step 1: Use autocomplete to get the exact recipient name USASpending knows
+    let recipientName = name;
+    try {
+        const autoRes = await fetchJSON("https://api.usaspending.gov/api/v2/autocomplete/recipient/", { search_text: name, limit: 1 });
+        if (autoRes.results?.length) {
+            recipientName = autoRes.results[0].recipient_name;
+        }
+    }
+    catch {
+        // Use original name if autocomplete fails
+    }
+    // Step 2: Search awards with the resolved recipient name
     const body = {
         filters: {
-            recipient_search_text: [query],
-            time_period: [
-                {
+            recipient_search_text: [recipientName],
+            time_period: [{
                     start_date: new Date(Date.now() - 365 * 2 * 86400000).toISOString().slice(0, 10),
                     end_date: new Date().toISOString().slice(0, 10),
-                },
-            ],
-            award_type_codes: ["A", "B", "C", "D"], // contracts only
+                }],
+            award_type_codes: ["A", "B", "C", "D"],
         },
         fields: [
-            "Award_ID", "Recipient_Name", "Award_Amount", "Description",
+            "Award_ID", "Recipient_Name", "Award_Amount",
             "Award_Date", "Start_Date", "End_Date",
             "Awarding_Agency_Name", "Awarding_Sub_Agency_Name",
-            "recipient_location_state_name", "recipient_location_city_name",
+            "Description", "recipient_location_state_name",
+            "recipient_location_city_name", "naics_code", "naics_description",
+        ],
+        page: 1,
+        limit: 10,
+        sort: "Award_Amount",
+        order: "desc",
+        subawards: false,
+    };
+    const data = await fetchJSON("https://api.usaspending.gov/api/v2/search/spending_by_award/", body);
+    if (!data.results?.length) {
+        return {
+            raw: `No federal contracts found for "${name}" (searched as "${recipientName}") in the last 2 years.\n\nTips:\n- Try the full legal company name (e.g. "Palantir Technologies Inc")\n- Try a keyword search instead (e.g. "AI data analytics")\n- Try a NAICS code (e.g. 541511 for software)`,
+            content_date: null,
+            freshness_confidence: "high",
+        };
+    }
+    return formatResults(data.results, `Federal contracts — ${recipientName}`, maxLength);
+}
+// ─── Search by keyword ────────────────────────────────────────────────────────
+async function searchByKeyword(keyword, maxLength) {
+    const body = {
+        filters: {
+            keywords: [keyword],
+            time_period: [{
+                    start_date: new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10),
+                    end_date: new Date().toISOString().slice(0, 10),
+                }],
+            award_type_codes: ["A", "B", "C", "D"],
+        },
+        fields: [
+            "Award_ID", "Recipient_Name", "Award_Amount",
+            "Award_Date", "Start_Date", "End_Date",
+            "Awarding_Agency_Name", "Awarding_Sub_Agency_Name",
+            "Description", "recipient_location_state_name",
             "naics_code", "naics_description",
         ],
         page: 1,
@@ -65,128 +120,44 @@ async function searchByRecipient(query, maxLength) {
         order: "desc",
         subawards: false,
     };
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-    try {
-        const res = await fetch("https://api.usaspending.gov/api/v2/search/spending_by_award/", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "User-Agent": "Mozilla/5.0 (compatible; freshcontext-mcp/1.0)",
-                "Origin": "https://www.usaspending.gov",
-                "Referer": "https://www.usaspending.gov/",
-            },
-            body: JSON.stringify(body),
-            signal: controller.signal,
-        });
-        clearTimeout(timeout);
-        if (!res.ok)
-            throw new Error(`USASpending API error: ${res.status} ${res.statusText}`);
-        const data = await res.json();
-        if (!data.results?.length) {
-            return {
-                raw: `No federal contracts found for "${query}" in the last 2 years.\n\nThis could mean:\n- The company name differs from the registered recipient name\n- The company operates under a subsidiary name\n- No contracts awarded in this period\n\nTry searching by parent company name or NAICS code.`,
-                content_date: null,
-                freshness_confidence: "high",
-            };
-        }
-        return formatResults(data.results, `Federal contracts — ${query}`, maxLength);
+    const data = await fetchJSON("https://api.usaspending.gov/api/v2/search/spending_by_award/", body);
+    if (!data.results?.length) {
+        return {
+            raw: `No federal contracts found matching "${keyword}" in the last year.`,
+            content_date: null,
+            freshness_confidence: "high",
+        };
     }
-    finally {
-        clearTimeout(timeout);
-    }
-}
-// ─── Search by keyword ────────────────────────────────────────────────────────
-async function searchByKeyword(keyword, maxLength) {
-    const body = {
-        filters: {
-            keywords: [keyword],
-            time_period: [
-                {
-                    start_date: new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10),
-                    end_date: new Date().toISOString().slice(0, 10),
-                },
-            ],
-            award_type_codes: ["A", "B", "C", "D"],
-        },
-        fields: [
-            "Award_ID", "Recipient_Name", "Award_Amount", "Description",
-            "Award_Date", "Start_Date", "End_Date",
-            "Awarding_Agency_Name", "Awarding_Sub_Agency_Name",
-            "recipient_location_state_name", "naics_code", "naics_description",
-        ],
-        page: 1,
-        limit: 10,
-        sort: "Award_Amount",
-        order: "desc",
-        subawards: false,
-    };
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-    try {
-        const res = await fetch("https://api.usaspending.gov/api/v2/search/spending_by_award/", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "User-Agent": "Mozilla/5.0 (compatible; freshcontext-mcp/1.0)",
-                "Origin": "https://www.usaspending.gov",
-                "Referer": "https://www.usaspending.gov/",
-            },
-            body: JSON.stringify(body),
-            signal: controller.signal,
-        });
-        clearTimeout(timeout);
-        if (!res.ok)
-            throw new Error(`USASpending keyword search error: ${res.status} ${res.statusText}`);
-        const data = await res.json();
-        if (!data.results?.length) {
-            return {
-                raw: `No federal contracts found matching keyword "${keyword}" in the last year.`,
-                content_date: null,
-                freshness_confidence: "high",
-            };
-        }
-        return formatResults(data.results, `Federal contracts matching "${keyword}"`, maxLength);
-    }
-    finally {
-        clearTimeout(timeout);
-    }
+    return formatResults(data.results, `Federal contracts matching "${keyword}"`, maxLength);
 }
 // ─── Format results ───────────────────────────────────────────────────────────
 function formatResults(results, title, maxLength) {
     const lines = [title, ""];
     results.forEach((award, i) => {
-        const desc = sanitize(award.Description ?? "No description");
+        const desc = sanitize(award.Description ?? "No description").slice(0, 300);
         const location = [award.recipient_location_city_name, award.recipient_location_state_name]
             .filter(Boolean).join(", ") || "N/A";
         lines.push(`[${i + 1}] ${sanitize(award.Recipient_Name ?? "Unknown")}`);
-        lines.push(`    Amount: ${formatUSD(award.Award_Amount)}`);
+        lines.push(`    Amount: ${formatUSD(award.Award_Amount ?? null)}`);
         lines.push(`    Awarded: ${award.Award_Date?.slice(0, 10) ?? "unknown"}`);
         lines.push(`    Period: ${award.Start_Date?.slice(0, 10) ?? "?"} → ${award.End_Date?.slice(0, 10) ?? "?"}`);
         lines.push(`    Agency: ${sanitize(award.Awarding_Agency_Name ?? "N/A")}`);
-        if (award.Awarding_Sub_Agency_Name && award.Awarding_Sub_Agency_Name !== award.Awarding_Agency_Name) {
+        if (award.Awarding_Sub_Agency_Name !== award.Awarding_Agency_Name && award.Awarding_Sub_Agency_Name) {
             lines.push(`    Sub-agency: ${sanitize(award.Awarding_Sub_Agency_Name)}`);
         }
         if (award.naics_code) {
             lines.push(`    NAICS: ${award.naics_code} — ${sanitize(award.naics_description ?? "")}`);
         }
         lines.push(`    Location: ${location}`);
-        lines.push(`    Description: ${desc.slice(0, 200)}`);
+        lines.push(`    Description: ${desc}`);
         lines.push("");
     });
     const raw = lines.join("\n").slice(0, maxLength);
-    // Newest award date for freshness
-    const dates = results
-        .map((r) => r.Award_Date)
-        .filter(Boolean)
-        .sort()
-        .reverse();
+    const dates = results.map(r => r.Award_Date).filter(Boolean).sort().reverse();
     return {
         raw,
         content_date: dates[0] ?? null,
-        freshness_confidence: "high", // USASpending dates are structured API fields
+        freshness_confidence: "high",
     };
 }
 // ─── Main export ──────────────────────────────────────────────────────────────
@@ -197,30 +168,30 @@ export async function govContractsAdapter(options) {
         throw new Error("Query required: company name, keyword, or NAICS code");
     // Direct API URL
     if (input.startsWith("https://api.usaspending.gov")) {
-        const res = await fetch(input, { headers: { "User-Agent": "freshcontext-mcp" } });
-        if (!res.ok)
-            throw new Error(`USASpending direct fetch error: ${res.status}`);
-        const data = await res.json();
-        const raw = JSON.stringify(data, null, 2).slice(0, maxLength);
-        return { raw, content_date: new Date().toISOString(), freshness_confidence: "high" };
+        const data = await fetchJSON(input);
+        return {
+            raw: JSON.stringify(data, null, 2).slice(0, maxLength),
+            content_date: new Date().toISOString(),
+            freshness_confidence: "high",
+        };
     }
-    // NAICS code (6 digits)
+    // NAICS code (6 digits) — treat as keyword
     if (/^\d{6}$/.test(input)) {
         return searchByKeyword(input, maxLength);
     }
-    // Default: try as recipient name first, fall back to keyword
+    // Multi-word input or known company name → try recipient first, fall back to keyword
     try {
         const result = await searchByRecipient(input, maxLength);
-        // If no results found, try keyword search
-        if (result.raw.includes("No federal contracts found")) {
-            const kwResult = await searchByKeyword(input, maxLength);
-            if (!kwResult.raw.includes("No federal contracts found")) {
-                return kwResult;
-            }
-        }
-        return result;
+        if (!result.raw.includes("No federal contracts found"))
+            return result;
+        // Fall back to keyword search
+        const kwResult = await searchByKeyword(input, maxLength);
+        if (!kwResult.raw.includes("No federal contracts found"))
+            return kwResult;
+        return result; // Return the "not found" message from recipient search
     }
-    catch {
+    catch (err) {
+        // If recipient search fails entirely, try keyword
         return searchByKeyword(input, maxLength);
     }
 }
