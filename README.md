@@ -30,7 +30,7 @@ Claude now knows the difference between something from this morning and somethin
 
 ---
 
-## 11 tools. No API keys.
+## 13 tools. No API keys.
 
 ### Intelligence
 | Tool | What it gets you |
@@ -58,6 +58,12 @@ Claude now knows the difference between something from this morning and somethin
 | Tool | What it gets you |
 |---|---|
 | `extract_landscape` | One call. YC + GitHub + HN + Reddit + Product Hunt + npm in parallel. Full timestamped picture. |
+
+### Unique — not available in any other MCP server
+| Tool | What it gets you |
+|---|---|
+| `extract_changelog` | Update history from any GitHub repo, npm package, or website. Version numbers, release dates, entry content — all timestamped. Use this to check if a tool is actively maintained or when a feature shipped. |
+| `extract_govcontracts` | US federal contract awards from USASpending.gov. Search by company name, keyword, or NAICS code. Returns award amounts, agencies, dates, and descriptions. A company that just won a $10M DoD contract is hiring and spending — that's a buying intent signal no other MCP server surfaces. |
 
 ---
 
@@ -162,6 +168,18 @@ Use extract_github on https://github.com/some-org/some-repo
 ```
 Check `Published` vs `Retrieved`. If the gap is 18 months, Claude will tell you.
 
+**Is this dependency still actively maintained?**
+```
+Use extract_changelog with url "https://github.com/org/repo"
+```
+Returns the last 8 releases with exact dates. If the last release was 18 months ago, you'll know before you pin the version.
+
+**Which companies just won government contracts in AI?**
+```
+Use extract_govcontracts with url "artificial intelligence"
+```
+Returns the largest recent federal contract awards matching that keyword — company name, amount, agency, and award date. Pure buying intent signal.
+
 ---
 
 ## How freshness works
@@ -195,9 +213,14 @@ When confidence is `high`, the date came from a structured field (API, metadata)
 - [x] Cloudflare Workers deployment
 - [x] KV-backed global rate limiting
 - [x] Listed on official MCP Registry
+- [x] `extract_changelog` — update cadence from any repo, package, or website
+- [x] `extract_govcontracts` — US federal contract intelligence via USASpending.gov
+- [x] Listed on Apify Store
+- [x] FreshContext Specification v1.0 published
 - [ ] TTL-based caching layer
-- [ ] `freshness_score` numeric metric
-- [ ] Job search adapter (the tool that started all this)
+- [ ] `freshness_score` numeric metric (0–100)
+- [ ] `extract_devto` — developer article sentiment
+- [ ] `extract_npm_releases` — package release velocity
 
 ---
 
