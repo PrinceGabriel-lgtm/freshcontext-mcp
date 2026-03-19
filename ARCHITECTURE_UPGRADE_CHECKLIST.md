@@ -25,7 +25,7 @@ Cost: zero. KV free tier is 100k reads/day, 1k writes/day.
 
 ---
 
-## [ ] Upgrade 3 — Apify Actor timeout increase
+## [x] Upgrade 3 — Apify Actor timeout increase  ← DONE 2026-03-19
 Change the Actor timeout from 300 seconds to 3600 seconds in the Apify UI.
 Apify console → Actor → Settings → Timeout → 3600
 Playwright-based tools (extract_reddit, extract_yc, extract_producthunt) need
@@ -66,7 +66,7 @@ Manual PowerShell build/publish commands no longer needed.
 
 ---
 
-## [ ] Upgrade 7 — server.json version sync
+## [x] Upgrade 7 — server.json version sync  ← DONE 2026-03-19
 server.json (MCP Registry listing) shows version 0.3.1 while package.json
 is at 0.3.10. Anyone discovering FreshContext via the MCP Registry sees an
 outdated version number. Fix by updating server.json manually now, then
