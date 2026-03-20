@@ -15,6 +15,8 @@ import { arxivAdapter } from "./adapters/arxiv.js";
 import { jobsAdapter } from "./adapters/jobs.js";
 import { changelogAdapter } from "./adapters/changelog.js";
 import { govContractsAdapter } from "./adapters/govcontracts.js";
+import { secFilingsAdapter } from "./adapters/secFilings.js";
+import { gdeltAdapter } from "./adapters/gdelt.js";
 import { stampFreshness, formatForLLM } from "./tools/freshnessStamp.js";
 import { SecurityError, formatSecurityError } from "./security.js";
 
@@ -413,6 +415,125 @@ server.registerTool(
       section("🗣️ Community Discussion (Reddit)", redditResult),
       section("📦 Repo Ecosystem (GitHub)", repoResult),
       section("🔄 Product Release Velocity (Changelog)", changelogResult),
+    ].join("\n\n");
+
+    return { content: [{ type: "text", text: combined }] };
+  }
+);
+
+// ─── Tool: extract_sec_filings ─────────────────────────────────────────────
+// 8-K filings = legally mandated material event disclosures. CEO changes,
+// acquisitions, breaches, major contracts, regulatory actions — all filed
+// within 4 business days. Most reliable early-warning corporate signal in existence.
+// Unique: no other MCP server has this.
+server.registerTool(
+  "extract_sec_filings",
+  {
+    description:
+      "Fetch SEC 8-K filings for any public company from the SEC EDGAR full-text search API. 8-K filings are legally mandated disclosures of material corporate events — CEO changes, acquisitions, data breaches, major contracts, regulatory actions — filed within 4 business days. Free, no auth, real-time. Pass a company name, ticker, or keyword. Unique: not available in any other MCP server.",
+    inputSchema: z.object({
+      url: z.string().describe("Company name, ticker, or keyword e.g. 'Palantir', 'PLTR', 'artificial intelligence'"),
+      max_length: z.number().optional().default(6000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ url, max_length }) => {
+    try {
+      const result = await secFilingsAdapter({ url, maxLength: max_length });
+      const ctx = stampFreshness(result, { url, maxLength: max_length }, "sec_filings");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
+  }
+);
+
+// ─── Tool: extract_gdelt ─────────────────────────────────────────────────────
+// GDELT monitors news from every country in 100+ languages, updated every 15 min.
+// Returns structured global news intelligence — not just headlines but event
+// codes, actor tags, tone scores, goldstein scale (impact), location, timestamp.
+// Unique: no other MCP server has this.
+server.registerTool(
+  "extract_gdelt",
+  {
+    description:
+      "Fetch global news intelligence from the GDELT Project. GDELT monitors broadcast, print, and web news from every country in 100+ languages, updated every 15 minutes. Returns structured articles with source country, language, and publication date. Free, no auth. Pass any company name, topic, or keyword. Unique: not available in any other MCP server.",
+    inputSchema: z.object({
+      url: z.string().describe("Query: company name, topic, or keyword e.g. 'Palantir', 'artificial intelligence', 'MCP server'"),
+      max_length: z.number().optional().default(6000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ url, max_length }) => {
+    try {
+      const result = await gdeltAdapter({ url, maxLength: max_length });
+      const ctx = stampFreshness(result, { url, maxLength: max_length }, "gdelt");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
+  }
+);
+
+// ─── Tool: extract_company_landscape ─────────────────────────────────────────
+// The most complete single-call company intelligence available in any MCP server.
+// 5 moat sources: SEC 8-K legal disclosures + federal contract footprint +
+// global news intelligence + product release velocity + market pricing.
+// Unique: this combination exists nowhere else.
+server.registerTool(
+  "extract_company_landscape",
+  {
+    description:
+      "Composite company intelligence tool. The most complete single-call company analysis available. Simultaneously queries 5 unique sources: (1) SEC EDGAR for 8-K material event filings — what the company legally just disclosed, (2) USASpending.gov for federal contract footprint — who is giving them government money, (3) GDELT for global news intelligence — what the world is saying about them right now, (4) their product changelog — are they actually shipping, (5) Yahoo Finance — what the market is pricing in. Returns a unified 5-source timestamped report. Unique: this combination is not available in any other MCP server.",
+    inputSchema: z.object({
+      company: z.string().describe(
+        "Company name e.g. 'Palantir', 'Anthropic', 'OpenAI'"
+      ),
+      ticker: z.string().optional().describe(
+        "Stock ticker for finance data e.g. 'PLTR'. Leave blank for private companies."
+      ),
+      github_url: z.string().optional().describe(
+        "Optional GitHub repo or org URL e.g. 'https://github.com/palantir'. Improves changelog accuracy."
+      ),
+      max_length: z.number().optional().default(15000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ company, ticker, github_url, max_length }) => {
+    const perSection = Math.floor((max_length ?? 15000) / 5);
+    const repoQuery = github_url ?? company;
+
+    const [secResult, contractsResult, gdeltResult, changelogResult, financeResult] = await Promise.allSettled([
+      // 1. What did they legally just disclose
+      secFilingsAdapter({ url: company, maxLength: perSection }),
+      // 2. Who is giving them government money
+      govContractsAdapter({ url: company, maxLength: perSection }),
+      // 3. What is global news saying right now
+      gdeltAdapter({ url: company, maxLength: perSection }),
+      // 4. Are they actually shipping product
+      changelogAdapter({ url: repoQuery, maxLength: perSection }),
+      // 5. What is the market pricing in
+      financeAdapter({ url: ticker ?? company, maxLength: perSection }),
+    ]);
+
+    const section = (
+      label: string,
+      result: PromiseSettledResult<{ raw: string; content_date: string | null; freshness_confidence: string }>
+    ) =>
+      result.status === "fulfilled"
+        ? `## ${label}\n${result.value.raw}`
+        : `## ${label}\n[Unavailable: ${(result as PromiseRejectedResult).reason}]`;
+
+    const combined = [
+      `# Company Intelligence Landscape: "${company}"${ticker ? ` (${ticker})` : ""}`,
+      `Generated: ${new Date().toISOString()}`,
+      `Sources: SEC EDGAR · USASpending.gov · GDELT · Changelog · Yahoo Finance`,
+      "",
+      section("📋 SEC 8-K Filings — Legal Disclosures", secResult),
+      section("🏛️ Federal Contract Awards (USASpending.gov)", contractsResult),
+      section("🌍 Global News Intelligence (GDELT)", gdeltResult),
+      section("🔄 Product Release Velocity (Changelog)", changelogResult),
+      section("📈 Market Data (Yahoo Finance)", financeResult),
     ].join("\n\n");
 
     return { content: [{ type: "text", text: combined }] };
