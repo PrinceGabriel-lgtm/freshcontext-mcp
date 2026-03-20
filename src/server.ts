@@ -457,7 +457,7 @@ server.registerTool(
   "extract_gdelt",
   {
     description:
-      "Fetch global news intelligence from the GDELT Project. GDELT monitors broadcast, print, and web news from every country in 100+ languages, updated every 15 minutes. Returns structured articles with source country, language, and publication date. Free, no auth. Pass any company name, topic, or keyword. Unique: not available in any other MCP server.",
+      "Fetch global news intelligence from the GDELT Project. GDELT monitors broadcast, print, and web news from every country in 100+ languages, updated every 15 minutes. Returns articles with title, source domain, country of origin, language, and publication date — covering news worldwide that Western sources miss. Free, no auth. Pass any company name, topic, or keyword. Unique: not available in any other MCP server.",
     inputSchema: z.object({
       url: z.string().describe("Query: company name, topic, or keyword e.g. 'Palantir', 'artificial intelligence', 'MCP server'"),
       max_length: z.number().optional().default(6000),

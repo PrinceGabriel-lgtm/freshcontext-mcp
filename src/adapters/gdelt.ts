@@ -6,8 +6,8 @@ import { AdapterResult, ExtractOptions } from "../types.js";
  * No other MCP server has this. GDELT monitors broadcast, print, and web news
  * from every country in 100+ languages, updated every 15 minutes. Free, no auth.
  *
- * Returns structured geopolitical intelligence — not just headlines, but event codes,
- * actor tags, tone scores, goldstein scale (impact measure), location, timestamp.
+ * Returns structured global news articles with source country, language, domain, and
+ * timestamp. Covers every country, 100+ languages, updated every 15 minutes.
  *
  * API: https://api.gdeltproject.org/api/v2/doc/doc
  */
