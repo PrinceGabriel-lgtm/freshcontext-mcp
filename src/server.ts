@@ -17,6 +17,7 @@ import { changelogAdapter } from "./adapters/changelog.js";
 import { govContractsAdapter } from "./adapters/govcontracts.js";
 import { secFilingsAdapter } from "./adapters/secFilings.js";
 import { gdeltAdapter } from "./adapters/gdelt.js";
+import { gebizAdapter } from "./adapters/gebiz.js";
 import { stampFreshness, formatForLLM } from "./tools/freshnessStamp.js";
 import { SecurityError, formatSecurityError } from "./security.js";
 
@@ -537,6 +538,34 @@ server.registerTool(
     ].join("\n\n");
 
     return { content: [{ type: "text", text: combined }] };
+  }
+);
+
+// ─── Tool: extract_gebiz ────────────────────────────────────────────────────
+// Singapore Government procurement tenders via data.gov.sg open API.
+// Ministry of Finance official dataset — all open tenders since FY2020.
+// Free, no auth, structured. Unique: no other MCP server has this.
+server.registerTool(
+  "extract_gebiz",
+  {
+    description:
+      "Fetch Singapore Government procurement opportunities from GeBIZ via the data.gov.sg open API (Ministry of Finance official dataset). Returns open tenders, awarded contracts, agencies, amounts, and closing dates. Search by keyword (e.g. 'software', 'AI', 'data analytics'), agency name (e.g. 'GovTech', 'MOH'), or leave blank for all recent tenders. Free, no auth. Unique: not available in any other MCP server.",
+    inputSchema: z.object({
+      url: z.string().describe(
+        "Search keyword, agency name, or leave empty for all recent tenders. E.g. 'artificial intelligence', 'GovTech', 'cybersecurity'"
+      ),
+      max_length: z.number().optional().default(6000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ url, max_length }) => {
+    try {
+      const result = await gebizAdapter({ url, maxLength: max_length });
+      const ctx = stampFreshness(result, { url, maxLength: max_length }, "gebiz");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
   }
 );
 
