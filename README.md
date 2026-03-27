@@ -30,7 +30,7 @@ Claude now knows the difference between something from this morning and somethin
 
 ---
 
-## 13 tools. No API keys.
+## 19 tools. No API keys.
 
 ### Intelligence
 | Tool | What it gets you |
@@ -52,22 +52,51 @@ Claude now knows the difference between something from this morning and somethin
 ### Market data
 | Tool | What it gets you |
 |---|---|
-| `extract_finance` | Live stock data — price, market cap, P/E, 52w range |
+| `extract_finance` | Live stock data — price, market cap, P/E, 52w range. Up to 5 tickers. |
+| `search_jobs` | Remote job listings from Remotive + HN "Who is Hiring" — every listing dated |
 
-### Composite
-| Tool | What it gets you |
-|---|---|
-| `extract_landscape` | One call. YC + GitHub + HN + Reddit + Product Hunt + npm in parallel. Full timestamped picture. |
+### Composites — multiple sources, one call
+| Tool | Sources | What it gets you |
+|---|---|---|
+| `extract_landscape` | 6 | YC + GitHub + HN + Reddit + Product Hunt + npm in parallel |
+| `extract_gov_landscape` | 4 | Gov contracts + HN + GitHub repos + changelog |
+| `extract_finance_landscape` | 5 | Finance + HN + Reddit + GitHub + changelog |
+| `extract_company_landscape` | 5 | **The full picture on any company** — see below |
 
-### Update intelligence — unique to FreshContext
-| Tool | What it gets you |
-|---|---|
-| `extract_changelog` | Update history from any GitHub repo, npm package, or website. Accepts a GitHub URL (uses the Releases API), an npm package name, or any website URL — auto-discovers `/changelog`, `/releases`, and `CHANGELOG.md`. Returns version numbers, release dates, and entry content, all timestamped. Use this to check if a dependency is still actively maintained, or to find out exactly when a feature shipped before referencing it. |
+### Unique — not available in any other MCP server
+| Tool | Source | What it gets you |
+|---|---|---|
+| `extract_changelog` | GitHub Releases API / npm / auto-discover | Update history from any repo, package, or website |
+| `extract_govcontracts` | USASpending.gov | US federal contract awards — company, amount, agency, period |
+| `extract_sec_filings` | SEC EDGAR | 8-K filings — legally mandated material event disclosures |
+| `extract_gdelt` | GDELT Project | Global news intelligence — 100+ languages, every country, 15-min updates |
+| `extract_gebiz` | data.gov.sg | Singapore Government procurement tenders — open dataset, no auth |
 
-### Government intelligence — unique to FreshContext
-| Tool | What it gets you |
-|---|---|
-| `extract_govcontracts` | US federal contract awards pulled live from USASpending.gov — the official US Treasury database, updated daily. Search by company name, keyword, or NAICS code. Returns award amounts, awarding agency, period of performance, and contract description, all timestamped. A company that just won a $10M DoD contract is actively hiring and spending — that is a buying intent signal no other MCP server surfaces. |
+---
+
+## extract_company_landscape
+
+The most complete single-call company analysis available in any MCP server. Five sources fired in parallel:
+
+1. **SEC EDGAR** — what did they legally just disclose (8-K filings)
+2. **USASpending.gov** — who is giving them government money
+3. **GDELT** — what is global news saying right now
+4. **Changelog** — are they actually shipping product
+5. **Yahoo Finance** — what is the market pricing in
+
+```
+Use extract_company_landscape with company "Palantir" and ticker "PLTR"
+```
+
+Real output from March 26, 2026:
+
+> **Q4 2025:** Revenue $1.407B (+70% YoY). US commercial +137%. Rule of 40 score: **127%**.
+> **Federal contracts:** $292.7M Army Maven Smart System · $252.5M CDAO · $145M ICE · $130M Air Force · more
+> **SEC filing:** Q4 earnings 8-K filed Feb 3, 2026 — GAAP net income $609M, 43% margin
+> **GDELT:** ICE/Medicaid data controversy, UK MoD security warning, NHS opposition — all timestamped
+> **PLTR:** ~$154–157 · Market cap ~$370B · P/E 244x · 52w range $66 → $207
+
+Bloomberg Terminal doesn't read commit history as a company health signal. This does.
 
 ---
 
@@ -160,17 +189,35 @@ Use extract_landscape with topic "cashflow prediction saas"
 ```
 Returns who's funded, what's trending, what repos exist, what packages are moving — all timestamped.
 
+**Full company intelligence in one call:**
+```
+Use extract_company_landscape with company "Palantir" and ticker "PLTR"
+```
+SEC filings + federal contracts + global news + changelog + market data. The complete picture.
+
+**What's Singapore's government procuring right now?**
+```
+Use extract_gebiz with url "artificial intelligence"
+```
+Returns live tenders from the Ministry of Finance open dataset — agency, amount, closing date, all timestamped.
+
+**Did that company just disclose something material?**
+```
+Use extract_sec_filings with url "Palantir Technologies"
+```
+8-K filings are legally mandated within 4 business days of any material event — CEO change, acquisition, breach, major contract.
+
+**What is global news saying about a company?**
+```
+Use extract_gdelt with url "Palantir"
+```
+100+ languages, every country, updated every 15 minutes. Surfaces what Western sources miss.
+
 **What's the community actually saying right now?**
 ```
 Use extract_reddit on r/MachineLearning
 Use extract_hackernews to search "mcp server 2026"
 ```
-
-**Did that company actually ship recently?**
-```
-Use extract_github on https://github.com/some-org/some-repo
-```
-Check `Published` vs `Retrieved`. If the gap is 18 months, Claude will tell you.
 
 **Is this dependency still actively maintained?**
 ```
@@ -182,7 +229,7 @@ Returns the last 8 releases with exact dates. If the last release was 18 months 
 ```
 Use extract_govcontracts with url "artificial intelligence"
 ```
-Returns the largest recent federal contract awards matching that keyword — company name, amount, agency, and award date. Pure buying intent signal.
+Largest recent federal contract awards matching that keyword — company, amount, agency, award date.
 
 ---
 
@@ -195,9 +242,14 @@ freshcontext treats **retrieval time as first-class metadata**. Every adapter re
 - `retrieved_at` — exact ISO timestamp of the fetch
 - `content_date` — best estimate of when the content was originally published
 - `freshness_confidence` — `high`, `medium`, or `low` based on signal quality
+- `freshness_score` — numeric 0–100 score with domain-specific decay rates
 - `adapter` — which source the data came from
 
 When confidence is `high`, the date came from a structured field (API, metadata). When it's `medium` or `low`, freshcontext tells you why.
+
+The FreshContext Specification v1.0 is published as an open standard under MIT license. Any tool or agent that wraps retrieved data in the `[FRESHCONTEXT]` envelope is FreshContext-compatible.
+
+→ [Read the spec](./FRESHCONTEXT_SPEC.md)
 
 ---
 
@@ -212,28 +264,41 @@ When confidence is `high`, the date came from a structured field (API, metadata)
 
 ## Roadmap
 
-- [x] GitHub, HN, Scholar, YC, Reddit, Product Hunt, Finance, arXiv adapters
+- [x] GitHub, HN, Scholar, YC, Reddit, Product Hunt, Finance, arXiv, Jobs adapters
 - [x] `extract_landscape` — 6-source composite tool
-- [x] Cloudflare Workers deployment
-- [x] KV-backed global rate limiting
-- [x] Listed on official MCP Registry
 - [x] `extract_changelog` — update cadence from any repo, package, or website
 - [x] `extract_govcontracts` — US federal contract intelligence via USASpending.gov
+- [x] `extract_sec_filings` — SEC EDGAR 8-K material event filings
+- [x] `extract_gdelt` — GDELT global news intelligence (100+ languages)
+- [x] `extract_gebiz` — Singapore Government procurement via data.gov.sg
+- [x] `extract_gov_landscape` — gov contracts + HN + GitHub + changelog composite
+- [x] `extract_finance_landscape` — finance + HN + Reddit + GitHub + changelog composite
+- [x] `extract_company_landscape` — 5-source company intelligence composite
+- [x] `freshness_score` numeric metric (0–100) with domain-specific decay rates
+- [x] Cloudflare Workers deployment — global edge with KV caching
+- [x] D1 database — 18 watched queries running on 6-hour cron
+- [x] Listed on official MCP Registry
 - [x] Listed on Apify Store
 - [x] FreshContext Specification v1.0 published
+- [x] GitHub Actions CI/CD — auto-publish to npm on every push
+- [ ] GKG upgrade for `extract_gdelt` — tone scores, goldstein scale, event codes
 - [ ] TTL-based caching layer
-- [ ] `freshness_score` numeric metric (0–100)
-- [ ] `extract_devto` — developer article sentiment
-- [ ] `extract_npm_releases` — package release velocity
+- [ ] Dashboard — React frontend for the D1 intelligence pipeline
+- [ ] Synthesis endpoint — `/briefing/now` AI-generated intelligence briefings
 
 ---
 
 ## Contributing
 
-PRs welcome. New adapters are the highest-value contribution — see `src/adapters/` for the pattern.
+PRs welcome. New adapters are the highest-value contribution — see `src/adapters/` for the pattern and `FRESHCONTEXT_SPEC.md` for the contract any adapter must fulfill.
 
 ---
 
 ## License
 
 MIT
+
+---
+
+*Built by Prince Gabriel — Grootfontein, Namibia 🇳🇦*
+*"The work isn't gone. It's just waiting to be continued."*
