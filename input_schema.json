@@ -1,45 +1,44 @@
 {
-  "title": "FreshContext MCP Input",
+  "title": "FreshContext Input",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
     "tool": {
       "title": "Tool",
       "type": "string",
-      "description": "The FreshContext tool to run.",
+      "description": "The FreshContext tool to run. See README for full descriptions.",
       "enum": [
-        "extract_github",
         "extract_hackernews",
-        "extract_scholar",
+        "extract_github",
+        "extract_govcontracts",
+        "extract_sec_filings",
+        "extract_gdelt",
+        "extract_gebiz",
+        "extract_finance",
+        "extract_changelog",
         "extract_arxiv",
+        "extract_scholar",
         "extract_reddit",
         "extract_yc",
         "extract_producthunt",
         "search_repos",
         "package_trends",
-        "extract_finance",
-        "extract_landscape"
+        "search_jobs"
       ],
-      "default": "extract_landscape",
+      "default": "extract_hackernews",
       "editor": "select"
     },
     "url": {
-      "title": "URL",
+      "title": "URL or Query",
       "type": "string",
-      "description": "URL to extract from. Required for: extract_github, extract_hackernews, extract_scholar, extract_reddit. E.g. https://github.com/owner/repo",
-      "editor": "textfield"
-    },
-    "query": {
-      "title": "Query",
-      "type": "string",
-      "description": "Search query. Required for: extract_landscape, search_repos, extract_yc, extract_producthunt, package_trends, extract_finance.",
+      "description": "The main input for the tool. For extract_github: full GitHub URL. For extract_hackernews: HN URL or search URL. For extract_govcontracts/extract_sec_filings/extract_gdelt/extract_gebiz/extract_finance: company name, keyword, or ticker. For search_repos/package_trends/search_jobs: search keyword.",
       "editor": "textfield"
     },
     "max_length": {
       "title": "Max content length",
       "type": "integer",
-      "description": "Maximum characters returned per result. Default: 6000.",
-      "default": 6000,
+      "description": "Maximum characters returned. Default: 8000.",
+      "default": 8000,
       "minimum": 500,
       "maximum": 20000,
       "editor": "number"
