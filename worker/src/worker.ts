@@ -13,6 +13,7 @@ interface Env {
   DB: D1Database;
   API_KEY?: string;
   ANTHROPIC_KEY?: string;
+  GITHUB_TOKEN?: string;
 }
 
 // ─── Cache Layer ──────────────────────────────────────────────────────────────
@@ -620,6 +621,11 @@ function createServer(env: Env): McpServer {
 
 // ─── Cron: Scheduled Intelligence Scraper ─────────────────────────────────────
 
+// Strip non-ASCII characters that corrupt D1 storage
+function sanitize(str: string): string {
+  return str.replace(/[^\x00-\x7F]/g, "").replace(/\s+/g, " ").trim();
+}
+
 // Simple hash — no crypto needed, just dedup fingerprint
 function simpleHash(str: string): string {
   let h = 0;
@@ -645,32 +651,41 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
       if (!res.ok) return `Remotive error ${res.status}`;
       const data = await res.json() as any;
       const location = filters.location ?? "";
-      return (data.jobs ?? [])
+      return sanitize((data.jobs ?? [])
         .filter((j: any) => !location || (j.candidate_required_location ?? "").toLowerCase().includes(location.toLowerCase()))
         .slice(0, 10)
-        .map((j: any) => `${j.title} — ${j.company_name} | ${j.candidate_required_location} | ${j.publication_date}`)
-        .join("\n");
+        .map((j: any) => `${j.title} -- ${j.company_name} | ${j.candidate_required_location} | ${j.publication_date}`)
+        .join("\n"));
     }
     case "hackernews": {
       const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=10`;
       const res = await fetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron" } });
       const data = await res.json() as any;
-      return data.hits?.map((h: any) => `${h.title} — ${h.created_at}`).join("\n") ?? "";
+      return sanitize(data.hits?.map((h: any) => `${h.title} -- ${h.created_at}`).join("\n") ?? "");
     }
     case "reposearch": {
       const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&per_page=10`;
       const res = await fetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron", "Accept": "application/vnd.github.v3+json" } });
       const data = await res.json() as any;
-      return data.items?.map((r: any) => `${r.full_name} ⭐${r.stargazers_count} — ${r.updated_at}`).join("\n") ?? "";
+      return sanitize(data.items?.map((r: any) => `${r.full_name} stars:${r.stargazers_count} -- ${r.updated_at}`).join("\n") ?? "");
     }
     case "github": {
       // query is the repo URL — fetch basic stats via API
       const match = query.match(/github\.com\/([^/]+\/[^/]+)/);
       if (!match) return "";
-      const url = `https://api.github.com/repos/${match[1]}`;
-      const res = await fetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron", "Accept": "application/vnd.github.v3+json" } });
+      const repoSlug = match[1].replace(/\.git$/, "").split("/").slice(0, 2).join("/");
+      const ghHeaders: Record<string, string> = {
+        "User-Agent": "freshcontext-mcp/cron",
+        "Accept": "application/vnd.github.v3+json",
+      };
+      const ghToken = (env as any)?.GITHUB_TOKEN;
+      if (ghToken) ghHeaders["Authorization"] = `Bearer ${ghToken}`;
+      const res = await fetch(`https://api.github.com/repos/${repoSlug}`, { headers: ghHeaders });
+      if (res.status === 403 || res.status === 429) return `GitHub rate limited — set GITHUB_TOKEN secret`;
+      if (!res.ok) return `GitHub error ${res.status} for ${repoSlug}`;
       const data = await res.json() as any;
-      return `Stars:${data.stargazers_count} Forks:${data.forks_count} Updated:${data.updated_at} Issues:${data.open_issues_count}`;
+      if (!data.stargazers_count && data.message) return sanitize(`GitHub: ${data.message}`);
+      return sanitize(`Stars:${data.stargazers_count} Forks:${data.forks_count} Updated:${data.updated_at} Issues:${data.open_issues_count} Lang:${data.language ?? "N/A"}`);
     }
     case "finance": {
       // Use Yahoo Finance quote API (no auth needed for basic quotes)
@@ -681,12 +696,163 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
       const price = data.chart?.result?.[0]?.meta?.regularMarketPrice;
       return price ? `${symbol}: ${price} @ ${new Date().toISOString()}` : `No price data for ${symbol}`;
     }
+    case "reddit": {
+      // Search Reddit via old JSON API (no auth needed)
+      const sub = query.match(/r\/(\w+)/)?.[1];
+      const term = query.replace(/r\/\w+\s*/,"").trim();
+      const url = sub && term
+        ? `https://www.reddit.com/r/${sub}/search.json?q=${encodeURIComponent(term)}&sort=new&limit=10&restrict_sr=1`
+        : sub
+          ? `https://www.reddit.com/r/${sub}/new.json?limit=10`
+          : `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=10`;
+      const res = await fetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron" } });
+      if (!res.ok) return `Reddit error ${res.status}`;
+      const data = await res.json() as any;
+      const posts = data?.data?.children ?? [];
+      return sanitize(posts.map((p: any) =>
+        `${p.data.title} | score:${p.data.score} | ${new Date(p.data.created_utc * 1000).toISOString()}`
+      ).join("\n"));
+    }
+    case "yc": {
+      // YC company search via yc-oss community API (no auth needed)
+      const res = await fetch("https://yc-oss.github.io/api/companies/all.json", {
+        headers: { "User-Agent": "freshcontext-mcp/cron" }
+      });
+      if (!res.ok) return `YC error ${res.status}`;
+      const all = await res.json() as any[];
+      const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      const hits = all
+        .filter((c: any) => {
+          const text = `${c.name ?? ""} ${c.one_liner ?? ""} ${(c.tags ?? []).join(" ")}`.toLowerCase();
+          return terms.some(t => text.includes(t));
+        })
+        .slice(0, 10);
+      if (!hits.length) return `No YC companies found for "${query}"`;
+      return sanitize(hits.map((h: any) =>
+        `${h.name} [${h.batch ?? "?"}] ${h.status ?? ""} -- ${h.one_liner ?? ""}`
+      ).join("\n"));
+    }
+    case "packagetrends": {
+      // npm download stats via the official registry API
+      const pkg = encodeURIComponent(query.trim());
+      const [infoRes, dlRes] = await Promise.all([
+        fetch(`https://registry.npmjs.org/${pkg}`, { headers: { "User-Agent": "freshcontext-mcp/cron" } }),
+        fetch(`https://api.npmjs.org/downloads/point/last-month/${pkg}`, { headers: { "User-Agent": "freshcontext-mcp/cron" } })
+      ]);
+      if (!infoRes.ok) return `npm error ${infoRes.status} for ${query}`;
+      const info = await infoRes.json() as any;
+      const dl   = dlRes.ok ? await dlRes.json() as any : null;
+      const latest = info["dist-tags"]?.latest ?? "?";
+      const updated = info.time?.[latest] ?? info.time?.modified ?? "?";
+      const downloads = dl?.downloads ?? "?";
+      return `${query}@${latest} | downloads/month: ${downloads} | last publish: ${updated} | description: ${info.description ?? ""}`;
+    }
     default:
       return `[adapter ${adapter} not yet implemented in cron]`;
   }
 }
 
+// ─── Relevancy Scoring ──────────────────────────────────────────────────────
+// Pure TypeScript — no Anthropic API needed. Runs in-process during cron.
+// Scores 0–100. Below 35 = noise. Above 70 = high signal.
+
+function scoreRelevancy(
+  raw: string,
+  query: string,
+  adapter: string
+): number {
+  if (!raw || raw.length < 20) return 0;
+
+  const text = raw.toLowerCase();
+  const terms = query.toLowerCase().split(/[\s,_-]+/).filter(t => t.length > 2);
+  let score = 0;
+
+  // 1. Keyword presence (0–35 pts)
+  // Each query term found in the result adds points
+  const termMatches = terms.filter(t => text.includes(t)).length;
+  const termScore = Math.min(35, Math.round((termMatches / Math.max(terms.length, 1)) * 35));
+  score += termScore;
+
+  // 2. Engagement signals already in the raw text (0–30 pts)
+  // Extracts numeric signals from the scraped content
+  const engagementPatterns = [
+    { pattern: /stars?[:\s]+([\d,]+)/i, weight: 0.001 },    // GitHub stars
+    { pattern: /([\d,]+)\s*stars?/i,     weight: 0.001 },
+    { pattern: /score[:\s]+([\d,]+)/i,   weight: 0.05 },     // HN score
+    { pattern: /([\d]+)\s*points?/i,     weight: 0.05 },
+    { pattern: /([\d,]+)\s*comments?/i,  weight: 0.03 },
+    { pattern: /salary[:\s]+\$?([\d,]+)/i, weight: 0.001 },  // job salary
+    { pattern: /\$([\d.]+)[BbMm]/,       weight: 2 },         // finance large numbers
+    { pattern: /downloads?[:\s]+([\d,]+)/i, weight: 0.0001 }, // npm downloads
+  ];
+  let engagementScore = 0;
+  for (const { pattern, weight } of engagementPatterns) {
+    const match = raw.match(pattern);
+    if (match) {
+      const value = parseFloat(match[1].replace(/,/g, ""));
+      engagementScore += Math.min(10, value * weight);
+    }
+  }
+  score += Math.min(30, engagementScore);
+
+  // 3. Recency signal (0–20 pts)
+  // Recent content dates score higher
+  const now = Date.now();
+  const datePatterns = [
+    /20(2[4-9]|3\d)-\d{2}-\d{2}/g,  // ISO dates in 2024+
+  ];
+  let mostRecent = 0;
+  for (const pattern of datePatterns) {
+    const matches = [...raw.matchAll(pattern)];
+    for (const m of matches) {
+      const d = new Date(m[0]).getTime();
+      if (!isNaN(d) && d > mostRecent) mostRecent = d;
+    }
+  }
+  if (mostRecent > 0) {
+    const ageMs = now - mostRecent;
+    const ageDays = ageMs / 86400000;
+    if (ageDays < 1)   score += 20;
+    else if (ageDays < 7)  score += 15;
+    else if (ageDays < 30) score += 8;
+    else if (ageDays < 90) score += 3;
+  }
+
+  // 4. Adapter-specific bonuses (0–15 pts)
+  // Some signal types are inherently more valuable
+  const adapterBonus: Record<string, number> = {
+    finance:       15, // live price data is always fresh signal
+    hackernews:    12, // community-validated
+    reposearch:    10,
+    github:        10,
+    reddit:        8,
+    jobs:          12, // hiring = real market signal
+    yc:            10,
+    packagetrends: 8,
+  };
+  score += adapterBonus[adapter] ?? 5;
+
+  // 5. Penalise empty or error results
+  if (raw.includes("[ERROR]") || raw.includes("not found") || raw.length < 50) {
+    score = Math.max(0, score - 30);
+  }
+
+  return Math.min(100, Math.max(0, Math.round(score)));
+}
+
 async function runScheduledScrape(env: Env): Promise<void> {
+  // 0. Ensure relevancy columns exist (idempotent — safe to run every time)
+  try {
+    await env.DB.prepare(
+      `ALTER TABLE scrape_results ADD COLUMN relevancy_score INTEGER DEFAULT 0`
+    ).run();
+  } catch { /* column already exists */ }
+  try {
+    await env.DB.prepare(
+      `ALTER TABLE scrape_results ADD COLUMN is_relevant INTEGER DEFAULT 1`
+    ).run();
+  } catch { /* column already exists */ }
+
   // 1. Load all enabled watched queries
   const { results: queries } = await env.DB.prepare(
     `SELECT * FROM watched_queries WHERE enabled = 1 ORDER BY last_run_at ASC NULLS FIRST LIMIT 20`
@@ -700,53 +866,68 @@ async function runScheduledScrape(env: Env): Promise<void> {
   const adaptersRun: string[] = [];
   let newCount = 0;
 
-  for (const wq of queries) {
+  // ── Run adapters in parallel batches of 5 (Cloudflare subrequest limit) ─
+  const scrapeOne = async (wq: { id: string; adapter: string; query: string; filters: string; user_id: string; label: string | null }) => {
     try {
+      // Cooldown: skip if run within the last 60 minutes
+      if (wq.last_run_at) {
+        const age = Date.now() - new Date(wq.last_run_at + "Z").getTime();
+        if (age < 60 * 60 * 1000) return null;
+      }
       const filters = JSON.parse(wq.filters ?? "{}");
-
-      // 2. Run the adapter
       const raw = await runAdapter(wq.adapter, wq.query, filters);
-      if (!raw) continue;
+      if (!raw || raw.startsWith("[adapter")) return null; // skip unimplemented or empty
 
-      // 3. Hash result for deduplication
       const hash = simpleHash(raw);
-
-      // 4. Check if this is a new result (different hash from last run)
       const last = await env.DB.prepare(
-        `SELECT result_hash FROM scrape_results
-         WHERE watched_query_id = ?
-         ORDER BY scraped_at DESC LIMIT 1`
-      ).first<{ result_hash: string }>(wq.id);
+        `SELECT result_hash FROM scrape_results WHERE watched_query_id = ? ORDER BY scraped_at DESC LIMIT 1`
+      ).bind(wq.id).first<{ result_hash: string }>();
 
-      const isNew = !last || last.result_hash !== hash;
-
-      // 5. Store result
-      const resultId = `sr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      await env.DB.prepare(
-        `INSERT INTO scrape_results (id, watched_query_id, adapter, query, raw_content, result_hash, is_new, scraped_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`
-      ).bind(resultId, wq.id, wq.adapter, wq.query, raw.slice(0, 8000), hash, isNew ? 1 : 0).run();
-
-      // 6. Update last_run_at
-      await env.DB.prepare(
-        `UPDATE watched_queries SET last_run_at = datetime('now') WHERE id = ?`
-      ).bind(wq.id).run();
-
-      if (isNew) {
-        newCount++;
-        if (!adaptersRun.includes(wq.adapter)) adaptersRun.push(wq.adapter);
+      // Skip insert if content hasn't changed — no duplicates
+      if (last && last.result_hash === hash) {
+        await env.DB.prepare(`UPDATE watched_queries SET last_run_at = datetime('now') WHERE id = ?`).bind(wq.id).run();
+        return null;
       }
 
+      const relevancyScore = scoreRelevancy(raw, wq.query, wq.adapter);
+      const isRelevant = relevancyScore >= 35 ? 1 : 0;
+
+      const resultId = `sr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      await env.DB.prepare(
+        `INSERT INTO scrape_results (id, watched_query_id, adapter, query, raw_content, result_hash, is_new, scraped_at, relevancy_score, is_relevant)
+         VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'), ?, ?)`
+      ).bind(resultId, wq.id, wq.adapter, wq.query, raw.slice(0, 8000), hash, relevancyScore, isRelevant).run();
+
+      console.log(`[relevancy] ${wq.adapter}/${wq.query.slice(0,30)} → score:${relevancyScore} relevant:${isRelevant === 1}`);
+      if (!isRelevant) return null; // stored but excluded from briefing count
+
+      await env.DB.prepare(`UPDATE watched_queries SET last_run_at = datetime('now') WHERE id = ?`).bind(wq.id).run();
+      return wq.adapter;
     } catch (err: any) {
-      // Log error but don't stop the whole run
-      console.error(`Cron error for query ${wq.id} (${wq.adapter}): ${err.message}`);
+      console.error(`Scrape error [${wq.id}/${wq.adapter}]: ${err.message}`);
+      return null;
+    }
+  };
+
+  // Fire in batches of 5 to respect Cloudflare's subrequest limit
+  const allResults: PromiseSettledResult<string | null | undefined>[] = [];
+  for (let i = 0; i < queries.length; i += 5) {
+    const batch = queries.slice(i, i + 5);
+    const batchResults = await Promise.allSettled(batch.map(scrapeOne));
+    allResults.push(...batchResults);
+  }
+  const results = allResults;
+  for (const r of results) {
+    if (r.status === "fulfilled" && r.value) {
+      newCount++;
+      if (!adaptersRun.includes(r.value)) adaptersRun.push(r.value);
     }
   }
 
-  // 7. Write a briefing summary to DB
+  // 7. Write a cron summary briefing to DB
   if (newCount > 0) {
     const briefingId = `br_${Date.now()}`;
-    const summary = `Cron run ${new Date().toISOString()}: ${newCount} new result(s) detected across ${adaptersRun.join(", ")}. ${queries.length} queries checked.`;
+    const summary = `Cron run ${new Date().toISOString()}: ${newCount} new result(s) across ${adaptersRun.join(", ")}. ${queries.length} queries checked.`;
     await env.DB.prepare(
       `INSERT INTO briefings (id, user_id, summary, new_results_count, adapters_run, created_at)
        VALUES (?, 'default', ?, ?, ?, datetime('now'))`
@@ -754,9 +935,9 @@ async function runScheduledScrape(env: Env): Promise<void> {
   }
 }
 
-// ─── Layer 4: Claude Synthesis ────────────────────────────────────────────────
+// ─── Layer 4: Briefing Formatter (no API needed) ─────────────────────────────
 
-async function synthesizeBriefing(db: D1Database, anthropicKey: string): Promise<string> {
+async function synthesizeBriefing(db: D1Database, _anthropicKey?: string): Promise<string> {
   // 1. Load user profile
   const profile = await db.prepare(
     `SELECT * FROM user_profiles WHERE id = 'default' LIMIT 1`
@@ -765,91 +946,71 @@ async function synthesizeBriefing(db: D1Database, anthropicKey: string): Promise
     targets: string; location: string; context: string;
   }>();
 
-  // 2. Load all new results since last briefing
+  // 2. Load relevant new results since last briefing
+  // is_relevant = 1 means score >= 35 — noise is stored but excluded here
   const { results: newRows } = await db.prepare(`
-    SELECT sr.adapter, sr.query, sr.raw_content, sr.scraped_at, wq.label
+    SELECT sr.adapter, sr.query, sr.raw_content, sr.scraped_at, wq.label,
+           COALESCE(sr.relevancy_score, 50) as relevancy_score
     FROM scrape_results sr
     JOIN watched_queries wq ON sr.watched_query_id = wq.id
     WHERE sr.is_new = 1
-    ORDER BY sr.scraped_at DESC
-    LIMIT 30
+      AND (sr.is_relevant IS NULL OR sr.is_relevant = 1)
+    ORDER BY COALESCE(sr.relevancy_score, 50) DESC, sr.scraped_at DESC
+    LIMIT 20
   `).all<{
     adapter: string; query: string; raw_content: string;
-    scraped_at: string; label: string | null;
+    scraped_at: string; label: string | null; relevancy_score: number;
   }>();
 
   if (!newRows.length) return "No new signals since last run.";
 
-  // 3. Build the context payload for Claude
-  const profileSummary = profile ? [
-    `Name: ${profile.name}`,
-    `Location: ${profile.location}`,
-    `Skills: ${profile.skills}`,
-    `Certifications: ${profile.certifications}`,
-    `Targets: ${profile.targets}`,
-    `Context: ${profile.context}`,
-  ].join("\n") : "No profile found.";
-
-  const resultsSummary = newRows.map(r =>
-    `[${r.adapter.toUpperCase()}] ${r.label ?? r.query} (${r.scraped_at.slice(0, 10)})\n${r.raw_content.slice(0, 600)}`
-  ).join("\n\n---\n\n");
-
-  const prompt = `You are a personal intelligence assistant. Your job is to read new data signals and produce a short, sharp morning briefing for the user.
-
-USER PROFILE:
-${profileSummary}
-
-NEW SIGNALS (${newRows.length} items across ${[...new Set(newRows.map(r => r.adapter))].join(", ")}):
-${resultsSummary}
-
-INSTRUCTIONS:
-- Write a concise briefing (under 300 words)
-- Lead with what matters most to this person given their profile
-- Group by category: Jobs, Repo Activity, Market/Finance, Tech Signals
-- Only include categories that have new data
-- Flag anything that directly matches their targets or skills
-- Use plain language, no fluff
-- End with 1-2 actionable next steps
-
-Write the briefing now:`;
-
-  // 4. Call Claude API
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": anthropicKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",  // fast + cheap for briefings
-      max_tokens: 600,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Claude API error ${response.status}: ${err.slice(0, 200)}`);
+  // 3. Group by adapter and format cleanly
+  const grouped: Record<string, typeof newRows> = {};
+  for (const row of newRows) {
+    if (!grouped[row.adapter]) grouped[row.adapter] = [];
+    grouped[row.adapter].push(row);
   }
 
-  const data = await response.json() as {
-    content: Array<{ type: string; text: string }>;
+  const ADAPTER_LABELS: Record<string, string> = {
+    jobs:          "[JOBS]",
+    hackernews:    "[HACKER NEWS]",
+    reposearch:    "[GITHUB REPOS]",
+    github:        "[REPO STATS]",
+    reddit:        "[REDDIT]",
+    yc:            "[YC COMPANIES]",
+    packagetrends: "[PACKAGES]",
+    finance:       "[FINANCE]",
   };
 
-  const briefingText = data.content
-    .filter(c => c.type === "text")
-    .map(c => c.text)
-    .join("\n");
+  const sections: string[] = [
+    `# FreshContext Briefing`,
+    `Generated: ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`,
+    profile ? `For: ${profile.name} · ${profile.location}` : "",
+    `${newRows.length} new signal(s) across ${Object.keys(grouped).length} source(s)`,
+    "",
+  ];
 
-  // 5. Mark results as no longer "new" (consumed by briefing)
+  for (const [adapter, rows] of Object.entries(grouped)) {
+    const label = ADAPTER_LABELS[adapter] ?? `📡 ${adapter}`;
+    sections.push(`## ${label}`);
+    for (const row of rows) {
+      const title = row.label ?? row.query;
+      const score = row.relevancy_score ?? 50;
+      const signal = score >= 70 ? "🔴 HIGH" : score >= 50 ? "🟡 MED" : "⚪ LOW";
+      const preview = row.raw_content.slice(0, 500).replace(/\n{3,}/g, "\n\n");
+      sections.push(`**${title}** _(${row.scraped_at.slice(0, 10)}) · score:${score} ${signal}_\n${preview}\n`);
+    }
+  }
+
+  const briefingText = sections.join("\n");
+
+  // 4. Mark results as consumed
   await db.prepare(
-    `UPDATE scrape_results SET is_new = 0
-     WHERE is_new = 1 AND scraped_at <= datetime('now')`
+    `UPDATE scrape_results SET is_new = 0 WHERE is_new = 1 AND scraped_at <= datetime('now')`
   ).run();
 
-  // 6. Store the AI-generated briefing
-  const briefingId = `br_ai_${Date.now()}`;
+  // 5. Store the briefing
+  const briefingId = `br_fmt_${Date.now()}`;
   await db.prepare(
     `INSERT INTO briefings (id, user_id, summary, new_results_count, adapters_run, created_at)
      VALUES (?, 'default', ?, ?, ?, datetime('now'))`
@@ -857,7 +1018,7 @@ Write the briefing now:`;
     briefingId,
     briefingText,
     newRows.length,
-    JSON.stringify([...new Set(newRows.map(r => r.adapter))])
+    JSON.stringify(Object.keys(grouped))
   ).run();
 
   return briefingText;
@@ -869,7 +1030,20 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    // ── GET /briefing — latest briefing or trigger synthesis on demand ─────────
+    // ── GET /watched-queries — list all watched queries ───────────────────────
+    if (url.pathname === "/watched-queries") {
+      try { checkAuth(request, env); } catch (e: any) { return errResponse(e.message, 401); }
+      try {
+        const { results } = await env.DB.prepare(
+          `SELECT id, adapter, query, label, filters, enabled, last_run_at FROM watched_queries ORDER BY adapter, id`
+        ).all<{ id: string; adapter: string; query: string; label: string | null; filters: string; enabled: number; last_run_at: string | null }>();
+        return new Response(JSON.stringify({ count: results.length, queries: results }), {
+          headers: { "Content-Type": "application/json" }
+        });
+      } catch (err: any) { return errResponse(err.message, 500); }
+    }
+
+    // ── GET /briefing — latest briefing ───────────────────────────────────────
     if (url.pathname === "/briefing") {
       try {
         checkAuth(request, env);
@@ -898,6 +1072,75 @@ export default {
       }
     }
 
+    // ── GET /debug/scrape — run one adapter and return raw output ─────────────
+    if (url.pathname === "/debug/scrape") {
+      try { checkAuth(request, env); } catch (e: any) { return errResponse(e.message, 401); }
+      const adapter = url.searchParams.get("adapter") ?? "hackernews";
+      const query   = url.searchParams.get("query")   ?? "mcp server";
+      try {
+        const raw = await runAdapter(adapter, query, {});
+        return new Response(JSON.stringify({ adapter, query, raw, length: raw.length }), {
+          headers: { "Content-Type": "application/json" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ adapter, query, error: err.message }), {
+          status: 500, headers: { "Content-Type": "application/json" }
+        });
+      }
+    }
+
+    // ── POST /debug/run-one — scrape ONE watched query and store result ────────
+    if (url.pathname === "/debug/run-one" && request.method === "POST") {
+      try { checkAuth(request, env); } catch (e: any) { return errResponse(e.message, 401); }
+      const log: string[] = [];
+      try {
+        const wq = await env.DB.prepare(
+          `SELECT * FROM watched_queries WHERE enabled = 1 ORDER BY last_run_at ASC NULLS FIRST LIMIT 1`
+        ).first<{ id: string; adapter: string; query: string; filters: string; label: string | null }>();
+        if (!wq) return new Response(JSON.stringify({ error: "No enabled watched queries" }), { headers: { "Content-Type": "application/json" } });
+        log.push(`Running: [${wq.adapter}] ${wq.query}`);
+        const raw = await runAdapter(wq.adapter, wq.query, JSON.parse(wq.filters ?? "{}"));
+        log.push(`raw length: ${raw.length}`);
+        if (!raw) {
+          log.push("raw was empty — skipped insert");
+          return new Response(JSON.stringify({ wq, log }), { headers: { "Content-Type": "application/json" } });
+        }
+        const hash = simpleHash(raw);
+        const last = await env.DB.prepare(
+          `SELECT result_hash FROM scrape_results WHERE watched_query_id = ? ORDER BY scraped_at DESC LIMIT 1`
+        ).bind(wq.id).first<{ result_hash: string }>();
+        if (last && last.result_hash === hash) {
+          log.push("hash unchanged — skipped insert");
+          await env.DB.prepare(`UPDATE watched_queries SET last_run_at = datetime('now') WHERE id = ?`).bind(wq.id).run();
+          return new Response(JSON.stringify({ wq, log }), { headers: { "Content-Type": "application/json" } });
+        }
+        const resultId = `sr_${Date.now()}_dbg`;
+        await env.DB.prepare(
+          `INSERT INTO scrape_results (id, watched_query_id, adapter, query, raw_content, result_hash, is_new, scraped_at) VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'))`
+        ).bind(resultId, wq.id, wq.adapter, wq.query, raw.slice(0, 8000), hash).run();
+        await env.DB.prepare(`UPDATE watched_queries SET last_run_at = datetime('now') WHERE id = ?`).bind(wq.id).run();
+        log.push(`inserted: ${resultId} | isNew: ${isNew}`);
+        return new Response(JSON.stringify({ wq, log, preview: raw.slice(0, 300) }), { headers: { "Content-Type": "application/json" } });
+      } catch (err: any) {
+        log.push(`ERROR: ${err.message}`);
+        return new Response(JSON.stringify({ log, error: err.message }), { status: 500, headers: { "Content-Type": "application/json" } });
+      }
+    }
+
+    // ── GET /debug/db — check D1 table counts ─────────────────────────────────
+    if (url.pathname === "/debug/db") {
+      try { checkAuth(request, env); } catch (e: any) { return errResponse(e.message, 401); }
+      const [wq, sr, br, up] = await Promise.all([
+        env.DB.prepare("SELECT COUNT(*) as n FROM watched_queries").first<{n:number}>(),
+        env.DB.prepare("SELECT COUNT(*) as n FROM scrape_results").first<{n:number}>(),
+        env.DB.prepare("SELECT COUNT(*) as n FROM briefings").first<{n:number}>(),
+        env.DB.prepare("SELECT COUNT(*) as n FROM user_profiles").first<{n:number}>(),
+      ]);
+      return new Response(JSON.stringify({
+        watched_queries: wq?.n, scrape_results: sr?.n, briefings: br?.n, user_profiles: up?.n
+      }), { headers: { "Content-Type": "application/json" } });
+    }
+
     // ── POST /briefing/now — trigger synthesis immediately ────────────────────
     if (url.pathname === "/briefing/now" && request.method === "POST") {
       try {
@@ -907,10 +1150,8 @@ export default {
       }
       try {
         await runScheduledScrape(env);
-        const briefing = env.ANTHROPIC_KEY
-          ? await synthesizeBriefing(env.DB, env.ANTHROPIC_KEY)
-          : null;
-        return new Response(JSON.stringify(briefing ?? { message: "Scrape complete. Set ANTHROPIC_KEY for synthesis." }), {
+        const briefing = await synthesizeBriefing(env.DB);
+        return new Response(JSON.stringify({ briefing }), {
           headers: { "Content-Type": "application/json" }
         });
       } catch (err: any) {
@@ -938,13 +1179,10 @@ export default {
     ctx.waitUntil((async () => {
       // Layer 3: scrape all watched queries
       await runScheduledScrape(env);
-      // Layer 4: synthesize briefing from new results
-      if (env.ANTHROPIC_KEY) {
-        try {
-          await synthesizeBriefing(env.DB, env.ANTHROPIC_KEY);
-        } catch (err: any) {
-          console.error("Synthesis error:", err.message);
-        }
+      try {
+        await synthesizeBriefing(env.DB);
+      } catch (err: any) {
+        console.error("Briefing error:", err.message);
       }
     })());
   },
