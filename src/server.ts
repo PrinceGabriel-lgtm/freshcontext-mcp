@@ -569,6 +569,82 @@ server.registerTool(
   }
 );
 
+// ─── Tool: extract_idea_landscape ───────────────────────────────────────────
+// Idea validation composite — 6 sources that answer: should I build this?
+// HN pain points + YC funded competitors + GitHub crowding + job market signal
+// + package ecosystem adoption + Product Hunt recent launches.
+// The job market section is the key differentiator — companies paying salaries
+// around a problem is the strongest signal a real market exists.
+server.registerTool(
+  "extract_idea_landscape",
+  {
+    description:
+      "Idea validation composite tool for developers and founders. Given a project idea or keyword, simultaneously queries 6 sources to answer: Is this problem real? Is the market crowded? Is there funding? Are companies hiring? What just launched? Sources: (1) Hacker News — what developers are actively complaining about and discussing, (2) YC companies — who has already received funding in this space, (3) GitHub repos — how crowded the open source landscape is, (4) Job listings — hiring signal showing real company spend around this problem, (5) npm/PyPI package trends — ecosystem adoption and velocity, (6) Product Hunt — what just launched and how it was received. Returns a unified 6-source idea validation report.",
+    inputSchema: z.object({
+      idea: z.string().describe(
+        "Your idea, problem space, or keyword. E.g. 'data freshness for AI agents', 'procurement intelligence', 'developer observability'"
+      ),
+      max_length: z.number().optional().default(14000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ idea, max_length }) => {
+    const perSection = Math.floor((max_length ?? 14000) / 6);
+
+    const [hnResult, ycResult, repoResult, jobsResult, pkgResult, phResult] = await Promise.allSettled([
+      // 1. Pain signal — what are developers actively complaining about
+      hackerNewsAdapter({
+        url: `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(idea)}&tags=story&hitsPerPage=10`,
+        maxLength: perSection,
+      }),
+      // 2. Funding signal — who has already raised money in this space
+      ycAdapter({
+        url: `https://www.ycombinator.com/companies?query=${encodeURIComponent(idea)}`,
+        maxLength: perSection,
+      }),
+      // 3. Crowding signal — how many GitHub repos exist, how active
+      repoSearchAdapter({ url: idea, maxLength: perSection }),
+      // 4. Market signal — companies paying salaries = real spend on this problem
+      jobsAdapter({ url: idea, maxLength: perSection }),
+      // 5. Ecosystem signal — npm/PyPI adoption and release velocity
+      packageTrendsAdapter({ url: idea, maxLength: perSection }),
+      // 6. Launch signal — what just shipped and how the market received it
+      productHuntAdapter({ url: idea, maxLength: perSection }),
+    ]);
+
+    const section = (
+      label: string,
+      result: PromiseSettledResult<{ raw: string; content_date: string | null; freshness_confidence: string }>
+    ) =>
+      result.status === "fulfilled"
+        ? `## ${label}\n${result.value.raw}`
+        : `## ${label}\n[Unavailable: ${(result as PromiseRejectedResult).reason}]`;
+
+    const combined = [
+      `# Idea Validation Landscape: "${idea}"`,
+      `Generated: ${new Date().toISOString()}`,
+      `Sources: Hacker News · YC Companies · GitHub · Job Listings · npm/PyPI · Product Hunt`,
+      "",
+      `## ℹ️ How to read this report`,
+      `Pain signal (HN): Are developers actively discussing this problem?`,
+      `Funding signal (YC): Has this already attracted institutional money?`,
+      `Crowding signal (GitHub): How many repos exist — empty = opportunity, crowded = validation.`,
+      `Market signal (Jobs): Companies hiring around this = real budget allocated = real market.`,
+      `Ecosystem signal (npm/PyPI): Are packages being built and adopted?`,
+      `Launch signal (Product Hunt): What just shipped — community reception and timing.`,
+      "",
+      section("🗣️ Pain Signal — Developer Discussions (Hacker News)", hnResult),
+      section("💰 Funding Signal — Backed Companies (YC)", ycResult),
+      section("📦 Crowding Signal — Open Source Landscape (GitHub)", repoResult),
+      section("💼 Market Signal — Hiring Activity (Job Listings)", jobsResult),
+      section("🔧 Ecosystem Signal — Package Adoption (npm/PyPI)", pkgResult),
+      section("🚀 Launch Signal — Recent Launches (Product Hunt)", phResult),
+    ].join("\n\n");
+
+    return { content: [{ type: "text", text: combined }] };
+  }
+);
+
 // ─── Start ───────────────────────────────────────────────────────────────────
 async function main() {
   const transport = new StdioServerTransport();
