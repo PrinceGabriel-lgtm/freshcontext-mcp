@@ -100,6 +100,10 @@ Bloomberg Terminal doesn't read commit history as a company health signal. This 
 
 ---
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/princegabriel-lgtm-freshcontext-mcp).
+
 ## Quick Start
 
 ### Option A — Cloud (no install)
