@@ -8,12 +8,15 @@ That's the problem freshcontext fixes.
 
 [![npm version](https://img.shields.io/npm/v/freshcontext-mcp)](https://www.npmjs.com/package/freshcontext-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-Listed-blue)](https://registry.modelcontextprotocol.io)
 
 ---
 
-## What it does
+## The Standard
 
-Every MCP server returns data. freshcontext returns data **plus when it was retrieved and how confident that date is** — wrapped in a FreshContext envelope:
+FreshContext is a **data freshness layer for AI agents** — an open standard and reference implementation that makes retrieved data trustworthy.
+
+Every piece of web data an AI agent retrieves has an age. Most tools ignore it. FreshContext surfaces it — wrapping every result in a structured envelope that carries three guarantees:
 
 ```
 [FRESHCONTEXT]
@@ -26,11 +29,13 @@ Confidence: high
 [/FRESHCONTEXT]
 ```
 
-Claude now knows the difference between something from this morning and something from two years ago. You do too.
+**When** it was retrieved. **Where** it came from. **How confident** we are the date is accurate.
+
+The FreshContext Specification v1.0 is published as an open standard under MIT license. Any tool, agent, or system that wraps retrieved data in this envelope is FreshContext-compatible. → [Read the spec](./FRESHCONTEXT_SPEC.md)
 
 ---
 
-## 19 tools. No API keys.
+## 20 tools. No API keys.
 
 ### Intelligence
 | Tool | What it gets you |
@@ -53,13 +58,14 @@ Claude now knows the difference between something from this morning and somethin
 | Tool | What it gets you |
 |---|---|
 | `extract_finance` | Live stock data — price, market cap, P/E, 52w range. Up to 5 tickers. |
-| `search_jobs` | Remote job listings from Remotive + HN "Who is Hiring" — every listing dated |
+| `search_jobs` | Remote job listings from Remotive, RemoteOK, HN "Who is Hiring" — every listing dated |
 
 ### Composites — multiple sources, one call
 | Tool | Sources | What it gets you |
 |---|---|---|
 | `extract_landscape` | 6 | YC + GitHub + HN + Reddit + Product Hunt + npm in parallel |
-| `extract_gov_landscape` | 4 | Gov contracts + HN + GitHub repos + changelog |
+| `extract_idea_landscape` | 6 | HN + YC + GitHub + Jobs + npm + Product Hunt — full idea validation |
+| `extract_gov_landscape` | 4 | Gov contracts + HN + GitHub + changelog |
 | `extract_finance_landscape` | 5 | Finance + HN + Reddit + GitHub + changelog |
 | `extract_company_landscape` | 5 | **The full picture on any company** — see below |
 
@@ -71,6 +77,23 @@ Claude now knows the difference between something from this morning and somethin
 | `extract_sec_filings` | SEC EDGAR | 8-K filings — legally mandated material event disclosures |
 | `extract_gdelt` | GDELT Project | Global news intelligence — 100+ languages, every country, 15-min updates |
 | `extract_gebiz` | data.gov.sg | Singapore Government procurement tenders — open dataset, no auth |
+
+---
+
+## extract_idea_landscape
+
+Built for the moment before you start building. Six sources fired in parallel to answer: *should I build this?*
+
+1. **Hacker News** — what are developers actively complaining about (pain signal)
+2. **YC Companies** — who has already received funding in this space (funding signal)
+3. **GitHub** — how crowded the open source landscape is (crowding signal)
+4. **Job listings** — companies hiring around this problem = real budget = real market (market signal)
+5. **npm / PyPI** — ecosystem adoption and release velocity (ecosystem signal)
+6. **Product Hunt** — what just launched and how the market received it (launch signal)
+
+```
+Use extract_idea_landscape with idea "data freshness for AI agents"
+```
 
 ---
 
@@ -88,7 +111,7 @@ The most complete single-call company analysis available in any MCP server. Five
 Use extract_company_landscape with company "Palantir" and ticker "PLTR"
 ```
 
-Real output from March 26, 2026:
+Real output from March 2026:
 
 > **Q4 2025:** Revenue $1.407B (+70% YoY). US commercial +137%. Rule of 40 score: **127%**.
 > **Federal contracts:** $292.7M Army Maven Smart System · $252.5M CDAO · $145M ICE · $130M Air Force · more
@@ -96,7 +119,7 @@ Real output from March 26, 2026:
 > **GDELT:** ICE/Medicaid data controversy, UK MoD security warning, NHS opposition — all timestamped
 > **PLTR:** ~$154–157 · Market cap ~$370B · P/E 244x · 52w range $66 → $207
 
-Bloomberg Terminal doesn't read commit history as a company health signal. This does.
+Bloomberg Terminal doesn't read commit history as a company health signal. FreshContext does.
 
 ---
 
@@ -183,17 +206,23 @@ touch ~/Library/Application\ Support/Claude/claude_desktop_config.json
 
 ## Usage examples
 
-**Is anyone already building what you're building?**
+**Should I build this idea?**
 ```
-Use extract_landscape with topic "cashflow prediction saas"
+Use extract_idea_landscape with idea "procurement intelligence saas"
 ```
-Returns who's funded, what's trending, what repos exist, what packages are moving — all timestamped.
+Returns funding signal, pain signal, crowding signal, market signal, ecosystem signal, and launch signal — all timestamped.
 
 **Full company intelligence in one call:**
 ```
 Use extract_company_landscape with company "Palantir" and ticker "PLTR"
 ```
 SEC filings + federal contracts + global news + changelog + market data. The complete picture.
+
+**Is anyone already building what you're building?**
+```
+Use extract_landscape with topic "cashflow prediction saas"
+```
+Returns who's funded, what's trending, what repos exist, what packages are moving — all timestamped.
 
 **What's Singapore's government procuring right now?**
 ```
@@ -207,17 +236,17 @@ Use extract_sec_filings with url "Palantir Technologies"
 ```
 8-K filings are legally mandated within 4 business days of any material event — CEO change, acquisition, breach, major contract.
 
-**What is global news saying about a company?**
+**What is global news saying about a company right now?**
 ```
 Use extract_gdelt with url "Palantir"
 ```
 100+ languages, every country, updated every 15 minutes. Surfaces what Western sources miss.
 
-**What's the community actually saying right now?**
+**Which companies just won US government contracts in AI?**
 ```
-Use extract_reddit on r/MachineLearning
-Use extract_hackernews to search "mcp server 2026"
+Use extract_govcontracts with url "artificial intelligence"
 ```
+Largest recent federal contract awards matching that keyword — company, amount, agency, award date.
 
 **Is this dependency still actively maintained?**
 ```
@@ -225,31 +254,21 @@ Use extract_changelog with url "https://github.com/org/repo"
 ```
 Returns the last 8 releases with exact dates. If the last release was 18 months ago, you'll know before you pin the version.
 
-**Which companies just won government contracts in AI?**
-```
-Use extract_govcontracts with url "artificial intelligence"
-```
-Largest recent federal contract awards matching that keyword — company, amount, agency, award date.
-
 ---
 
 ## How freshness works
 
 Most AI tools retrieve data silently. No timestamp, no signal, no way for the agent to know how old it is.
 
-freshcontext treats **retrieval time as first-class metadata**. Every adapter returns:
+FreshContext treats **retrieval time as first-class metadata**. Every adapter returns:
 
 - `retrieved_at` — exact ISO timestamp of the fetch
 - `content_date` — best estimate of when the content was originally published
 - `freshness_confidence` — `high`, `medium`, or `low` based on signal quality
-- `freshness_score` — numeric 0–100 score with domain-specific decay rates
+- `freshness_score` — numeric 0–100 with domain-specific decay rates (financial data decays faster than academic papers)
 - `adapter` — which source the data came from
 
-When confidence is `high`, the date came from a structured field (API, metadata). When it's `medium` or `low`, freshcontext tells you why.
-
-The FreshContext Specification v1.0 is published as an open standard under MIT license. Any tool or agent that wraps retrieved data in the `[FRESHCONTEXT]` envelope is FreshContext-compatible.
-
-→ [Read the spec](./FRESHCONTEXT_SPEC.md)
+When confidence is `high`, the date came from a structured field (API, metadata). When it's `medium` or `low`, FreshContext tells you why.
 
 ---
 
@@ -264,33 +283,33 @@ The FreshContext Specification v1.0 is published as an open standard under MIT l
 
 ## Roadmap
 
-- [x] GitHub, HN, Scholar, YC, Reddit, Product Hunt, Finance, arXiv, Jobs adapters
-- [x] `extract_landscape` — 6-source composite tool
+- [x] 20 tools across intelligence, competitive research, market data, and composites
 - [x] `extract_changelog` — update cadence from any repo, package, or website
 - [x] `extract_govcontracts` — US federal contract intelligence via USASpending.gov
 - [x] `extract_sec_filings` — SEC EDGAR 8-K material event filings
 - [x] `extract_gdelt` — GDELT global news intelligence (100+ languages)
 - [x] `extract_gebiz` — Singapore Government procurement via data.gov.sg
-- [x] `extract_gov_landscape` — gov contracts + HN + GitHub + changelog composite
-- [x] `extract_finance_landscape` — finance + HN + Reddit + GitHub + changelog composite
 - [x] `extract_company_landscape` — 5-source company intelligence composite
+- [x] `extract_idea_landscape` — 6-source idea validation composite
 - [x] `freshness_score` numeric metric (0–100) with domain-specific decay rates
-- [x] Cloudflare Workers deployment — global edge with KV caching
-- [x] D1 database — 18 watched queries running on 6-hour cron
+- [x] Cloudflare Workers deployment — global edge with KV caching and rate limiting
+- [x] D1 database — 18 watched queries running on 6-hour cron with relevancy scoring
 - [x] Listed on official MCP Registry
 - [x] Listed on Apify Store
-- [x] FreshContext Specification v1.0 published
+- [x] FreshContext Specification v1.0 published (MIT)
 - [x] GitHub Actions CI/CD — auto-publish to npm on every push
 - [ ] GKG upgrade for `extract_gdelt` — tone scores, goldstein scale, event codes
-- [ ] TTL-based caching layer
 - [ ] Dashboard — React frontend for the D1 intelligence pipeline
 - [ ] Synthesis endpoint — `/briefing/now` AI-generated intelligence briefings
+- [ ] `freshness_score` filtering on composite tools
 
 ---
 
 ## Contributing
 
 PRs welcome. New adapters are the highest-value contribution — see `src/adapters/` for the pattern and `FRESHCONTEXT_SPEC.md` for the contract any adapter must fulfill.
+
+If you're building something FreshContext-compatible, open an issue and we'll add you to the ecosystem list.
 
 ---
 
