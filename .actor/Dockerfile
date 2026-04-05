@@ -3,8 +3,11 @@ FROM apify/actor-node-playwright-chrome:20
 # Copy package files first for better Docker layer caching
 COPY package*.json ./
 
-# Install dependencies — Playwright and Chromium already in base image
+# Install dependencies
 RUN npm install --include=dev
+
+# Install Chromium matching the npm-installed Playwright version
+RUN npx playwright install chromium
 
 # Copy source and pre-built dist
 COPY . ./
