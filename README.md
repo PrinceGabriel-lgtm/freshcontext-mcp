@@ -31,7 +31,7 @@ Confidence: high
 
 **When** it was retrieved. **Where** it came from. **How confident** we are the date is accurate.
 
-The FreshContext Specification v1.0 is published as an open standard under MIT license. Any tool, agent, or system that wraps retrieved data in this envelope is FreshContext-compatible. → [Read the spec](./FRESHCONTEXT_SPEC.md)
+The FreshContext Specification v1.1 is published as an open standard under MIT license. Any tool, agent, or system that wraps retrieved data in this envelope is FreshContext-compatible. → [Read the spec](./FRESHCONTEXT_SPEC.md)
 
 ---
 
@@ -265,7 +265,7 @@ FreshContext treats **retrieval time as first-class metadata**. Every adapter re
 - `retrieved_at` — exact ISO timestamp of the fetch
 - `content_date` — best estimate of when the content was originally published
 - `freshness_confidence` — `high`, `medium`, or `low` based on signal quality
-- `freshness_score` — numeric 0–100 with domain-specific decay rates (financial data decays faster than academic papers)
+- `freshness_score` — numeric 0–100 with domain-specific decay rates (financial data at 5.0, academic papers at 0.3)
 - `adapter` — which source the data came from
 
 When confidence is `high`, the date came from a structured field (API, metadata). When it's `medium` or `low`, FreshContext tells you why.
@@ -296,7 +296,7 @@ When confidence is `high`, the date came from a structured field (API, metadata)
 - [x] D1 database — 18 watched queries running on 6-hour cron with relevancy scoring
 - [x] Listed on official MCP Registry
 - [x] Listed on Apify Store
-- [x] FreshContext Specification v1.0 published (MIT)
+- [x] FreshContext Specification v1.1 published (MIT) — composite adapters, decay rate table, compatibility levels
 - [x] GitHub Actions CI/CD — auto-publish to npm on every push
 - [ ] GKG upgrade for `extract_gdelt` — tone scores, goldstein scale, event codes
 - [ ] Dashboard — React frontend for the D1 intelligence pipeline
@@ -321,3 +321,7 @@ MIT
 
 *Built by Prince Gabriel — Grootfontein, Namibia 🇳🇦*
 *"The work isn't gone. It's just waiting to be continued."*
+
+---
+
+**Also on:** [Apify Store](https://apify.com/prince_gabriel/freshcontext-mcp) · [MCP Registry](https://registry.modelcontextprotocol.io) · [npm](https://www.npmjs.com/package/freshcontext-mcp)
