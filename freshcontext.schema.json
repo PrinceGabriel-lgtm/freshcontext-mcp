@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://freshcontext-site.pages.dev/freshcontext.schema.json",
+  "title": "FreshContext",
+  "description": "The FreshContext Specification v1.1 — structured envelope for AI-retrieved web data. https://github.com/PrinceGabriel-lgtm/freshcontext-mcp",
+  "type": "object",
+  "required": ["freshcontext"],
+  "properties": {
+    "freshcontext": {
+      "type": "object",
+      "description": "The freshness metadata envelope for a single retrieved result.",
+      "required": ["source_url", "retrieved_at", "freshness_confidence", "adapter"],
+      "properties": {
+        "source_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "The canonical URL of the original source from which content was retrieved."
+        },
+        "content_date": {
+          "type": ["string", "null"],
+          "description": "Best estimate of when the content was originally published. ISO 8601 date (YYYY-MM-DD) or ISO 8601 datetime. Null if unknown.",
+          "examples": ["2026-03-05", "2026-03-05T09:19:00.000Z", null]
+        },
+        "retrieved_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Exact ISO 8601 datetime (with timezone) when this data was fetched.",
+          "examples": ["2026-04-05T09:19:00.000Z"]
+        },
+        "freshness_confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low"],
+          "description": "Confidence level of the content_date estimate. 'high' = structured API field. 'medium' = inferred from page signals. 'low' = unknown or estimated."
+        },
+        "freshness_score": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Optional numeric freshness score 0-100. Calculated as: max(0, 100 - (days_since_retrieved * decay_rate)). Null if content_date is unknown.",
+          "examples": [94, 72, 45, null]
+        },
+        "adapter": {
+          "type": "string",
+          "description": "Identifier of the adapter (data source) that produced this result.",
+          "examples": [
+            "github",
+            "hackernews",
+            "google_scholar",
+            "arxiv",
+            "reddit",
+            "ycombinator",
+            "producthunt",
+            "github_search",
+            "package_registry",
+            "finance",
+            "jobs",
+            "changelog",
+            "govcontracts",
+            "sec_filings",
+            "gdelt",
+            "gebiz"
+          ]
+        },
+        "decay_rate": {
+          "type": ["number", "null"],
+          "description": "The decay rate used to calculate freshness_score. Domain-specific. Financial=5.0, jobs=3.0, news=2.0, github=1.0, academic=0.3, default=1.5.",
+          "examples": [5.0, 3.0, 2.0, 1.5, 1.0, 0.3, null]
+        }
+      },
+      "additionalProperties": false
+    },
+    "content": {
+      "type": "string",
+      "description": "The retrieved content — raw text, structured data, or formatted output from the adapter."
+    }
+  },
+  "examples": [
+    {
+      "freshcontext": {
+        "source_url": "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp",
+        "content_date": "2026-04-05",
+        "retrieved_at": "2026-04-05T09:19:00.000Z",
+        "freshness_confidence": "high",
+        "freshness_score": 94,
+        "adapter": "github",
+        "decay_rate": 1.0
+      },
+      "content": "freshcontext-mcp — Real-time web intelligence for AI agents..."
+    },
+    {
+      "freshcontext": {
+        "source_url": "https://efts.sec.gov/LATEST/search-index?q=Palantir&forms=8-K",
+        "content_date": "2026-02-03",
+        "retrieved_at": "2026-04-05T09:19:00.000Z",
+        "freshness_confidence": "high",
+        "freshness_score": 38,
+        "adapter": "sec_filings",
+        "decay_rate": 1.5
+      },
+      "content": "Palantir Technologies — 8-K filing: Q4 2025 earnings..."
+    }
+  ]
+}

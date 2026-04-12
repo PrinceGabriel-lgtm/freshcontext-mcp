@@ -164,6 +164,31 @@ server.registerTool(
   }
 );
 
+// ─── Shared freshness filter for composite tools ────────────────────────────
+// Used by all 5 composite tools to implement min_freshness_score filtering.
+// When a section's freshness score falls below the threshold, it's replaced
+// with a staleness warning rather than omitted — preserving output structure.
+type AdapterResultRaw = { raw: string; content_date: string | null; freshness_confidence: string };
+
+function sectionWithFreshnessCheck(
+  label: string,
+  result: PromiseSettledResult<AdapterResultRaw>,
+  adapterName: string,
+  minScore?: number,
+  errorWord = "Unavailable"
+): string {
+  if (result.status !== "fulfilled") {
+    return `## ${label}\n[${errorWord}: ${(result as PromiseRejectedResult).reason}]`;
+  }
+  if (minScore !== undefined && minScore > 0) {
+    const ctx = stampFreshness(result.value, { url: "", maxLength: 0 }, adapterName);
+    if (ctx.freshness_score !== null && ctx.freshness_score < minScore) {
+      return `## ${label}\n[Stale — freshness_score: ${ctx.freshness_score}/100 is below min_freshness_score threshold of ${minScore}. Content date: ${result.value.content_date ?? "unknown"}. Re-query for fresher data.]`;
+    }
+  }
+  return `## ${label}\n${result.value.raw}`;
+}
+
 // ─── Tool: extract_landscape ─────────────────────────────────────────────────
 server.registerTool(
   "extract_landscape",
