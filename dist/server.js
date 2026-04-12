@@ -9,10 +9,14 @@ import { ycAdapter } from "./adapters/yc.js";
 import { repoSearchAdapter } from "./adapters/repoSearch.js";
 import { packageTrendsAdapter } from "./adapters/packageTrends.js";
 import { redditAdapter } from "./adapters/reddit.js";
+import { productHuntAdapter } from "./adapters/productHunt.js";
 import { financeAdapter } from "./adapters/finance.js";
 import { jobsAdapter } from "./adapters/jobs.js";
 import { changelogAdapter } from "./adapters/changelog.js";
 import { govContractsAdapter } from "./adapters/govcontracts.js";
+import { secFilingsAdapter } from "./adapters/secFilings.js";
+import { gdeltAdapter } from "./adapters/gdelt.js";
+import { gebizAdapter } from "./adapters/gebiz.js";
 import { stampFreshness, formatForLLM } from "./tools/freshnessStamp.js";
 import { formatSecurityError } from "./security.js";
 const server = new McpServer({
@@ -127,6 +131,18 @@ server.registerTool("package_trends", {
         return { content: [{ type: "text", text: formatSecurityError(err) }] };
     }
 });
+function sectionWithFreshnessCheck(label, result, adapterName, minScore, errorWord = "Unavailable") {
+    if (result.status !== "fulfilled") {
+        return `## ${label}\n[${errorWord}: ${result.reason}]`;
+    }
+    if (minScore !== undefined && minScore > 0) {
+        const ctx = stampFreshness(result.value, { url: "", maxLength: 0 }, adapterName);
+        if (ctx.freshness_score !== null && ctx.freshness_score < minScore) {
+            return `## ${label}\n[Stale — freshness_score: ${ctx.freshness_score}/100 is below min_freshness_score threshold of ${minScore}. Content date: ${result.value.content_date ?? "unknown"}. Re-query for fresher data.]`;
+        }
+    }
+    return `## ${label}\n${result.value.raw}`;
+}
 // ─── Tool: extract_landscape ─────────────────────────────────────────────────
 server.registerTool("extract_landscape", {
     description: "Composite intelligence tool. Given a project idea or keyword, simultaneously queries YC startups, GitHub repos, HN, Reddit, Product Hunt, and package registries to answer: Who is building this? Is it funded? What's getting traction? Returns a unified 6-source timestamped landscape report.",
@@ -233,37 +249,31 @@ server.registerTool("extract_gov_landscape", {
         query: z.string().describe("Company name (e.g. 'Palantir'), keyword (e.g. 'artificial intelligence'), or NAICS code (e.g. '541511'). For GitHub and changelog sections, also optionally provide a GitHub URL."),
         github_url: z.string().optional().describe("Optional GitHub repo URL for the company (e.g. 'https://github.com/palantir/palantir-java-format'). If omitted, GitHub and changelog sections use the query as a search term."),
         max_length: z.number().optional().default(12000),
+        min_freshness_score: z.number().optional().describe("Filter sections below this freshness_score (0–100). E.g. 70 = only recently retrieved data."),
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
-}, async ({ query, github_url, max_length }) => {
+}, async ({ query, github_url, max_length, min_freshness_score }) => {
     const perSection = Math.floor((max_length ?? 12000) / 4);
-    // All four sources fire in parallel — if one fails the others still return
     const [contractsResult, hnResult, repoResult, changelogResult] = await Promise.allSettled([
-        // 1. The anchor: who is actually winning federal money in this space
         govContractsAdapter({ url: query, maxLength: perSection }),
-        // 2. Dev community signal: does anyone in tech know about these companies
         hackerNewsAdapter({
             url: `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=10`,
             maxLength: perSection,
         }),
-        // 3. GitHub activity: are they actually building, or contract farmers
         repoSearchAdapter({ url: github_url ?? query, maxLength: perSection }),
-        // 4. Release velocity: how fast are they shipping product
         changelogAdapter({ url: github_url ?? query, maxLength: perSection }),
     ]);
-    const section = (label, result) => result.status === "fulfilled"
-        ? `## ${label}\n${result.value.raw}`
-        : `## ${label}\n[Unavailable: ${result.reason}]`;
     const combined = [
         `# Government Intelligence Landscape: "${query}"`,
         `Generated: ${new Date().toISOString()}`,
         `Sources: USASpending.gov · Hacker News · GitHub · Changelog`,
+        min_freshness_score ? `min_freshness_score: ${min_freshness_score}` : null,
         "",
-        section("🏛️ Federal Contract Awards (USASpending.gov)", contractsResult),
-        section("💬 Developer Community Awareness (Hacker News)", hnResult),
-        section("📦 GitHub Repository Activity", repoResult),
-        section("🔄 Product Release Velocity (Changelog)", changelogResult),
-    ].join("\n\n");
+        sectionWithFreshnessCheck("🏛️ Federal Contract Awards (USASpending.gov)", contractsResult, "govcontracts", min_freshness_score),
+        sectionWithFreshnessCheck("💬 Developer Community Awareness (Hacker News)", hnResult, "hackernews", min_freshness_score),
+        sectionWithFreshnessCheck("📦 GitHub Repository Activity", repoResult, "github_search", min_freshness_score),
+        sectionWithFreshnessCheck("🔄 Product Release Velocity (Changelog)", changelogResult, "changelog", min_freshness_score),
+    ].filter(Boolean).join("\n\n");
     return { content: [{ type: "text", text: combined }] };
 });
 // ─── Tool: extract_finance_landscape ─────────────────────────────────────────
@@ -278,43 +288,192 @@ server.registerTool("extract_finance_landscape", {
         company_name: z.string().optional().describe("Company name for HN/Reddit/GitHub searches e.g. 'Palantir'. If omitted, derived from the ticker."),
         github_query: z.string().optional().describe("GitHub search query or repo URL for the company's tech ecosystem e.g. 'palantir' or 'https://github.com/palantir/foundry'. If omitted, uses company_name."),
         max_length: z.number().optional().default(12000),
+        min_freshness_score: z.number().optional().describe("Filter sections below this freshness_score (0–100). E.g. 70 = only recently retrieved data."),
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
-}, async ({ tickers, company_name, github_query, max_length }) => {
+}, async ({ tickers, company_name, github_query, max_length, min_freshness_score }) => {
     const perSection = Math.floor((max_length ?? 12000) / 5);
-    // Derive a search term: prefer explicit company_name, fall back to first ticker
     const searchTerm = company_name ?? tickers.split(",")[0].trim();
     const repoQuery = github_query ?? searchTerm;
-    // All five sources fire in parallel
     const [priceResult, hnResult, redditResult, repoResult, changelogResult] = await Promise.allSettled([
-        // 1. The anchor: live price, market cap, P/E, 52w range
         financeAdapter({ url: tickers, maxLength: perSection }),
-        // 2. Developer sentiment: what engineers think of this company's tech
         hackerNewsAdapter({
             url: `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(searchTerm)}&tags=story&hitsPerPage=10`,
             maxLength: perSection,
         }),
-        // 3. Broader community: investor and tech community discussion on Reddit
         redditAdapter({ url: `https://www.reddit.com/search.json?q=${encodeURIComponent(searchTerm)}&sort=new&limit=15`, maxLength: perSection }),
-        // 4. Repo ecosystem: how many GitHub projects orbit this company's technology
         repoSearchAdapter({ url: repoQuery, maxLength: perSection }),
-        // 5. Release velocity: is the company actually shipping product right now
         changelogAdapter({ url: repoQuery, maxLength: perSection }),
     ]);
-    const section = (label, result) => result.status === "fulfilled"
-        ? `## ${label}\n${result.value.raw}`
-        : `## ${label}\n[Unavailable: ${result.reason}]`;
     const combined = [
         `# Finance + Developer Intelligence: "${tickers}"${company_name ? ` (${company_name})` : ""}`,
         `Generated: ${new Date().toISOString()}`,
         `Sources: Yahoo Finance · Hacker News · Reddit · GitHub · Changelog`,
+        min_freshness_score ? `min_freshness_score: ${min_freshness_score}` : null,
         "",
-        section("📈 Market Data (Yahoo Finance)", priceResult),
-        section("💬 Developer Sentiment (Hacker News)", hnResult),
-        section("🗣️ Community Discussion (Reddit)", redditResult),
-        section("📦 Repo Ecosystem (GitHub)", repoResult),
-        section("🔄 Product Release Velocity (Changelog)", changelogResult),
-    ].join("\n\n");
+        sectionWithFreshnessCheck("📈 Market Data (Yahoo Finance)", priceResult, "finance", min_freshness_score),
+        sectionWithFreshnessCheck("💬 Developer Sentiment (Hacker News)", hnResult, "hackernews", min_freshness_score),
+        sectionWithFreshnessCheck("🗣️ Community Discussion (Reddit)", redditResult, "reddit", min_freshness_score),
+        sectionWithFreshnessCheck("📦 Repo Ecosystem (GitHub)", repoResult, "github_search", min_freshness_score),
+        sectionWithFreshnessCheck("🔄 Product Release Velocity (Changelog)", changelogResult, "changelog", min_freshness_score),
+    ].filter(Boolean).join("\n\n");
+    return { content: [{ type: "text", text: combined }] };
+});
+// ─── Tool: extract_sec_filings ─────────────────────────────────────────────
+// 8-K filings = legally mandated material event disclosures. CEO changes,
+// acquisitions, breaches, major contracts, regulatory actions — all filed
+// within 4 business days. Most reliable early-warning corporate signal in existence.
+// Unique: no other MCP server has this.
+server.registerTool("extract_sec_filings", {
+    description: "Fetch SEC 8-K filings for any public company from the SEC EDGAR full-text search API. 8-K filings are legally mandated disclosures of material corporate events — CEO changes, acquisitions, data breaches, major contracts, regulatory actions — filed within 4 business days. Free, no auth, real-time. Pass a company name, ticker, or keyword. Unique: not available in any other MCP server.",
+    inputSchema: z.object({
+        url: z.string().describe("Company name, ticker, or keyword e.g. 'Palantir', 'PLTR', 'artificial intelligence'"),
+        max_length: z.number().optional().default(6000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+}, async ({ url, max_length }) => {
+    try {
+        const result = await secFilingsAdapter({ url, maxLength: max_length });
+        const ctx = stampFreshness(result, { url, maxLength: max_length }, "sec_filings");
+        return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    }
+    catch (err) {
+        return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
+});
+// ─── Tool: extract_gdelt ─────────────────────────────────────────────────────
+// GDELT monitors news from every country in 100+ languages, updated every 15 min.
+// Returns structured global news intelligence — not just headlines but event
+// codes, actor tags, tone scores, goldstein scale (impact), location, timestamp.
+// Unique: no other MCP server has this.
+server.registerTool("extract_gdelt", {
+    description: "Fetch global news intelligence from the GDELT Project. GDELT monitors broadcast, print, and web news from every country in 100+ languages, updated every 15 minutes. Returns articles with title, source domain, country of origin, language, and publication date — covering news worldwide that Western sources miss. Free, no auth. Pass any company name, topic, or keyword. Unique: not available in any other MCP server.",
+    inputSchema: z.object({
+        url: z.string().describe("Query: company name, topic, or keyword e.g. 'Palantir', 'artificial intelligence', 'MCP server'"),
+        max_length: z.number().optional().default(6000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+}, async ({ url, max_length }) => {
+    try {
+        const result = await gdeltAdapter({ url, maxLength: max_length });
+        const ctx = stampFreshness(result, { url, maxLength: max_length }, "gdelt");
+        return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    }
+    catch (err) {
+        return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
+});
+// ─── Tool: extract_company_landscape ─────────────────────────────────────────
+// The most complete single-call company intelligence available in any MCP server.
+// 5 moat sources: SEC 8-K legal disclosures + federal contract footprint +
+// global news intelligence + product release velocity + market pricing.
+// Unique: this combination exists nowhere else.
+server.registerTool("extract_company_landscape", {
+    description: "Composite company intelligence tool. The most complete single-call company analysis available. Simultaneously queries 5 unique sources: (1) SEC EDGAR for 8-K material event filings — what the company legally just disclosed, (2) USASpending.gov for federal contract footprint — who is giving them government money, (3) GDELT for global news intelligence — what the world is saying about them right now, (4) their product changelog — are they actually shipping, (5) Yahoo Finance — what the market is pricing in. Returns a unified 5-source timestamped report. Unique: this combination is not available in any other MCP server.",
+    inputSchema: z.object({
+        company: z.string().describe("Company name e.g. 'Palantir', 'Anthropic', 'OpenAI'"),
+        ticker: z.string().optional().describe("Stock ticker for finance data e.g. 'PLTR'. Leave blank for private companies."),
+        github_url: z.string().optional().describe("Optional GitHub repo or org URL e.g. 'https://github.com/palantir'. Improves changelog accuracy."),
+        max_length: z.number().optional().default(15000),
+        min_freshness_score: z.number().optional().describe("Filter sections below this freshness_score (0–100). E.g. 70 = only recently retrieved data."),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+}, async ({ company, ticker, github_url, max_length, min_freshness_score }) => {
+    const perSection = Math.floor((max_length ?? 15000) / 5);
+    const repoQuery = github_url ?? company;
+    const [secResult, contractsResult, gdeltResult, changelogResult, financeResult] = await Promise.allSettled([
+        secFilingsAdapter({ url: company, maxLength: perSection }),
+        govContractsAdapter({ url: company, maxLength: perSection }),
+        gdeltAdapter({ url: company, maxLength: perSection }),
+        changelogAdapter({ url: repoQuery, maxLength: perSection }),
+        financeAdapter({ url: ticker ?? company, maxLength: perSection }),
+    ]);
+    const combined = [
+        `# Company Intelligence Landscape: "${company}"${ticker ? ` (${ticker})` : ""}`,
+        `Generated: ${new Date().toISOString()}`,
+        `Sources: SEC EDGAR · USASpending.gov · GDELT · Changelog · Yahoo Finance`,
+        min_freshness_score ? `min_freshness_score: ${min_freshness_score}` : null,
+        "",
+        sectionWithFreshnessCheck("📋 SEC 8-K Filings — Legal Disclosures", secResult, "sec_filings", min_freshness_score),
+        sectionWithFreshnessCheck("🏛️ Federal Contract Awards (USASpending.gov)", contractsResult, "govcontracts", min_freshness_score),
+        sectionWithFreshnessCheck("🌍 Global News Intelligence (GDELT)", gdeltResult, "gdelt", min_freshness_score),
+        sectionWithFreshnessCheck("🔄 Product Release Velocity (Changelog)", changelogResult, "changelog", min_freshness_score),
+        sectionWithFreshnessCheck("📈 Market Data (Yahoo Finance)", financeResult, "finance", min_freshness_score),
+    ].filter(Boolean).join("\n\n");
+    return { content: [{ type: "text", text: combined }] };
+});
+// ─── Tool: extract_gebiz ────────────────────────────────────────────────────
+// Singapore Government procurement tenders via data.gov.sg open API.
+// Ministry of Finance official dataset — all open tenders since FY2020.
+// Free, no auth, structured. Unique: no other MCP server has this.
+server.registerTool("extract_gebiz", {
+    description: "Fetch Singapore Government procurement opportunities from GeBIZ via the data.gov.sg open API (Ministry of Finance official dataset). Returns open tenders, awarded contracts, agencies, amounts, and closing dates. Search by keyword (e.g. 'software', 'AI', 'data analytics'), agency name (e.g. 'GovTech', 'MOH'), or leave blank for all recent tenders. Free, no auth. Unique: not available in any other MCP server.",
+    inputSchema: z.object({
+        url: z.string().describe("Search keyword, agency name, or leave empty for all recent tenders. E.g. 'artificial intelligence', 'GovTech', 'cybersecurity'"),
+        max_length: z.number().optional().default(6000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+}, async ({ url, max_length }) => {
+    try {
+        const result = await gebizAdapter({ url, maxLength: max_length });
+        const ctx = stampFreshness(result, { url, maxLength: max_length }, "gebiz");
+        return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    }
+    catch (err) {
+        return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
+});
+// ─── Tool: extract_idea_landscape ───────────────────────────────────────────
+// Idea validation composite — 6 sources that answer: should I build this?
+// HN pain points + YC funded competitors + GitHub crowding + job market signal
+// + package ecosystem adoption + Product Hunt recent launches.
+// The job market section is the key differentiator — companies paying salaries
+// around a problem is the strongest signal a real market exists.
+server.registerTool("extract_idea_landscape", {
+    description: "Idea validation composite tool for developers and founders. Given a project idea or keyword, simultaneously queries 6 sources to answer: Is this problem real? Is the market crowded? Is there funding? Are companies hiring? What just launched? Sources: (1) Hacker News — what developers are actively complaining about and discussing, (2) YC companies — who has already received funding in this space, (3) GitHub repos — how crowded the open source landscape is, (4) Job listings — hiring signal showing real company spend around this problem, (5) npm/PyPI package trends — ecosystem adoption and velocity, (6) Product Hunt — what just launched and how it was received. Returns a unified 6-source idea validation report.",
+    inputSchema: z.object({
+        idea: z.string().describe("Your idea, problem space, or keyword. E.g. 'data freshness for AI agents', 'procurement intelligence', 'developer observability'"),
+        max_length: z.number().optional().default(14000),
+        min_freshness_score: z.number().optional().describe("Filter sections below this freshness_score (0–100). E.g. 70 = only recently retrieved data."),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+}, async ({ idea, max_length, min_freshness_score }) => {
+    const perSection = Math.floor((max_length ?? 14000) / 6);
+    const [hnResult, ycResult, repoResult, jobsResult, pkgResult, phResult] = await Promise.allSettled([
+        hackerNewsAdapter({
+            url: `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(idea)}&tags=story&hitsPerPage=10`,
+            maxLength: perSection,
+        }),
+        ycAdapter({
+            url: `https://www.ycombinator.com/companies?query=${encodeURIComponent(idea)}`,
+            maxLength: perSection,
+        }),
+        repoSearchAdapter({ url: idea, maxLength: perSection }),
+        jobsAdapter({ url: idea, maxLength: perSection }),
+        packageTrendsAdapter({ url: idea, maxLength: perSection }),
+        productHuntAdapter({ url: idea, maxLength: perSection }),
+    ]);
+    const combined = [
+        `# Idea Validation Landscape: "${idea}"`,
+        `Generated: ${new Date().toISOString()}`,
+        `Sources: Hacker News · YC Companies · GitHub · Job Listings · npm/PyPI · Product Hunt`,
+        min_freshness_score ? `min_freshness_score: ${min_freshness_score}` : null,
+        "",
+        `## ℹ️ How to read this report`,
+        `Pain signal (HN): Are developers actively discussing this problem?`,
+        `Funding signal (YC): Has this already attracted institutional money?`,
+        `Crowding signal (GitHub): How many repos exist — empty = opportunity, crowded = validation.`,
+        `Market signal (Jobs): Companies hiring around this = real budget allocated = real market.`,
+        `Ecosystem signal (npm/PyPI): Are packages being built and adopted?`,
+        `Launch signal (Product Hunt): What just shipped — community reception and timing.`,
+        "",
+        sectionWithFreshnessCheck("🗣️ Pain Signal — Developer Discussions (Hacker News)", hnResult, "hackernews", min_freshness_score),
+        sectionWithFreshnessCheck("💰 Funding Signal — Backed Companies (YC)", ycResult, "ycombinator", min_freshness_score),
+        sectionWithFreshnessCheck("📦 Crowding Signal — Open Source Landscape (GitHub)", repoResult, "github_search", min_freshness_score),
+        sectionWithFreshnessCheck("💼 Market Signal — Hiring Activity (Job Listings)", jobsResult, "jobs", min_freshness_score),
+        sectionWithFreshnessCheck("🔧 Ecosystem Signal — Package Adoption (npm/PyPI)", pkgResult, "package_registry", min_freshness_score),
+        sectionWithFreshnessCheck("🚀 Launch Signal — Recent Launches (Product Hunt)", phResult, "producthunt", min_freshness_score),
+    ].filter(Boolean).join("\n\n");
     return { content: [{ type: "text", text: combined }] };
 });
 // ─── Start ───────────────────────────────────────────────────────────────────

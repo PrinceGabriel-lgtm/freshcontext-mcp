@@ -168,7 +168,7 @@ server.registerTool(
 // Used by all 5 composite tools to implement min_freshness_score filtering.
 // When a section's freshness score falls below the threshold, it's replaced
 // with a staleness warning rather than omitted — preserving output structure.
-type AdapterResultRaw = { raw: string; content_date: string | null; freshness_confidence: string };
+type AdapterResultRaw = { raw: string; content_date: string | null; freshness_confidence: "high" | "medium" | "low" };
 
 function sectionWithFreshnessCheck(
   label: string,
@@ -332,45 +332,34 @@ server.registerTool(
         "Optional GitHub repo URL for the company (e.g. 'https://github.com/palantir/palantir-java-format'). If omitted, GitHub and changelog sections use the query as a search term."
       ),
       max_length: z.number().optional().default(12000),
+      min_freshness_score: z.number().optional().describe("Filter sections below this freshness_score (0–100). E.g. 70 = only recently retrieved data."),
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
-  async ({ query, github_url, max_length }) => {
+  async ({ query, github_url, max_length, min_freshness_score }) => {
     const perSection = Math.floor((max_length ?? 12000) / 4);
 
-    // All four sources fire in parallel — if one fails the others still return
     const [contractsResult, hnResult, repoResult, changelogResult] = await Promise.allSettled([
-      // 1. The anchor: who is actually winning federal money in this space
       govContractsAdapter({ url: query, maxLength: perSection }),
-      // 2. Dev community signal: does anyone in tech know about these companies
       hackerNewsAdapter({
         url: `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=10`,
         maxLength: perSection,
       }),
-      // 3. GitHub activity: are they actually building, or contract farmers
       repoSearchAdapter({ url: github_url ?? query, maxLength: perSection }),
-      // 4. Release velocity: how fast are they shipping product
       changelogAdapter({ url: github_url ?? query, maxLength: perSection }),
     ]);
-
-    const section = (
-      label: string,
-      result: PromiseSettledResult<{ raw: string; content_date: string | null; freshness_confidence: string }>
-    ) =>
-      result.status === "fulfilled"
-        ? `## ${label}\n${result.value.raw}`
-        : `## ${label}\n[Unavailable: ${(result as PromiseRejectedResult).reason}]`;
 
     const combined = [
       `# Government Intelligence Landscape: "${query}"`,
       `Generated: ${new Date().toISOString()}`,
       `Sources: USASpending.gov · Hacker News · GitHub · Changelog`,
+      min_freshness_score ? `min_freshness_score: ${min_freshness_score}` : null,
       "",
-      section("🏛️ Federal Contract Awards (USASpending.gov)", contractsResult),
-      section("💬 Developer Community Awareness (Hacker News)", hnResult),
-      section("📦 GitHub Repository Activity", repoResult),
-      section("🔄 Product Release Velocity (Changelog)", changelogResult),
-    ].join("\n\n");
+      sectionWithFreshnessCheck("🏛️ Federal Contract Awards (USASpending.gov)", contractsResult, "govcontracts", min_freshness_score),
+      sectionWithFreshnessCheck("💬 Developer Community Awareness (Hacker News)", hnResult, "hackernews", min_freshness_score),
+      sectionWithFreshnessCheck("📦 GitHub Repository Activity", repoResult, "github_search", min_freshness_score),
+      sectionWithFreshnessCheck("🔄 Product Release Velocity (Changelog)", changelogResult, "changelog", min_freshness_score),
+    ].filter(Boolean).join("\n\n");
 
     return { content: [{ type: "text", text: combined }] };
   }
@@ -397,51 +386,38 @@ server.registerTool(
         "GitHub search query or repo URL for the company's tech ecosystem e.g. 'palantir' or 'https://github.com/palantir/foundry'. If omitted, uses company_name."
       ),
       max_length: z.number().optional().default(12000),
+      min_freshness_score: z.number().optional().describe("Filter sections below this freshness_score (0–100). E.g. 70 = only recently retrieved data."),
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
-  async ({ tickers, company_name, github_query, max_length }) => {
+  async ({ tickers, company_name, github_query, max_length, min_freshness_score }) => {
     const perSection = Math.floor((max_length ?? 12000) / 5);
-    // Derive a search term: prefer explicit company_name, fall back to first ticker
     const searchTerm = company_name ?? tickers.split(",")[0].trim();
     const repoQuery = github_query ?? searchTerm;
 
-    // All five sources fire in parallel
     const [priceResult, hnResult, redditResult, repoResult, changelogResult] = await Promise.allSettled([
-      // 1. The anchor: live price, market cap, P/E, 52w range
       financeAdapter({ url: tickers, maxLength: perSection }),
-      // 2. Developer sentiment: what engineers think of this company's tech
       hackerNewsAdapter({
         url: `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(searchTerm)}&tags=story&hitsPerPage=10`,
         maxLength: perSection,
       }),
-      // 3. Broader community: investor and tech community discussion on Reddit
       redditAdapter({ url: `https://www.reddit.com/search.json?q=${encodeURIComponent(searchTerm)}&sort=new&limit=15`, maxLength: perSection }),
-      // 4. Repo ecosystem: how many GitHub projects orbit this company's technology
       repoSearchAdapter({ url: repoQuery, maxLength: perSection }),
-      // 5. Release velocity: is the company actually shipping product right now
       changelogAdapter({ url: repoQuery, maxLength: perSection }),
     ]);
-
-    const section = (
-      label: string,
-      result: PromiseSettledResult<{ raw: string; content_date: string | null; freshness_confidence: string }>
-    ) =>
-      result.status === "fulfilled"
-        ? `## ${label}\n${result.value.raw}`
-        : `## ${label}\n[Unavailable: ${(result as PromiseRejectedResult).reason}]`;
 
     const combined = [
       `# Finance + Developer Intelligence: "${tickers}"${company_name ? ` (${company_name})` : ""}`,
       `Generated: ${new Date().toISOString()}`,
       `Sources: Yahoo Finance · Hacker News · Reddit · GitHub · Changelog`,
+      min_freshness_score ? `min_freshness_score: ${min_freshness_score}` : null,
       "",
-      section("📈 Market Data (Yahoo Finance)", priceResult),
-      section("💬 Developer Sentiment (Hacker News)", hnResult),
-      section("🗣️ Community Discussion (Reddit)", redditResult),
-      section("📦 Repo Ecosystem (GitHub)", repoResult),
-      section("🔄 Product Release Velocity (Changelog)", changelogResult),
-    ].join("\n\n");
+      sectionWithFreshnessCheck("📈 Market Data (Yahoo Finance)", priceResult, "finance", min_freshness_score),
+      sectionWithFreshnessCheck("💬 Developer Sentiment (Hacker News)", hnResult, "hackernews", min_freshness_score),
+      sectionWithFreshnessCheck("🗣️ Community Discussion (Reddit)", redditResult, "reddit", min_freshness_score),
+      sectionWithFreshnessCheck("📦 Repo Ecosystem (GitHub)", repoResult, "github_search", min_freshness_score),
+      sectionWithFreshnessCheck("🔄 Product Release Velocity (Changelog)", changelogResult, "changelog", min_freshness_score),
+    ].filter(Boolean).join("\n\n");
 
     return { content: [{ type: "text", text: combined }] };
   }
@@ -522,45 +498,34 @@ server.registerTool(
         "Optional GitHub repo or org URL e.g. 'https://github.com/palantir'. Improves changelog accuracy."
       ),
       max_length: z.number().optional().default(15000),
+      min_freshness_score: z.number().optional().describe("Filter sections below this freshness_score (0–100). E.g. 70 = only recently retrieved data."),
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
-  async ({ company, ticker, github_url, max_length }) => {
+  async ({ company, ticker, github_url, max_length, min_freshness_score }) => {
     const perSection = Math.floor((max_length ?? 15000) / 5);
     const repoQuery = github_url ?? company;
 
     const [secResult, contractsResult, gdeltResult, changelogResult, financeResult] = await Promise.allSettled([
-      // 1. What did they legally just disclose
       secFilingsAdapter({ url: company, maxLength: perSection }),
-      // 2. Who is giving them government money
       govContractsAdapter({ url: company, maxLength: perSection }),
-      // 3. What is global news saying right now
       gdeltAdapter({ url: company, maxLength: perSection }),
-      // 4. Are they actually shipping product
       changelogAdapter({ url: repoQuery, maxLength: perSection }),
-      // 5. What is the market pricing in
       financeAdapter({ url: ticker ?? company, maxLength: perSection }),
     ]);
-
-    const section = (
-      label: string,
-      result: PromiseSettledResult<{ raw: string; content_date: string | null; freshness_confidence: string }>
-    ) =>
-      result.status === "fulfilled"
-        ? `## ${label}\n${result.value.raw}`
-        : `## ${label}\n[Unavailable: ${(result as PromiseRejectedResult).reason}]`;
 
     const combined = [
       `# Company Intelligence Landscape: "${company}"${ticker ? ` (${ticker})` : ""}`,
       `Generated: ${new Date().toISOString()}`,
       `Sources: SEC EDGAR · USASpending.gov · GDELT · Changelog · Yahoo Finance`,
+      min_freshness_score ? `min_freshness_score: ${min_freshness_score}` : null,
       "",
-      section("📋 SEC 8-K Filings — Legal Disclosures", secResult),
-      section("🏛️ Federal Contract Awards (USASpending.gov)", contractsResult),
-      section("🌍 Global News Intelligence (GDELT)", gdeltResult),
-      section("🔄 Product Release Velocity (Changelog)", changelogResult),
-      section("📈 Market Data (Yahoo Finance)", financeResult),
-    ].join("\n\n");
+      sectionWithFreshnessCheck("📋 SEC 8-K Filings — Legal Disclosures", secResult, "sec_filings", min_freshness_score),
+      sectionWithFreshnessCheck("🏛️ Federal Contract Awards (USASpending.gov)", contractsResult, "govcontracts", min_freshness_score),
+      sectionWithFreshnessCheck("🌍 Global News Intelligence (GDELT)", gdeltResult, "gdelt", min_freshness_score),
+      sectionWithFreshnessCheck("🔄 Product Release Velocity (Changelog)", changelogResult, "changelog", min_freshness_score),
+      sectionWithFreshnessCheck("📈 Market Data (Yahoo Finance)", financeResult, "finance", min_freshness_score),
+    ].filter(Boolean).join("\n\n");
 
     return { content: [{ type: "text", text: combined }] };
   }
@@ -610,45 +575,33 @@ server.registerTool(
         "Your idea, problem space, or keyword. E.g. 'data freshness for AI agents', 'procurement intelligence', 'developer observability'"
       ),
       max_length: z.number().optional().default(14000),
+      min_freshness_score: z.number().optional().describe("Filter sections below this freshness_score (0–100). E.g. 70 = only recently retrieved data."),
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
-  async ({ idea, max_length }) => {
+  async ({ idea, max_length, min_freshness_score }) => {
     const perSection = Math.floor((max_length ?? 14000) / 6);
 
     const [hnResult, ycResult, repoResult, jobsResult, pkgResult, phResult] = await Promise.allSettled([
-      // 1. Pain signal — what are developers actively complaining about
       hackerNewsAdapter({
         url: `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(idea)}&tags=story&hitsPerPage=10`,
         maxLength: perSection,
       }),
-      // 2. Funding signal — who has already raised money in this space
       ycAdapter({
         url: `https://www.ycombinator.com/companies?query=${encodeURIComponent(idea)}`,
         maxLength: perSection,
       }),
-      // 3. Crowding signal — how many GitHub repos exist, how active
       repoSearchAdapter({ url: idea, maxLength: perSection }),
-      // 4. Market signal — companies paying salaries = real spend on this problem
       jobsAdapter({ url: idea, maxLength: perSection }),
-      // 5. Ecosystem signal — npm/PyPI adoption and release velocity
       packageTrendsAdapter({ url: idea, maxLength: perSection }),
-      // 6. Launch signal — what just shipped and how the market received it
       productHuntAdapter({ url: idea, maxLength: perSection }),
     ]);
-
-    const section = (
-      label: string,
-      result: PromiseSettledResult<{ raw: string; content_date: string | null; freshness_confidence: string }>
-    ) =>
-      result.status === "fulfilled"
-        ? `## ${label}\n${result.value.raw}`
-        : `## ${label}\n[Unavailable: ${(result as PromiseRejectedResult).reason}]`;
 
     const combined = [
       `# Idea Validation Landscape: "${idea}"`,
       `Generated: ${new Date().toISOString()}`,
       `Sources: Hacker News · YC Companies · GitHub · Job Listings · npm/PyPI · Product Hunt`,
+      min_freshness_score ? `min_freshness_score: ${min_freshness_score}` : null,
       "",
       `## ℹ️ How to read this report`,
       `Pain signal (HN): Are developers actively discussing this problem?`,
@@ -658,13 +611,13 @@ server.registerTool(
       `Ecosystem signal (npm/PyPI): Are packages being built and adopted?`,
       `Launch signal (Product Hunt): What just shipped — community reception and timing.`,
       "",
-      section("🗣️ Pain Signal — Developer Discussions (Hacker News)", hnResult),
-      section("💰 Funding Signal — Backed Companies (YC)", ycResult),
-      section("📦 Crowding Signal — Open Source Landscape (GitHub)", repoResult),
-      section("💼 Market Signal — Hiring Activity (Job Listings)", jobsResult),
-      section("🔧 Ecosystem Signal — Package Adoption (npm/PyPI)", pkgResult),
-      section("🚀 Launch Signal — Recent Launches (Product Hunt)", phResult),
-    ].join("\n\n");
+      sectionWithFreshnessCheck("🗣️ Pain Signal — Developer Discussions (Hacker News)", hnResult, "hackernews", min_freshness_score),
+      sectionWithFreshnessCheck("💰 Funding Signal — Backed Companies (YC)", ycResult, "ycombinator", min_freshness_score),
+      sectionWithFreshnessCheck("📦 Crowding Signal — Open Source Landscape (GitHub)", repoResult, "github_search", min_freshness_score),
+      sectionWithFreshnessCheck("💼 Market Signal — Hiring Activity (Job Listings)", jobsResult, "jobs", min_freshness_score),
+      sectionWithFreshnessCheck("🔧 Ecosystem Signal — Package Adoption (npm/PyPI)", pkgResult, "package_registry", min_freshness_score),
+      sectionWithFreshnessCheck("🚀 Launch Signal — Recent Launches (Product Hunt)", phResult, "producthunt", min_freshness_score),
+    ].filter(Boolean).join("\n\n");
 
     return { content: [{ type: "text", text: combined }] };
   }
