@@ -1,19 +1,19 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
   "name": "io.github.PrinceGabriel-lgtm/freshcontext",
-  "description": "Real-time web intelligence for AI agents. 15 tools, no API keys. GitHub, HN, Reddit, arXiv, govcontracts, changelog, gov landscape & finance landscape — every result timestamped with a freshness score.",
+  "description": "Real-time web intelligence for AI agents. 20 tools, no API keys. GitHub, HN, Reddit, arXiv, SEC filings, US gov contracts, GDELT global news, Singapore GeBIZ, changelog & more — every result timestamped with a freshness score.",
   "repository": {
     "url": "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp",
     "source": "github"
   },
-  "version": "0.3.11",
+  "version": "0.3.15",
   "website_url": "https://freshcontext-site.pages.dev",
   "packages": [
     {
       "registry_type": "npm",
       "registry_base_url": "https://registry.npmjs.org",
       "identifier": "freshcontext-mcp",
-      "version": "0.3.11",
+      "version": "0.3.15",
       "transport": {
         "type": "stdio"
       }
