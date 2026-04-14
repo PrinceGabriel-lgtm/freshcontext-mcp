@@ -165,12 +165,14 @@ function stamp(
 
 // ─── withCache helper ─────────────────────────────────────────────────────────
 
+type ToolResult = { content: Array<{ type: "text"; text: string }> };
+
 async function withCache(
   adapter: string,
   cacheInput: string,
   kv: KVNamespace,
-  handler: () => Promise<{ content: Array<{ type: string; text: string }> }>
-): Promise<{ content: Array<{ type: string; text: string }> }> {
+  handler: () => Promise<ToolResult>
+): Promise<ToolResult> {
   const cached = await getFromCache(kv, adapter, cacheInput);
   if (cached) return { content: [{ type: "text", text: cached.content }] };
   const result = await handler();
@@ -186,6 +188,8 @@ async function withCache(
 
 function createServer(env: Env): McpServer {
   const server = new McpServer({ name: "freshcontext-mcp", version: "0.3.15" });
+
+  const ok = (text: string): ToolResult => ({ content: [{ type: "text", text }] });
 
   server.registerTool("extract_github", {
     description: "Extract real-time data from a GitHub repository — README, stars, forks, last commit, topics. Returns timestamped freshcontext.",
@@ -217,8 +221,8 @@ function createServer(env: Env): McpServer {
         await browser.close();
         const d = data as any;
         const raw = [`Description: ${d.description ?? "N/A"}`, `Stars: ${d.stars ?? "N/A"} | Forks: ${d.forks ?? "N/A"}`, `Language: ${d.language ?? "N/A"}`, `Last commit: ${d.lastCommit ?? "N/A"}`, `Topics: ${d.topics?.join(", ") ?? "none"}`, `\n--- README ---\n${d.readme ?? "No README"}`].join("\n");
-        return { content: [{ type: "text", text: stamp(raw, safeUrl, d.lastCommit ?? null, d.lastCommit ? "high" : "medium", "github") }] };
-      } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+        return ok(stamp(raw, safeUrl, d.lastCommit ?? null, d.lastCommit ? "high" : "medium", "github"));
+      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });
 
@@ -238,7 +242,7 @@ function createServer(env: Env): McpServer {
             `[${i+1}] ${r.title}\nURL: ${r.url ?? `https://news.ycombinator.com/item?id=${r.objectID}`}\nScore: ${r.points} | ${r.num_comments} comments\nPosted: ${r.created_at}`
           ).join("\n\n");
           const newest = json.hits.map((r: any) => r.created_at).sort().reverse()[0] ?? null;
-          return { content: [{ type: "text", text: stamp(raw, url, newest, newest ? "high" : "medium", "hackernews") }] };
+          return ok(stamp(raw, url, newest, newest ? "high" : "medium", "hackernews"));
         }
         const safeUrl = validateUrl(url, "hackernews");
         const browser = await puppeteer.launch(env.BROWSER);
@@ -255,9 +259,9 @@ function createServer(env: Env): McpServer {
         await browser.close();
         const items = data as any[];
         const raw = items.map((r, i) => `[${i+1}] ${r.title}\nURL: ${r.link}\nScore: ${r.score ?? "N/A"}\nPosted: ${r.age ?? "unknown"}`).join("\n\n");
-        const newest = items.map(r => r.age).filter(Boolean).sort().reverse()[0] ?? null;
-        return { content: [{ type: "text", text: stamp(raw, safeUrl, newest, newest ? "high" : "medium", "hackernews") }] };
-      } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+        const newest2 = items.map(r => r.age).filter(Boolean).sort().reverse()[0] ?? null;
+        return ok(stamp(raw, safeUrl, newest2, newest2 ? "high" : "medium", "hackernews"));
+      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });
 
@@ -286,8 +290,8 @@ function createServer(env: Env): McpServer {
         const items = data as any[];
         const raw = items.map((r, i) => `[${i+1}] ${r.title ?? "Untitled"}\nAuthors: ${r.authors ?? "Unknown"}\nYear: ${r.year ?? "Unknown"}\nSnippet: ${r.snippet ?? "N/A"}`).join("\n\n");
         const newest = items.map(r => r.year).filter(Boolean).sort().reverse()[0] ?? null;
-        return { content: [{ type: "text", text: stamp(raw, safeUrl, newest ? `${newest}-01-01` : null, newest ? "high" : "low", "google_scholar") }] };
-      } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+        return ok(stamp(raw, safeUrl, newest ? `${newest}-01-01` : null, newest ? "high" : "low", "google_scholar"));
+      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });
 
@@ -315,8 +319,8 @@ function createServer(env: Env): McpServer {
         await browser.close();
         const items = data as any[];
         const raw = items.map((c, i) => `[${i+1}] ${c.name ?? "Unknown"} (${c.batch ?? "N/A"})\n${c.desc ?? "No description"}\nTags: ${c.tags?.join(", ") ?? "none"}`).join("\n\n");
-        return { content: [{ type: "text", text: stamp(raw, safeUrl, new Date().toISOString().slice(0, 10), "medium", "ycombinator") }] };
-      } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+        return ok(stamp(raw, safeUrl, new Date().toISOString().slice(0, 10), "medium", "ycombinator"));
+      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });
 
@@ -337,8 +341,8 @@ function createServer(env: Env): McpServer {
           `[${i+1}] ${r.full_name}\n⭐ ${r.stargazers_count} stars | ${r.language ?? "N/A"}\n${r.description ?? "No description"}\nUpdated: ${r.updated_at?.slice(0,10)}\nURL: ${r.html_url}`
         ).join("\n\n");
         const newest = json.items.map((r: any) => r.updated_at).filter(Boolean).sort().reverse()[0] ?? null;
-        return { content: [{ type: "text", text: stamp(raw, `https://github.com/search?q=${encodeURIComponent(q)}`, newest, newest ? "high" : "medium", "github_search") }] };
-      } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+        return ok(stamp(raw, `https://github.com/search?q=${encodeURIComponent(q)}`, newest, newest ? "high" : "medium", "github_search"));
+      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });
 
@@ -369,8 +373,8 @@ function createServer(env: Env): McpServer {
           }
         }
         const raw = results.join("\n\n─────────────\n\n");
-        return { content: [{ type: "text", text: stamp(raw, "package-registries", new Date().toISOString(), "high", "package_registry") }] };
-      } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+        return ok(stamp(raw, "package-registries", new Date().toISOString(), "high", "package_registry"));
+      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });
 
@@ -400,8 +404,8 @@ function createServer(env: Env): McpServer {
         }).join("\n\n");
         const newest = posts.map((c: any) => c.data.created_utc).sort((a: number, b: number) => b - a)[0];
         const date = newest ? new Date(newest * 1000).toISOString() : null;
-        return { content: [{ type: "text", text: stamp(raw, apiUrl, date, date ? "high" : "medium", "reddit") }] };
-      } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+        return ok(stamp(raw, apiUrl, date, date ? "high" : "medium", "reddit"));
+      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });
 
@@ -428,8 +432,8 @@ function createServer(env: Env): McpServer {
           return [`[${i+1}] ${p.name}`, `"${p.tagline}"`, `↑ ${p.votesCount} · ${p.commentsCount} comments`, topics ? `Topics: ${topics}` : null, `Launched: ${p.createdAt?.slice(0,10)}`, `Link: ${p.url}`].filter(Boolean).join("\n");
         }).join("\n\n");
         const newest = posts.map((e: any) => e.node.createdAt).filter(Boolean).sort().reverse()[0] ?? null;
-        return { content: [{ type: "text", text: stamp(raw, url, newest, newest ? "high" : "medium", "producthunt") }] };
-      } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+        return ok(stamp(raw, url, newest, newest ? "high" : "medium", "producthunt"));
+      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });
 
@@ -459,8 +463,8 @@ function createServer(env: Env): McpServer {
         }
         const raw = results.join("\n\n─────────────────────────────\n\n");
         const date = latestTs ? new Date(latestTs * 1000).toISOString() : new Date().toISOString();
-        return { content: [{ type: "text", text: stamp(raw, `yahoo-finance:${tickers.join(",")}`, date, "high", "yahoo_finance") }] };
-      } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+        return ok(stamp(raw, `yahoo-finance:${tickers.join(",")}`, date, "high", "yahoo_finance"));
+      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });
 
@@ -499,8 +503,8 @@ function createServer(env: Env): McpServer {
           }
         }
         const raw = sections.join("\n\n");
-        return { content: [{ type: "text", text: stamp(raw, `jobs:${q}`, newestDate ?? new Date().toISOString(), newestDate ? "high" : "medium", "jobs") }] };
-      } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+        return ok(stamp(raw, `jobs:${q}`, newestDate ?? new Date().toISOString(), newestDate ? "high" : "medium", "jobs"));
+      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });
 
@@ -530,8 +534,8 @@ function createServer(env: Env): McpServer {
           "## npm Packages",
           pkg.status === "fulfilled" ? (pkg.value as any).objects?.map((o: any, i: number) => `[${i+1}] ${o.package.name}@${o.package.version} — ${o.package.description ?? "N/A"}`).join("\n") : `Error`,
         ].join("\n");
-        return { content: [{ type: "text", text: sections }] };
-      } catch (err: any) { return { content: [{ type: "text", text: `[ERROR] ${err.message}` }] }; }
+        return ok(sections);
+      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });
 
@@ -985,7 +989,7 @@ export default {
     return transport.handleRequest(request);
   },
 
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil((async () => {
       await runScheduledScrape(env);
       try {
