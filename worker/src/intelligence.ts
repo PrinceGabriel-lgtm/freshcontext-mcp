@@ -1,5 +1,5 @@
 /**
- * intelligence.ts — FreshContext Decay-Adjusted Relevancy (DAR) Engine
+ * intelligence.ts — FreshContext Decay-Adjusted Relevancy (DAR) Engine v1.1
  *
  * Implements the core IP:
  *   R_t = R_0 · e^(-λt)
@@ -282,4 +282,63 @@ export function parseStoredProfile(row: {
     skills: safeParse(row.skills),
     location: row.location ?? "remote",
   };
+}
+
+// ─── Semantic Deduplication ────────────────────────────────────────────────────
+
+/**
+ * Generate a semantic fingerprint for a piece of raw content.
+ *
+ * The fingerprint is built from:
+ *   - The first URL-like string found in the content (canonical source)
+ *   - The first publication date found
+ *   - Normalised title (first non-empty line, lowercased, punctuation stripped)
+ *
+ * Two signals with the same fingerprint are considered duplicates regardless
+ * of which adapter scraped them. This is what prevents HN + Reddit carrying
+ * the same story as two separate signals into the briefing.
+ *
+ * Returns a short hex string (first 16 chars of SHA-256).
+ */
+export async function semanticFingerprint(raw: string): Promise<string> {
+  // Extract first URL
+  const urlMatch = raw.match(/https?:\/\/[^\s"'<>]{8,}/);
+  const url = urlMatch ? urlMatch[0].split(/[?#]/)[0].toLowerCase() : "";
+
+  // Extract first date
+  const dateMatch = raw.match(/\b(202[0-9]|203[0-9])-\d{2}-\d{2}\b/);
+  const date = dateMatch ? dateMatch[0] : "";
+
+  // Normalised title: first substantial line
+  const title = raw
+    .split("\n")
+    .map(l => l.trim())
+    .filter(l => l.length > 10 && !l.startsWith("http"))[0]
+    ?? "";
+  const normTitle = title.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim().slice(0, 80);
+
+  const input = `${normTitle}|${url}|${date}`;
+  const encoded = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 16);
+}
+
+/**
+ * Check if a semantic fingerprint already exists in the last N days.
+ * Used by the cron to skip inserting duplicate signals across adapters.
+ */
+export async function isDuplicate(
+  db: D1Database,
+  fingerprint: string,
+  withinHours = 48
+): Promise<boolean> {
+  const result = await db.prepare(`
+    SELECT COUNT(*) as n FROM scrape_results
+    WHERE semantic_fingerprint = ?
+      AND scraped_at >= datetime('now', '-' || ? || ' hours')
+  `).bind(fingerprint, withinHours).first<{ n: number }>();
+  return (result?.n ?? 0) > 0;
 }

@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import { synthesizeBriefing as generateAIBriefing } from "./synthesize.js";
-import { scoreSignal, parseStoredProfile } from "./intelligence.js";
+import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate } from "./intelligence.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -660,6 +660,7 @@ async function runScheduledScrape(env: Env): Promise<void> {
     `ALTER TABLE scrape_results ADD COLUMN ha_pri_sig TEXT`,
     `ALTER TABLE scrape_results ADD COLUMN entropy_level TEXT DEFAULT 'stable'`,
     `ALTER TABLE scrape_results ADD COLUMN published_at TEXT`,
+    `ALTER TABLE scrape_results ADD COLUMN semantic_fingerprint TEXT`,
   ];
   for (const sql of migrations) {
     try { await env.DB.prepare(sql).run(); } catch { /* column already exists */ }
@@ -707,8 +708,16 @@ async function runScheduledScrape(env: Env): Promise<void> {
         `SELECT result_hash FROM scrape_results WHERE watched_query_id = ? ORDER BY scraped_at DESC LIMIT 1`
       ).bind(wq.id).first<{ result_hash: string }>();
 
-      // Skip if content unchanged
+      // Skip if content unchanged (exact hash match)
       if (last && last.result_hash === hash) {
+        await env.DB.prepare(`UPDATE watched_queries SET last_run_at = datetime('now') WHERE id = ?`).bind(wq.id).run();
+        return null;
+      }
+
+      // Semantic deduplication — skip if same story already seen from another adapter
+      const fingerprint = await semanticFingerprint(raw);
+      if (await isDuplicate(env.DB, fingerprint, 48)) {
+        console.log(`[dedup] ${wq.adapter}/${wq.query.slice(0,28)} — semantic duplicate, skipping`);
         await env.DB.prepare(`UPDATE watched_queries SET last_run_at = datetime('now') WHERE id = ?`).bind(wq.id).run();
         return null;
       }
@@ -731,13 +740,15 @@ async function runScheduledScrape(env: Env): Promise<void> {
           (id, watched_query_id, adapter, query, raw_content, result_hash,
            is_new, scraped_at,
            relevancy_score, is_relevant,
-           base_score, rt_score, ha_pri_sig, entropy_level, published_at)
-        VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'), ?, ?, ?, ?, ?, ?, ?)
+           base_score, rt_score, ha_pri_sig, entropy_level, published_at,
+           semantic_fingerprint)
+        VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         resultId, wq.id, wq.adapter, wq.query, raw.slice(0, 8000), hash,
         scored.relevancy_score, scored.is_relevant,
         scored.base_score, scored.rt_score, scored.ha_pri_sig,
-        scored.entropy_level, scored.published_at
+        scored.entropy_level, scored.published_at,
+        fingerprint
       ).run();
 
       console.log(`[DAR] ${wq.adapter}/${wq.query.slice(0,28)} R0:${scored.base_score} Rt:${scored.rt_score} entropy:${scored.entropy_level} sig:${scored.ha_pri_sig.slice(0,8)}`);
