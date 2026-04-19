@@ -298,10 +298,16 @@ When confidence is `high`, the date came from a structured field (API, metadata)
 - [x] Listed on Apify Store
 - [x] FreshContext Specification v1.1 published (MIT) — composite adapters, decay rate table, compatibility levels
 - [x] GitHub Actions CI/CD — auto-publish to npm on every push
+- [x] **DAR engine** — exponential decay scoring with proprietary λ constants (v0.3.15)
+- [x] **Ha-Pri audit signatures** — SHA-256 provenance stamps on every signal
+- [x] **Semantic deduplication** — cross-adapter fingerprinting
+- [x] **Intelligence feed endpoint** — `/v1/intel/feed/:profile_id`
+- [x] **METHODOLOGY.md** — formal IP documentation
+- [ ] Webhook triggers — push high-entropy signals on threshold
+- [ ] Domain-specific watched queries for mining/industrial sector
+- [ ] Subscription tier with profile customization
 - [ ] GKG upgrade for `extract_gdelt` — tone scores, goldstein scale, event codes
 - [ ] Dashboard — React frontend for the D1 intelligence pipeline
-- [ ] Synthesis endpoint — `/briefing/now` AI-generated intelligence briefings
-- [ ] `freshness_score` filtering on composite tools
 
 ---
 
@@ -325,3 +331,63 @@ MIT
 ---
 
 **Also on:** [Apify Store](https://apify.com/prince_gabriel/freshcontext-mcp) · [MCP Registry](https://registry.modelcontextprotocol.io) · [npm](https://www.npmjs.com/package/freshcontext-mcp)
+
+---
+
+## The Intelligence Layer (v0.3.15)
+
+FreshContext is no longer just a pull tool. The infrastructure now runs a continuous **Decay-Adjusted Relevancy (DAR)** engine that scores every signal with exponential decay and provenance signatures.
+
+### The math
+
+```
+R_t = R_0 · e^(-λt)
+```
+
+- `R_0` — base semantic score against your profile (0–100)
+- `λ` — source-specific decay constant (per hour)
+- `t` — hours since the content was published
+- `R_t` — final relevancy at query time
+
+Source half-lives are calibrated empirically: Hacker News ≈14h, Reddit ≈3d, jobs ≈6d, GitHub ≈5mo, academic papers ≈1.6y.
+
+### What every signal carries
+
+Every row in the D1 ledger is stamped with:
+
+- `base_score` — R_0, semantic match against profile
+- `rt_score` — R_t, decay-adjusted relevancy
+- `entropy_level` — `low` / `stable` / `high` on the decay curve
+- `ha_pri_sig` — SHA-256 provenance signature (tamper-evident)
+- `semantic_fingerprint` — cross-adapter deduplication hash
+- `published_at` — extracted content publication date
+
+### The intelligence feed
+
+```
+GET /v1/intel/feed/:profile_id?limit=20&min_rt=0
+```
+
+Returns scored, deduplicated, provenance-stamped signals ranked by R_t — ready for direct consumption by any LLM or agent. No synthesis needed.
+
+### Methodology
+
+The full data collection, scoring, and provenance methodology is formally documented in [METHODOLOGY.md](./METHODOLOGY.md) — written as an audit trail for acquirers, integrators, and regulators. Version 1.1, April 2026.
+
+---
+
+## Live endpoints
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/` | GET | Service info + endpoint list |
+| `/health` | GET | Liveness check |
+| `/mcp` | POST | MCP JSON-RPC transport |
+| `/briefing` | GET | Latest stored briefing |
+| `/briefing/now` | POST | Force scrape + synthesize |
+| `/v1/intel/feed/:profile_id` | GET | DAR-scored intelligence feed |
+| `/watched-queries` | GET | List all watched queries |
+| `/debug/db` | GET | D1 counts + DAR engine coverage |
+| `/debug/scrape` | GET | Run a single adapter raw |
+
+Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`

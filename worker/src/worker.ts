@@ -848,6 +848,16 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    // ── GET /health — cheap liveness check for monitoring ───────────────────────
+    if (url.pathname === "/health") {
+      return new Response(JSON.stringify({
+        status: "ok",
+        service: "freshcontext-mcp",
+        version: "0.3.15",
+        time: new Date().toISOString(),
+      }), { headers: { "Content-Type": "application/json" } });
+    }
+
     // ── GET /watched-queries ─────────────────────────────────────────────────
     if (url.pathname === "/watched-queries") {
       try { checkAuth(request, env); } catch (e: any) { return errResponse(e.message, 401); }
@@ -951,20 +961,35 @@ export default {
 
     if (url.pathname === "/debug/db") {
       try { checkAuth(request, env); } catch (e: any) { return errResponse(e.message, 401); }
-      const [wq, sr, br, up] = await Promise.all([
+      const [wq, sr, br, up, scored, dedupe] = await Promise.all([
         env.DB.prepare("SELECT COUNT(*) as n FROM watched_queries").first<{n:number}>(),
         env.DB.prepare("SELECT COUNT(*) as n FROM scrape_results").first<{n:number}>(),
         env.DB.prepare("SELECT COUNT(*) as n FROM briefings").first<{n:number}>(),
         env.DB.prepare("SELECT COUNT(*) as n FROM user_profiles").first<{n:number}>(),
+        env.DB.prepare("SELECT COUNT(*) as n FROM scrape_results WHERE rt_score IS NOT NULL").first<{n:number}>(),
+        env.DB.prepare("SELECT COUNT(DISTINCT semantic_fingerprint) as n FROM scrape_results WHERE semantic_fingerprint IS NOT NULL").first<{n:number}>(),
       ]);
-      // Also show a sample of recent scores
       const { results: recent } = await env.DB.prepare(
-        `SELECT adapter, query, rt_score, base_score, entropy_level, ha_pri_sig, scraped_at FROM scrape_results ORDER BY scraped_at DESC LIMIT 5`
+        `SELECT adapter, query, rt_score, base_score, entropy_level,
+                substr(ha_pri_sig, 1, 12) as ha_pri_sig_short,
+                substr(semantic_fingerprint, 1, 12) as fp_short,
+                published_at, scraped_at
+         FROM scrape_results ORDER BY scraped_at DESC LIMIT 5`
       ).all();
       return new Response(JSON.stringify({
-        counts: { watched_queries: wq?.n, scrape_results: sr?.n, briefings: br?.n, user_profiles: up?.n },
+        counts: {
+          watched_queries: wq?.n,
+          scrape_results: sr?.n,
+          briefings: br?.n,
+          user_profiles: up?.n,
+        },
+        dar_engine: {
+          signals_scored: scored?.n,
+          unique_fingerprints: dedupe?.n,
+          scoring_coverage: sr?.n ? `${Math.round(100 * (scored?.n ?? 0) / sr.n)}%` : "0%",
+        },
         recent_signals: recent,
-      }), { headers: { "Content-Type": "application/json" } });
+      }, null, 2), { headers: { "Content-Type": "application/json" } });
     }
 
     // ── POST /briefing/now — force synthesis ──────────────────────────────────
@@ -984,7 +1009,35 @@ export default {
       } catch (err: any) { return errResponse(err.message, 500); }
     }
 
-    // ── MCP transport ─────────────────────────────────────────────────────────
+    // ── GET / — landing page, stops bots from triggering errors ──────────────────
+    if (url.pathname === "/" || url.pathname === "") {
+      return new Response(JSON.stringify({
+        service: "freshcontext-mcp",
+        version: "0.3.15",
+        description: "FreshContext — timestamped web intelligence with Decay-Adjusted Relevancy scoring",
+        endpoints: {
+          mcp: "POST /mcp  (JSON-RPC 2.0)",
+          briefing: "GET /briefing",
+          briefing_now: "POST /briefing/now",
+          intel_feed: "GET /v1/intel/feed/:profile_id?limit=20&min_rt=0",
+          watched_queries: "GET /watched-queries",
+          debug_db: "GET /debug/db",
+          debug_scrape: "GET /debug/scrape?adapter=X&query=Y",
+        },
+        docs: "https://freshcontext-site.pages.dev",
+        spec: "https://freshcontext-site.pages.dev/spec.html",
+        github: "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp",
+      }, null, 2), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // ── Reject non-MCP paths cleanly before transport (reduces bot-error noise) ──
+    if (url.pathname !== "/mcp" && url.pathname !== "/mcp/") {
+      return errResponse(`Not found: ${url.pathname}. See GET / for endpoint list.`, 404);
+    }
+
+    // ── MCP transport (only /mcp reaches here) ───────────────────────────────────────
     try {
       checkAuth(request, env);
       const ip = getClientIp(request);
