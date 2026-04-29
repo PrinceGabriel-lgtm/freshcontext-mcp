@@ -5,3 +5,8 @@ node_modules/
 mcp-publisher.exe
 .mcpregistry_*
 .mcp_publisher_token
+
+# Local secrets — never commit
+.api-key.local.txt
+*.local.txt
+backup-*.sql
