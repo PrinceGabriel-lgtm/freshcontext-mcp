@@ -844,9 +844,56 @@ async function formatBriefing(db: D1Database): Promise<string> {
 
 // ─── Worker Export ────────────────────────────────────────────────────────────
 
+const BLOCKED_PATH_PATTERNS = [
+  /^\/wp-/,
+  /^\/wordpress/,
+  /^\/admin/,
+  /^\/administrator/,
+  /^\/phpmyadmin/,
+  /^\/xmlrpc\.php/,
+  /^\/\.env/,
+  /^\/\.git/,
+  /^\/\.aws/,
+  /^\/\.ssh/,
+  /^\/cgi-bin/,
+  /^\/HNAP1/,
+  /\.php$/,
+  /\.asp$/i,
+  /\.aspx$/i,
+  /\.jsp$/i,
+  /^\/owa\//,
+  /^\/ecp\//,
+  /^\/_ignition/,
+];
+
+const BLOCKED_USER_AGENTS = [
+  "masscan", "nmap", "sqlmap", "nikto", "gobuster", "dirbuster",
+  "metasploit", "hydra", "havij", "acunetix", "nessus", "openvas",
+  "zgrab", "shodan", "censys", "l9scan", "l9explore",
+];
+
+function isBotProbe(url: URL, ua: string): boolean {
+  for (const p of BLOCKED_PATH_PATTERNS) {
+    if (p.test(url.pathname)) return true;
+  }
+  if (ua) {
+    const uaLower = ua.toLowerCase();
+    for (const bad of BLOCKED_USER_AGENTS) {
+      if (uaLower.includes(bad)) return true;
+    }
+  }
+  return false;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const ua = request.headers.get("User-Agent") ?? "";
+
+    // Bot probe filter — cheapest reject path, runs first
+    if (isBotProbe(url, ua)) {
+      return new Response("Gone", { status: 410 });
+    }
 
     // ── GET /health — cheap liveness check for monitoring ───────────────────────
     if (url.pathname === "/health") {
