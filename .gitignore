@@ -1,12 +1,37 @@
+# Dependencies
 node_modules/
-.env
-*.js.map
 
-mcp-publisher.exe
-.mcpregistry_*
-.mcp_publisher_token
+# Environment & secrets
+.env
+.env.*
+!.env.example
 
 # Local secrets — never commit
 .api-key.local.txt
 *.local.txt
+
+# Build tools (binaries)
+mcp-publisher.exe
+mcp-publisher
+
+# MCP Registry credentials
+.mcpregistry_*
+.mcp_publisher_token
+
+# Database backups (local snapshots only)
+backup.sql
 backup-*.sql
+*.sqlite
+*.db
+
+# Build artefacts
+*.js.map
+.wrangler/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

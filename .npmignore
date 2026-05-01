@@ -3,17 +3,39 @@ mcp-publisher.exe
 mcp-publisher
 
 # Auth tokens (never publish these)
-.mcpregistry_github_token
-.mcpregistry_registry_token
+.mcpregistry_*
 .mcp_publisher_token
+.api-key.local.txt
+*.local.txt
 
 # Source (already in dist/)
 src/
 
-# Worker (not part of npm package)
+# Worker (not part of npm package — separate Cloudflare deployment)
 worker/
+
+# Development docs (not needed by npm consumers)
+_archive/
+SESSION_SAVE_*.md
+HANDOFF.md
+ARCHITECTURE_UPGRADE_*.md
+LAUNCH_POSTS*.md
+HN_THROWAWAY*.md
+CONTEXT_SKILL.md
+METHODOLOGY.md
+FRESHCONTEXT_SPEC.md
+ROADMAP.md
+USAGE.md
+
+# Database snapshots
+backup.sql
+backup-*.sql
+*.sqlite
+*.db
 
 # Misc
 *.bat
 .env*
+!.env.example
 tsconfig.json
+add-cache.cjs
