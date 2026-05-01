@@ -25,6 +25,7 @@ backup-*.sql
 *.db
 
 # Build artefacts
+dist/
 *.js.map
 .wrangler/
 
