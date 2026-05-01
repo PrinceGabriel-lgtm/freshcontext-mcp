@@ -1,15 +1,24 @@
 # FreshContext — Handoff Document
-**Version:** 0.3.14 (npm) / 0.21 (Apify)
+**Version:** 0.3.15 (npm) / 0.21 (Apify)
 **Spec:** v1.1
-**Date:** 2026-04-09
+**Date:** 2026-04-14
 **Author:** Immanuel Gabriel (Prince Gabriel), Grootfontein, Namibia
 **Contact:** gimmanuel73@gmail.com
+**Production:** https://freshcontext-mcp.gimmanuel73.workers.dev
 
 ---
 
 ## What You Are Receiving
 
-FreshContext is a **data freshness layer for AI agents** — an open standard and reference implementation that makes retrieved data trustworthy.
+FreshContext is a **personalized market intelligence subscription** built on top of an open data freshness standard.
+
+The infrastructure now consists of five integrated layers:
+
+1. **An open specification** — FreshContext Specification v1.1 (MIT) defining a structured envelope for timestamped web intelligence.
+2. **A reference implementation** — `freshcontext-mcp@0.3.15` on npm, deployed globally on Cloudflare Workers with KV caching, D1 persistence, and 6-hour cron-driven data collection.
+3. **A proprietary scoring engine** — the Decay-Adjusted Relevancy (DAR) engine, applying exponential decay to every signal with source-specific λ constants.
+4. **A historical ledger** — continuously accumulating time-series intelligence dataset with provenance signatures on every row.
+5. **A formal methodology** — METHODOLOGY.md documenting data collection, scoring, and auditability for acquirers and integrators.
 
 Every piece of web data an AI agent retrieves has an age. Most tools ignore it. FreshContext surfaces it — wrapping every result in a structured envelope:
 
@@ -17,7 +26,7 @@ Every piece of web data an AI agent retrieves has an age. Most tools ignore it. 
 [FRESHCONTEXT]
 Source: https://github.com/owner/repo
 Published: 2024-11-03
-Retrieved: 2026-04-05T09:19:00Z
+Retrieved: 2026-04-14T09:19:00Z
 Confidence: high
 ---
 ... content ...
@@ -26,7 +35,7 @@ Confidence: high
 
 **20 tools. No API keys. Deployed globally on Cloudflare's edge.**
 
-Listed on the official MCP Registry, npm, and Apify Store. The FreshContext Specification v1.1 is published as an open standard under MIT license — any tool that wraps retrieved data in this envelope is FreshContext-compatible.
+Listed on the official MCP Registry, npm, and Apify Store.
 
 **npm downloads (first week, zero marketing): 191**
 
@@ -56,6 +65,81 @@ Listed on the official MCP Registry, npm, and Apify Store. The FreshContext Spec
 | `extract_sec_filings` | SEC EDGAR | 8-K filings — legally mandated material event disclosures |
 | `extract_gdelt` | GDELT Project | Global news intelligence — 100+ languages, every country, 15-min updates |
 | `extract_gebiz` | data.gov.sg | Singapore Government procurement tenders — open dataset, no auth |
+
+---
+
+## The Intelligence Layer (v0.3.15)
+
+FreshContext is no longer a pull-only tool. It now operates a continuous Decay-Adjusted Relevancy engine that scores every collected signal.
+
+### The DAR Engine
+
+```
+R_t = R_0 · e^(-λt)
+```
+
+- `R_0` — base semantic score (0–100) computed against the user profile (targets + skills + location)
+- `λ` — source-specific decay constant per hour, calibrated empirically per source class
+- `t` — hours since the content's original publication date
+- `R_t` — final relevancy at query time
+
+### Decay Constants (λ per hour)
+
+| Source | λ | Half-life |
+|---|---|---|
+| Hacker News | 0.050 | ~14h |
+| Reddit / Product Hunt | 0.010 | ~3d |
+| Job listings | 0.005 | ~6d |
+| Finance / YC | 0.001 | ~29d |
+| Package trends | 0.0005 | ~58d |
+| GitHub repositories | 0.0002 | ~5mo |
+| Academic papers (Scholar / arXiv) | 0.00005 | ~1.6y |
+
+The λ values are the platform's primary trade secret and are not exposed in API responses.
+
+### Per-Signal Provenance
+
+Every row in the D1 ledger now carries seven additional columns:
+
+| Column | Meaning |
+|---|---|
+| `base_score` | R_0 — semantic match against profile |
+| `rt_score` | R_t — decay-adjusted relevancy |
+| `entropy_level` | Position on the decay curve (`low`, `stable`, `high`) |
+| `ha_pri_sig` | SHA-256 audit signature binding result_id + content_hash + engine version |
+| `semantic_fingerprint` | 16-char SHA-256 of normalised title + URL + date for cross-adapter dedup |
+| `published_at` | Extracted publication date from content |
+| `is_relevant` | 1 if R_t ≥ 35, else 0 |
+
+### The Intelligence Feed Endpoint
+
+```
+GET /v1/intel/feed/:profile_id?limit=20&min_rt=0
+```
+
+Returns scored, deduplicated, provenance-stamped signals ranked by R_t — ready for direct consumption by any LLM or agent. No external synthesis API needed.
+
+### Methodology Documentation
+
+`METHODOLOGY.md` formally documents the data collection pipeline, scoring methodology, deduplication approach, and provenance signature scheme. This is the audit trail for acquirers and integrators — a versioned, reproducible specification of how every number in the database was produced.
+
+---
+
+## Live Endpoints
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/` | GET | Service info + endpoint list |
+| `/health` | GET | Liveness check |
+| `/mcp` | POST | MCP JSON-RPC transport |
+| `/briefing` | GET | Latest stored briefing |
+| `/briefing/now` | POST | Force scrape + synthesize |
+| `/v1/intel/feed/:profile_id` | GET | DAR-scored intelligence feed |
+| `/watched-queries` | GET | List all watched queries |
+| `/debug/db` | GET | D1 counts + DAR engine coverage |
+| `/debug/scrape` | GET | Run a single adapter raw |
+
+All endpoints respond with JSON. Unknown paths return clean 404s (added v0.3.15) instead of falling through to MCP transport.
 
 ---
 
@@ -286,11 +370,16 @@ AI/ML groups — 107+ impressions. Stephen Petersilge
 
 | Item | Notes |
 |---|---|
-| Synthesis endpoint `/briefing/now` | Paused — needs ANTHROPIC_KEY in Worker env + credits at console.anthropic.com. Infrastructure fully built. |
+| Synthesis endpoint `/briefing/now` Claude path | Paused — needs ANTHROPIC_KEY in Worker env + credits at console.anthropic.com. Fallback `formatBriefing()` is live and working without the key. |
 | Apify store description | Still shows old tool count — update to 20 tools |
-| Dashboard (Layer 5) | React frontend for D1 pipeline — designed, not yet built |
+| Apify Actor rebuild | Needs `apify push` from local repo to sync v0.3.15 |
+| Webhook trigger system | Push high-entropy signals (R_t > 85, entropy=low) to user webhook |
+| Domain-specific watched queries | Mining, FIFO contracts, metallurgy — the industrial sector moat |
+| Profile population | `user_profiles` table exists but nothing writes to it yet — needs profile creation API |
 | `extract_gdelt` GKG upgrade | Tone scores, Goldstein scale, event codes — planned |
-| Agnost AI analytics | Free MCP analytics via Apify. Sign up at app.agnost.ai |
+| Dashboard (Layer 5) | React frontend for D1 pipeline — designed, not yet built |
+| Subscription billing | Paddle verification pending |
+| `tsconfig.json` skipLibCheck | Add `"skipLibCheck": true` to silence the 130 cosmetic node_modules type conflicts |
 
 ---
 
