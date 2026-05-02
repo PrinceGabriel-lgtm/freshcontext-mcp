@@ -15,6 +15,7 @@ interface Env {
   API_KEY?: string;
   ANTHROPIC_KEY?: string;
   GITHUB_TOKEN?: string;
+  PH_TOKEN?: string;
 }
 
 // ─── Cache Layer ──────────────────────────────────────────────────────────────
@@ -234,7 +235,18 @@ function createServer(env: Env): McpServer {
     return withCache("hackernews", url, env.CACHE, async () => {
       try {
         if (url.includes("hn.algolia.com")) {
-          const apiUrl = url.includes("/api/") ? url : `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(url)}&tags=story&hitsPerPage=20`;
+          let apiUrl: string;
+          if (url.includes("/api/")) {
+            apiUrl = url;
+          } else {
+            // Extract ?q= or ?query= param if present — don't encode the whole URL as the query
+            let searchTerm: string;
+            try {
+              const parsed = new URL(url);
+              searchTerm = parsed.searchParams.get("q") ?? parsed.searchParams.get("query") ?? "";
+            } catch { searchTerm = ""; }
+            apiUrl = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(searchTerm)}&tags=story&hitsPerPage=20`;
+          }
           const res = await fetch(apiUrl);
           if (!res.ok) throw new Error(`HN API error: ${res.status}`);
           const json = await res.json() as any;
@@ -332,8 +344,10 @@ function createServer(env: Env): McpServer {
     return withCache("reposearch", query, env.CACHE, async () => {
       try {
         const q = query.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
+        const ghHeaders: Record<string, string> = { "User-Agent": "freshcontext-mcp/0.3.15", "Accept": "application/vnd.github+json" };
+        if (env.GITHUB_TOKEN) ghHeaders["Authorization"] = `Bearer ${env.GITHUB_TOKEN}`;
         const res = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&sort=stars&order=desc&per_page=15`, {
-          headers: { "User-Agent": "freshcontext-mcp/0.3.15", "Accept": "application/vnd.github+json" },
+          headers: ghHeaders,
         });
         if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
         const json = await res.json() as any;
@@ -420,7 +434,7 @@ function createServer(env: Env): McpServer {
         const gql = `{ posts(first: 20, order: VOTES${isUrl ? "" : `, search: ${JSON.stringify(url)}`}) { edges { node { name tagline url votesCount commentsCount createdAt topics { edges { node { name } } } } } } }`;
         const res = await fetch("https://api.producthunt.com/v2/api/graphql", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": "Bearer irgTzMNAz-S-p1P8H5pFCxzU4TEF7GIJZ8vZZi0gLJg" },
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.PH_TOKEN ?? ""}` },
           body: JSON.stringify({ query: gql }),
         });
         const json = await res.json() as any;
@@ -534,7 +548,7 @@ function createServer(env: Env): McpServer {
           "## npm Packages",
           pkg.status === "fulfilled" ? (pkg.value as any).objects?.map((o: any, i: number) => `[${i+1}] ${o.package.name}@${o.package.version} — ${o.package.description ?? "N/A"}`).join("\n") : `Error`,
         ].join("\n");
-        return ok(sections);
+        return ok(stamp(sections, `freshcontext:landscape:${t}`, new Date().toISOString().slice(0,10), "medium", "landscape"));
       } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });
