@@ -68,7 +68,9 @@ export function extractPublishedAt(raw: string): string | null {
   const valid = matches
     .filter(d => {
       const ts = new Date(d).getTime();
-      return !isNaN(ts) && ts <= now; // reject future dates
+      if (isNaN(ts) || ts > now) return false;
+      // Reject malformed dates that JS Date silently rolls (e.g. 2024-02-30 → Mar 1)
+      return new Date(ts).toISOString().slice(0, 10) === d;
     })
     .sort()
     .reverse();
@@ -108,17 +110,16 @@ export function calculateBaseScore(
   // ── Tier 1: Vital keywords (profile targets) ─────────────────────────────
   // These are high-value signals: job titles, tech domains, company names
   // the user is specifically tracking. Each match = +15 pts, capped at +35.
-  const vitalMatches = profile.targets.filter(t =>
-    content.includes(t.toLowerCase())
-  ).length;
+  // Dedupe: profiles with accidental duplicate entries must not inflate score.
+  const uniqueTargets = Array.from(new Set(profile.targets.map(t => t.toLowerCase())));
+  const vitalMatches = uniqueTargets.filter(t => content.includes(t)).length;
   score += Math.min(35, vitalMatches * 15);
 
   // ── Tier 2: Context keywords (profile skills) ────────────────────────────
   // Technology skills the user has. Matches here indicate relevant content
   // even if it's not a direct target. Each match = +3 pts, capped at +15.
-  const contextMatches = profile.skills.filter(s =>
-    content.includes(s.toLowerCase())
-  ).length;
+  const uniqueSkills = Array.from(new Set(profile.skills.map(s => s.toLowerCase())));
+  const contextMatches = uniqueSkills.filter(s => content.includes(s)).length;
   score += Math.min(15, contextMatches * 3);
 
   // ── Geographic relevance ─────────────────────────────────────────────────
@@ -133,10 +134,11 @@ export function calculateBaseScore(
   if (isAccessible) score += 8;
 
   // ── Penalise errors and empty results ────────────────────────────────────
+  // The < 20 length reject above is the real floor; a separate < 50 penalty
+  // here was killing legitimate short signals like "OpenAI launches Atlas".
   if (
     raw.includes("[ERROR]") ||
-    raw.toLowerCase().includes("not found") ||
-    raw.length < 50
+    raw.toLowerCase().includes("not found")
   ) {
     score = Math.max(0, score - 40);
   }
@@ -301,9 +303,23 @@ export function parseStoredProfile(row: {
  * Returns a short hex string (first 16 chars of SHA-256).
  */
 export async function semanticFingerprint(raw: string): Promise<string> {
-  // Extract first URL
+  // Extract first URL. Strip only known tracking params, NOT all querystrings —
+  // sites that use ?id= or ?p= for legitimate identifiers must keep them.
   const urlMatch = raw.match(/https?:\/\/[^\s"'<>]{8,}/);
-  const url = urlMatch ? urlMatch[0].split(/[?#]/)[0].toLowerCase() : "";
+  let url = "";
+  if (urlMatch) {
+    try {
+      const u = new URL(urlMatch[0]);
+      const TRACKING = /^(utm_|fbclid$|gclid$|mc_|igshid$)/i;
+      for (const k of Array.from(u.searchParams.keys())) {
+        if (TRACKING.test(k)) u.searchParams.delete(k);
+      }
+      u.hash = "";
+      url = (u.origin + u.pathname + (u.search || "")).toLowerCase();
+    } catch {
+      url = urlMatch[0].split(/[?#]/)[0].toLowerCase();
+    }
+  }
 
   // Extract first date
   const dateMatch = raw.match(/\b(202[0-9]|203[0-9])-\d{2}-\d{2}\b/);
