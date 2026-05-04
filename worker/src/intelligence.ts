@@ -159,12 +159,18 @@ export type EntropyLevel = "low" | "stable" | "high";
  *   stable = t < 1.5× half-life → usable, some decay
  *   high   = t > 1.5× half-life → significantly degraded
  */
+// Hard floor: signals below this Rt are considered expired and pruneable.
+export const RT_EXPIRY_FLOOR = 5;
+
+// Clock skew tolerance: published_at more than this far in the future is rejected.
+const CLOCK_SKEW_TOLERANCE_MS = 5 * 60 * 1000; // 5 minutes
+
 export function applyDecay(
   baseScore: number,
   publishedAt: string | null,
   adapter: string
-): { rt: number; entropy: EntropyLevel } {
-  if (baseScore === 0) return { rt: 0, entropy: "high" };
+): { rt: number; entropy: EntropyLevel; is_expired: boolean } {
+  if (baseScore === 0) return { rt: 0, entropy: "high", is_expired: true };
 
   const lambda = LAMBDA[adapter] ?? LAMBDA.default;
   const halfLifeHours = Math.log(2) / lambda;
@@ -175,11 +181,20 @@ export function applyDecay(
   if (publishedAt) {
     const published = new Date(publishedAt).getTime();
     if (!isNaN(published)) {
-      t = Math.max(0, (Date.now() - published) / (1000 * 60 * 60));
+      // Clock skew rejection: if published_at is meaningfully in the future,
+      // treat it as if no date were provided (fall back to half-life default).
+      // Without this, future-dated signals would score as freshest possible.
+      const skew = published - Date.now();
+      if (skew > CLOCK_SKEW_TOLERANCE_MS) {
+        // Leave t at halfLifeHours fallback
+      } else {
+        t = Math.max(0, (Date.now() - published) / (1000 * 60 * 60));
+      }
     }
   }
 
   const rt = baseScore * Math.exp(-lambda * t);
+  const rtRounded = Math.round(rt * 10) / 10;
 
   const entropyRatio = t / halfLifeHours;
   const entropy: EntropyLevel =
@@ -187,8 +202,9 @@ export function applyDecay(
     entropyRatio < 1.5  ? "stable" : "high";
 
   return {
-    rt: Math.round(rt * 10) / 10, // one decimal place
+    rt: rtRounded, // one decimal place
     entropy,
+    is_expired: rtRounded < RT_EXPIRY_FLOOR,
   };
 }
 
@@ -222,6 +238,7 @@ export interface SignalScore {
   rt_score: number;
   relevancy_score: number;  // = Math.round(rt_score), kept for backwards compat
   is_relevant: 0 | 1;       // 1 if rt_score >= 35, else 0
+  is_expired: 0 | 1;        // 1 if rt_score < RT_EXPIRY_FLOOR, eligible for pruning
   ha_pri_sig: string;
   entropy_level: EntropyLevel;
   published_at: string | null;
@@ -246,7 +263,7 @@ export async function scoreSignal(params: {
     params.profile,
     params.exclusionTerms ?? []
   );
-  const { rt, entropy } = applyDecay(base_score, published_at, params.adapter);
+  const { rt, entropy, is_expired } = applyDecay(base_score, published_at, params.adapter);
   const ha_pri_sig = await generateAuditSig(params.resultId, params.contentHash);
   const rt_rounded = Math.round(rt);
 
@@ -255,6 +272,7 @@ export async function scoreSignal(params: {
     rt_score: rt,
     relevancy_score: rt_rounded,
     is_relevant: rt_rounded >= 35 ? 1 : 0,
+    is_expired: is_expired ? 1 : 0,
     ha_pri_sig,
     entropy_level: entropy,
     published_at,
