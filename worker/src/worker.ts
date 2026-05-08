@@ -18,6 +18,47 @@ interface Env {
   PH_TOKEN?: string;
 }
 
+// ─── Schema Migrations ────────────────────────────────────────────────────────
+//
+// Idempotent ALTER TABLE statements. Pulled to module scope so any DB-touching
+// path can ensure them before querying — not just the cron. This eliminates
+// the "deploy → wait for cron → API works" gap.
+//
+// Promise gate: concurrent requests in the same isolate share one migration
+// run. After it resolves, subsequent calls are O(1). On rejection, the
+// cached promise is cleared so the next request can retry (handles transient
+// D1 outages without permanently breaking the worker).
+
+const SCRAPE_RESULTS_MIGRATIONS = [
+  `ALTER TABLE scrape_results ADD COLUMN relevancy_score INTEGER DEFAULT 0`,
+  `ALTER TABLE scrape_results ADD COLUMN is_relevant INTEGER DEFAULT 1`,
+  `ALTER TABLE scrape_results ADD COLUMN base_score INTEGER DEFAULT 0`,
+  `ALTER TABLE scrape_results ADD COLUMN rt_score REAL DEFAULT 0`,
+  `ALTER TABLE scrape_results ADD COLUMN ha_pri_sig TEXT`,
+  `ALTER TABLE scrape_results ADD COLUMN entropy_level TEXT DEFAULT 'stable'`,
+  `ALTER TABLE scrape_results ADD COLUMN published_at TEXT`,
+  `ALTER TABLE scrape_results ADD COLUMN semantic_fingerprint TEXT`,
+  `ALTER TABLE scrape_results ADD COLUMN is_expired INTEGER DEFAULT 0`,
+];
+
+let migrationsPromise: Promise<void> | null = null;
+
+async function ensureMigrations(env: Env): Promise<void> {
+  if (migrationsPromise) return migrationsPromise;
+  migrationsPromise = (async () => {
+    for (const sql of SCRAPE_RESULTS_MIGRATIONS) {
+      try { await env.DB.prepare(sql).run(); } catch { /* column already exists — idempotent */ }
+    }
+  })();
+  try {
+    await migrationsPromise;
+  } catch (err) {
+    // Don't permanently cache a rejected promise — let the next request retry.
+    migrationsPromise = null;
+    throw err;
+  }
+}
+
 // ─── Cache Layer ──────────────────────────────────────────────────────────────
 
 const CACHE_TTL: Record<string, number> = {
@@ -666,20 +707,9 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
 
 async function runScheduledScrape(env: Env): Promise<void> {
   // ── Schema migrations (idempotent) ───────────────────────────────────────
-  const migrations = [
-    `ALTER TABLE scrape_results ADD COLUMN relevancy_score INTEGER DEFAULT 0`,
-    `ALTER TABLE scrape_results ADD COLUMN is_relevant INTEGER DEFAULT 1`,
-    `ALTER TABLE scrape_results ADD COLUMN base_score INTEGER DEFAULT 0`,
-    `ALTER TABLE scrape_results ADD COLUMN rt_score REAL DEFAULT 0`,
-    `ALTER TABLE scrape_results ADD COLUMN ha_pri_sig TEXT`,
-    `ALTER TABLE scrape_results ADD COLUMN entropy_level TEXT DEFAULT 'stable'`,
-    `ALTER TABLE scrape_results ADD COLUMN published_at TEXT`,
-    `ALTER TABLE scrape_results ADD COLUMN semantic_fingerprint TEXT`,
-    `ALTER TABLE scrape_results ADD COLUMN is_expired INTEGER DEFAULT 0`,
-  ];
-  for (const sql of migrations) {
-    try { await env.DB.prepare(sql).run(); } catch { /* column already exists */ }
-  }
+  // Schema migrations — single source of truth in ensureMigrations.
+  // Idempotent and cheap after first call (promise-gated).
+  await ensureMigrations(env);
 
   // ── Load user profile for scoring ────────────────────────────────────────
   const profileRow = await env.DB.prepare(
@@ -960,6 +990,10 @@ export default {
       const minRt = parseFloat(url.searchParams.get("min_rt") ?? "0");
 
       try {
+        // Make sure schema is current before querying. Promise-gated, O(1) after
+        // first call per isolate. Eliminates deploy-then-cron race condition.
+        await ensureMigrations(env);
+
         // Over-fetch (3x) so we still return `limit` after expiry/floor filtering.
         // Cap at 200 to bound D1 cost.
         const overFetch = Math.min(200, Math.max(limit * 3, limit));
