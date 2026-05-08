@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import { synthesizeBriefing as generateAIBriefing } from "./synthesize.js";
-import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate } from "./intelligence.js";
+import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate, applyDecay, RT_EXPIRY_FLOOR } from "./intelligence.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -675,6 +675,7 @@ async function runScheduledScrape(env: Env): Promise<void> {
     `ALTER TABLE scrape_results ADD COLUMN entropy_level TEXT DEFAULT 'stable'`,
     `ALTER TABLE scrape_results ADD COLUMN published_at TEXT`,
     `ALTER TABLE scrape_results ADD COLUMN semantic_fingerprint TEXT`,
+    `ALTER TABLE scrape_results ADD COLUMN is_expired INTEGER DEFAULT 0`,
   ];
   for (const sql of migrations) {
     try { await env.DB.prepare(sql).run(); } catch { /* column already exists */ }
@@ -755,14 +756,14 @@ async function runScheduledScrape(env: Env): Promise<void> {
            is_new, scraped_at,
            relevancy_score, is_relevant,
            base_score, rt_score, ha_pri_sig, entropy_level, published_at,
-           semantic_fingerprint)
-        VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?)
+           semantic_fingerprint, is_expired)
+        VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         resultId, wq.id, wq.adapter, wq.query, raw.slice(0, 8000), hash,
         scored.relevancy_score, scored.is_relevant,
         scored.base_score, scored.rt_score, scored.ha_pri_sig,
         scored.entropy_level, scored.published_at,
-        fingerprint
+        fingerprint, scored.is_expired
       ).run();
 
       console.log(`[DAR] ${wq.adapter}/${wq.query.slice(0,28)} R0:${scored.base_score} Rt:${scored.rt_score} entropy:${scored.entropy_level} sig:${scored.ha_pri_sig.slice(0,8)}`);
@@ -946,6 +947,12 @@ export default {
 
     // ── GET /v1/intel/feed/:profile_id — structured intelligence feed ─────────
     // Returns top signals ranked by Rt score, formatted for agent consumption.
+    //
+    // Lazy decay: rt_score is recomputed from base_score, published_at, and
+    // adapter λ at request time, NOT read from the cron-written column.
+    // The stored rt_score in scrape_results is a historical record (value-at-
+    // write-time); the served value is always fresh as of NOW. This eliminates
+    // up-to-6h staleness between cron runs and prevents "frozen" signals.
     if (url.pathname.startsWith("/v1/intel/feed/")) {
       try { checkAuth(request, env); } catch (e: any) { return errResponse(e.message, 401); }
       const profileId = url.pathname.split("/").pop() ?? "default";
@@ -953,6 +960,10 @@ export default {
       const minRt = parseFloat(url.searchParams.get("min_rt") ?? "0");
 
       try {
+        // Over-fetch (3x) so we still return `limit` after expiry/floor filtering.
+        // Cap at 200 to bound D1 cost.
+        const overFetch = Math.min(200, Math.max(limit * 3, limit));
+
         const { results: signals } = await env.DB.prepare(`
           SELECT
             sr.id, sr.adapter, sr.query, sr.raw_content,
@@ -963,10 +974,10 @@ export default {
           JOIN watched_queries wq ON sr.watched_query_id = wq.id
           WHERE wq.user_id = ?
             AND (sr.is_relevant IS NULL OR sr.is_relevant = 1)
-            AND COALESCE(sr.rt_score, sr.relevancy_score, 0) >= ?
+            AND (sr.is_expired IS NULL OR sr.is_expired = 0)
           ORDER BY COALESCE(sr.rt_score, sr.relevancy_score, 0) DESC
           LIMIT ?
-        `).bind(profileId, minRt, limit).all<{
+        `).bind(profileId, overFetch).all<{
           id: string; adapter: string; query: string; raw_content: string;
           scraped_at: string; published_at: string | null;
           base_score: number | null; rt_score: number | null;
@@ -974,28 +985,43 @@ export default {
           label: string | null;
         }>();
 
+        // Recompute Rt fresh per row using stored base_score + published_at.
+        // Filter out expired (Rt < RT_EXPIRY_FLOOR) and below user-supplied min_rt.
+        // Re-sort by fresh Rt, then take top `limit`.
+        const refreshed = signals
+          .map(s => {
+            const decayed = applyDecay(s.base_score ?? 0, s.published_at, s.adapter);
+            return { row: s, fresh_rt: decayed.rt, fresh_entropy: decayed.entropy, fresh_expired: decayed.is_expired };
+          })
+          .filter(r => !r.fresh_expired && r.fresh_rt >= minRt)
+          .sort((a, b) => b.fresh_rt - a.fresh_rt)
+          .slice(0, limit);
+
         const feed = {
           feed_metadata: {
             profile_id: profileId,
             generated_at: new Date().toISOString(),
-            signal_count: signals.length,
-            version: "freshcontext-1.1",
+            signal_count: refreshed.length,
+            version: "freshcontext-1.2",
+            decay_mode: "lazy", // computed at read time, not cron time
           },
-          signals: signals.map(s => ({
-            signal_id: s.id,
-            source: s.adapter,
-            label: s.label ?? s.query,
+          signals: refreshed.map(r => ({
+            signal_id: r.row.id,
+            source: r.row.adapter,
+            label: r.row.label ?? r.row.query,
             content: {
-              preview: s.raw_content.slice(0, 400),
-              url: s.query,
+              preview: r.row.raw_content.slice(0, 400),
+              url: r.row.query,
             },
             intelligence_stamps: {
-              scraped_at: s.scraped_at,
-              published_at: s.published_at ?? null,
-              base_score: s.base_score ?? null,
-              rt_score: s.rt_score ?? null,
-              entropy_level: s.entropy_level ?? "unknown",
-              ha_pri_sig: s.ha_pri_sig ?? null,
+              scraped_at: r.row.scraped_at,
+              published_at: r.row.published_at ?? null,
+              base_score: r.row.base_score ?? null,
+              rt_score: r.fresh_rt,
+              rt_score_at_write: r.row.rt_score ?? null, // historical, for diagnostics
+              entropy_level: r.fresh_entropy,
+              is_expired: false, // filtered out above
+              ha_pri_sig: r.row.ha_pri_sig ?? null,
             },
           })),
         };
