@@ -6,9 +6,11 @@
 
 ## What This Is
 
-The FreshContext Specification defines a standard envelope format for AI-retrieved web data.
+The FreshContext Specification defines a standard envelope format for AI-retrieved web data and a temporal correction layer that scores it.
 
 It exists to solve one problem: **AI models present stale data with the same confidence as fresh data, and users have no way to tell the difference.**
+
+> **Live demonstration:** [freshcontext-mcp.gimmanuel73.workers.dev/demo](https://freshcontext-mcp.gimmanuel73.workers.dev/demo) — same model, same query, two completely different answers. Only the temporal layer changed.
 
 FreshContext fixes this by wrapping every piece of retrieved content in a structured envelope that carries three guarantees:
 
@@ -17,6 +19,8 @@ FreshContext fixes this by wrapping every piece of retrieved content in a struct
 3. **How confident** we are that the content date is accurate (freshness confidence)
 
 Any tool, agent, or system that implements this spec is **FreshContext-compatible**.
+
+The specification is one half of the system. The other half — the Decay-Adjusted Relevancy (DAR) engine that scores wrapped signals — is documented separately in [METHODOLOGY.md](./METHODOLOGY.md).
 
 ---
 
