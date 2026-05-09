@@ -36,3 +36,14 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Internal / strategic notes — not for public repo
+# These contain session continuity, strategy, financial context, etc.
+CLAUDE.md
+HANDOFF.md
+METHODOLOGY.md
+ROADMAP.md
+TIME_CHECK_README.md
+SESSION_SAVE_*.md
+_archive/
+.claude/
