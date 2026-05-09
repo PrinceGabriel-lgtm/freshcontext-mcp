@@ -29,6 +29,13 @@
       "id": "2bfd2b8f371345d493af520644364c6c"
     }
   ],
+  "assets": {
+    "directory": "../demo",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+    "run_worker_first": true
+  },
   "observability": {
     "logs": {
       "enabled": true,

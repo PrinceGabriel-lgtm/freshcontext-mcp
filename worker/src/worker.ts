@@ -12,6 +12,7 @@ interface Env {
   RATE_LIMITER: KVNamespace;
   CACHE: KVNamespace;
   DB: D1Database;
+  ASSETS: Fetcher;  // Static assets binding for /demo (configured in wrangler.jsonc)
   API_KEY?: string;
   ANTHROPIC_KEY?: string;
   GITHUB_TOKEN?: string;
@@ -938,6 +939,21 @@ export default {
     // Bot probe filter — cheapest reject path, runs first
     if (isBotProbe(url, ua)) {
       return new Response("Gone", { status: 410 });
+    }
+
+    // ── GET /demo — static demo page (HTML + data.json) ─────────────────
+    // Demo files live in /demo at repo root, mounted via the ASSETS binding.
+    // Force trailing slash so relative `./data.json` fetches from the HTML
+    // resolve correctly to /demo/data.json (not /data.json).
+    if (url.pathname === "/demo") {
+      return Response.redirect(url.origin + "/demo/" + url.search, 301);
+    }
+    if (url.pathname.startsWith("/demo/")) {
+      // Strip the /demo/ prefix so the asset directory roots at the URL path
+      // (`/demo/index.html` → `index.html` in the asset bundle).
+      const stripped = url.pathname.replace(/^\/demo\//, "/");
+      const assetUrl = new URL(stripped + url.search, url.origin);
+      return env.ASSETS.fetch(new Request(assetUrl, request));
     }
 
     // ── GET /health — cheap liveness check for monitoring ───────────────────────

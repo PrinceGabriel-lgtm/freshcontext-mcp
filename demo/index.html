@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Most RAG pipelines fail because of time, not embeddings — FreshContext</title>
+<meta name="description" content="A 5-document demonstration of why semantic-only retrieval gives 2026 systems 2022 answers — and what it costs to fix it.">
+<style>
+  :root {
+    --bg: #fafaf7;
+    --surface: #ffffff;
+    --ink: #1a1a1a;
+    --ink-soft: #555;
+    --ink-faint: #888;
+    --rule: #d4d0c4;
+    --code-bg: #f0ebe1;
+    --stale: #b34a3c;
+    --stale-soft: #f4e4e0;
+    --fresh: #2d6a4f;
+    --fresh-soft: #e0ede5;
+    --accent: #2a4d8f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Charter, "Iowan Old Style", "Source Serif Pro", Georgia, serif;
+    font-size: 18px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 64px 28px 96px;
+  }
+  h1 {
+    font-size: 38px;
+    line-height: 1.15;
+    margin: 0 0 12px;
+    letter-spacing: -0.02em;
+  }
+  h2 {
+    font-size: 24px;
+    margin: 56px 0 16px;
+    letter-spacing: -0.01em;
+    border-top: 1px solid var(--rule);
+    padding-top: 32px;
+  }
+  h3 {
+    font-size: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-soft);
+    margin: 32px 0 8px;
+  }
+  p { margin: 0 0 16px; }
+  .lede {
+    font-size: 20px;
+    color: var(--ink-soft);
+    margin: 0 0 8px;
+  }
+  .byline {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 13px;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 32px;
+  }
+  code, .mono {
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.92em;
+  }
+  .inline-code {
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  blockquote {
+    margin: 24px 0;
+    padding: 16px 24px;
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    font-style: italic;
+    color: var(--ink-soft);
+  }
+  .query-box {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 20px 24px;
+    margin: 16px 0 32px;
+    border-radius: 4px;
+  }
+  .query-box .label {
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-faint);
+    margin-bottom: 6px;
+  }
+  .query-box .q {
+    font-size: 20px;
+    line-height: 1.4;
+  }
+  .doc {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 18px 22px;
+    margin-bottom: 14px;
+  }
+  .doc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 8px;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  .doc-source {
+    font-size: 13px;
+    color: var(--ink-faint);
+    text-transform: lowercase;
+  }
+  .doc-date {
+    font-size: 13px;
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+  .doc-title {
+    font-weight: 600;
+    margin: 0 0 8px;
+    font-size: 18px;
+  }
+  .doc-content {
+    font-size: 16px;
+    color: var(--ink-soft);
+    margin: 0;
+  }
+  .scores {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--rule);
+    display: flex;
+    gap: 24px;
+    font-family: "JetBrains Mono", Menlo, monospace;
+    font-size: 13px;
+  }
+  .score-pill {
+    display: inline-flex;
+    gap: 6px;
+    align-items: baseline;
+  }
+  .score-pill .label {
+    color: var(--ink-faint);
+  }
+  .score-pill .val {
+    font-weight: 600;
+  }
+  .age {
+    color: var(--ink-faint);
+    font-size: 13px;
+  }
+  .math-block {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 24px 28px;
+    margin: 16px 0;
+  }
+  .math-eq {
+    text-align: center;
+    font-size: 28px;
+    margin: 16px 0 24px;
+    font-family: "Latin Modern Math", "STIX Two Math", Cambria, Georgia, serif;
+  }
+  .math-eq i { color: var(--accent); }
+  .math-where {
+    font-family: "JetBrains Mono", Menlo, monospace;
+    font-size: 14px;
+    color: var(--ink-soft);
+    margin: 0;
+  }
+  .math-where li { margin-bottom: 4px; list-style: none; padding-left: 0; }
+  .math-where ul { padding-left: 0; margin: 0; }
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin: 24px 0;
+  }
+  @media (max-width: 700px) {
+    .compare { grid-template-columns: 1fr; }
+  }
+  .col {
+    background: var(--surface);
+    border-radius: 6px;
+    padding: 24px;
+    border: 1px solid var(--rule);
+  }
+  .col.stale { border-top: 4px solid var(--stale); }
+  .col.fresh { border-top: 4px solid var(--fresh); }
+  .col-header {
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-faint);
+    margin-bottom: 4px;
+  }
+  .col-title {
+    font-weight: 700;
+    font-size: 18px;
+    margin-bottom: 16px;
+  }
+  .col.stale .col-title { color: var(--stale); }
+  .col.fresh .col-title { color: var(--fresh); }
+  .ranking {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .ranking li {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 15px;
+    line-height: 1.4;
+  }
+  .ranking li:last-child { border-bottom: none; }
+  .ranking .rank-num {
+    display: inline-block;
+    width: 24px;
+    color: var(--ink-faint);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+  }
+  .ranking .rank-doc {
+    font-weight: 500;
+  }
+  .ranking .rank-score {
+    float: right;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+    color: var(--ink-faint);
+  }
+  .answer {
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  .answer strong { color: var(--ink); }
+  .answer ul { margin: 8px 0; padding-left: 22px; }
+  .answer li { margin-bottom: 6px; }
+  .verdict {
+    margin-top: 16px;
+    padding: 12px 16px;
+    border-radius: 4px;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .verdict.bad { background: var(--stale-soft); color: var(--stale); }
+  .verdict.good { background: var(--fresh-soft); color: var(--fresh); }
+  .regen-note {
+    background: var(--surface);
+    border: 1px dashed var(--rule);
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin: 16px 0;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+  .regen-note strong { color: var(--ink); }
+  .regen-note code {
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .footer {
+    margin-top: 80px;
+    padding-top: 32px;
+    border-top: 1px solid var(--rule);
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 14px;
+    color: var(--ink-soft);
+  }
+  .footer a { color: var(--accent); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+  .footer code { background: var(--code-bg); padding: 1px 6px; border-radius: 3px; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <div class="byline">FreshContext · A live demonstration · v1.0</div>
+
+  <h1>Most RAG pipelines fail because of time, not embeddings.</h1>
+  <p class="lede">Same model. Same retrieval set. Same query. Two completely different answers — because one of them remembered when its sources were written.</p>
+
+  <h2>The query</h2>
+  <p>A developer in 2026 asks an AI agent for current best practices. Five documents are retrieved by semantic similarity:</p>
+
+  <div class="query-box">
+    <div class="label">Query</div>
+    <div class="q" id="query"></div>
+  </div>
+
+  <h2>The retrieval set</h2>
+  <p>Each document scored on pure semantic similarity to the query. Top result is a 2022 blog post — confidently written, dense keyword match, authoritative source.</p>
+
+  <div id="docs"></div>
+
+  <h2>The math</h2>
+  <p>FreshContext applies a single correction: an exponential decay weight based on document age. Nothing else changes — same embeddings, same vectors, same retrieval set.</p>
+
+  <div class="math-block">
+    <div class="math-eq">R<sub>t</sub> = R<sub>0</sub> · e<sup>−<i>λ</i>·t</sup></div>
+    <div class="math-where">
+      <ul>
+        <li>R<sub>0</sub> = base semantic relevancy [0–100]</li>
+        <li>λ &nbsp;= source-specific decay constant (per hour)</li>
+        <li>t &nbsp;= hours elapsed since the document was published</li>
+        <li>R<sub>t</sub> = decay-adjusted relevancy at query time</li>
+      </ul>
+    </div>
+    <p style="margin-top: 16px; font-size: 14px; color: var(--ink-soft);">For this demo, λ = 0.0001 (half-life ≈ 9.5 months). The live FreshContext engine uses source-specific λ values: HN front page ≈ 14h half-life, blog posts ≈ 29 days, academic papers ≈ 1.6 years.</p>
+  </div>
+
+  <h2>The ranking shift</h2>
+  <p>The 2022 blog falls from rank 1 to rank 5. The 2026 X post rises from rank 4 to rank 1. Same documents, decay applied:</p>
+
+  <div class="compare">
+    <div class="col stale">
+      <div class="col-header">Without FreshContext</div>
+      <div class="col-title">Semantic top-k ranking</div>
+      <ol class="ranking" id="rank-baseline"></ol>
+    </div>
+    <div class="col fresh">
+      <div class="col-header">With FreshContext</div>
+      <div class="col-title">Decay-adjusted ranking</div>
+      <ol class="ranking" id="rank-fresh"></ol>
+    </div>
+  </div>
+
+  <h2>The answer that changes</h2>
+  <p>Both answers come from the same model with the same query. The only difference is which three documents the model saw at the top of the context window:</p>
+
+  <div id="regen-note-anchor"></div>
+
+  <div class="compare">
+
+    <div class="col stale">
+      <div class="col-header">Without FreshContext</div>
+      <div class="col-title" id="stale-context-label">Top context: …</div>
+      <div class="answer" id="stale-answer"></div>
+      <div class="verdict" id="stale-verdict"></div>
+    </div>
+
+    <div class="col fresh">
+      <div class="col-header">With FreshContext</div>
+      <div class="col-title" id="fresh-context-label">Top context: …</div>
+      <div class="answer" id="fresh-answer"></div>
+      <div class="verdict" id="fresh-verdict"></div>
+    </div>
+
+  </div>
+
+  <h2>What this is, and what it isn't</h2>
+
+  <p><strong>This isn't a model problem.</strong> The same model produced both answers. Claude wasn't wrong in the first version — it faithfully summarized what was put in front of it.</p>
+
+  <p><strong>This isn't an embedding problem.</strong> The cosine similarity scores were correct. The 2022 blog really is semantically dense and well-written.</p>
+
+  <p><strong>This is a context-engineering problem.</strong> Retrieval ranks correctly along one axis (semantic similarity) and ignores the other axis that matters in production (temporal validity). FreshContext adds the missing axis.</p>
+
+  <blockquote>"Most RAG pipelines rank context correctly semantically but incorrectly temporally."</blockquote>
+
+  <h2>Reproduce this</h2>
+  <p>The retrieval set, the math, and the prompts are all open. Read the data file, change the query, swap λ, run it against your own RAG pipeline:</p>
+
+  <div class="footer">
+    <p>
+      <strong>Code:</strong> <a href="https://github.com/PrinceGabriel-lgtm/freshcontext-mcp">github.com/PrinceGabriel-lgtm/freshcontext-mcp</a><br>
+      <strong>Spec:</strong> <a href="https://freshcontext-site.pages.dev">freshcontext-site.pages.dev</a><br>
+      <strong>Install:</strong> <code>npm install freshcontext-mcp</code><br>
+      <strong>Live API:</strong> <code>https://freshcontext-mcp.gimmanuel73.workers.dev/v1/intel/feed/default</code>
+    </p>
+    <p style="margin-top: 24px; color: var(--ink-faint);">Built by Immanuel Gabriel (Prince Gabriel) · Grootfontein, Namibia · MIT licensed.</p>
+  </div>
+
+</div>
+
+<script>
+// ─── Compute R_t live on page load ──────────────────────────────────────
+// The math runs in the browser. The answers are loaded from data.json —
+// no API key required to view this page. To regenerate the answers from a
+// real Claude call, run `node generate.mjs` with your own ANTHROPIC_API_KEY.
+// FreshContext incorporates LLMs as optional output, doesn't require them.
+
+(async function() {
+  const res = await fetch('./data.json');
+  const data = await res.json();
+
+  const now = new Date(data.now).getTime();
+  const lambda = data.decay.lambda_per_hour;
+
+  // Compute t (age in hours) and R_t for each doc
+  const docs = data.documents.map(d => {
+    const published = new Date(d.published_at).getTime();
+    const age_hours = (now - published) / (1000 * 60 * 60);
+    const r_t = d.base_score * Math.exp(-lambda * age_hours);
+    const age_days = age_hours / 24;
+    const age_years = age_days / 365.25;
+    let age_human;
+    if (age_years >= 1) age_human = age_years.toFixed(1) + ' years';
+    else if (age_days >= 30) age_human = (age_days / 30).toFixed(1) + ' months';
+    else age_human = age_days.toFixed(0) + ' days';
+    return { ...d, age_hours, r_t, age_human };
+  });
+
+  // ─── Render query ─────────────────────────────────────────────────────
+  document.getElementById('query').textContent = data.query;
+
+  // ─── Render docs ──────────────────────────────────────────────────────
+  const docsEl = document.getElementById('docs');
+  docs.forEach((d) => {
+    const card = document.createElement('div');
+    card.className = 'doc';
+    card.innerHTML = `
+      <div class="doc-header">
+        <span class="doc-source">${d.source}</span>
+        <span class="doc-date">${d.published_at.slice(0, 10)} · <span class="age">${d.age_human} ago</span></span>
+      </div>
+      <div class="doc-title">${d.title}</div>
+      <p class="doc-content">${d.content}</p>
+      <div class="scores">
+        <span class="score-pill"><span class="label">R₀ (semantic):</span> <span class="val">${d.base_score}</span></span>
+        <span class="score-pill"><span class="label">Rₜ (decay-adjusted):</span> <span class="val">${d.r_t.toFixed(1)}</span></span>
+      </div>
+    `;
+    docsEl.appendChild(card);
+  });
+
+  // ─── Build rankings ───────────────────────────────────────────────────
+  const baseline = [...docs].sort((a, b) => b.base_score - a.base_score);
+  const fresh    = [...docs].sort((a, b) => b.r_t - a.r_t);
+
+  function renderRanking(elId, list, scoreKey) {
+    const el = document.getElementById(elId);
+    list.forEach((d, i) => {
+      const li = document.createElement('li');
+      const score = scoreKey === 'base_score' ? d.base_score : d.r_t.toFixed(1);
+      li.innerHTML = `
+        <span class="rank-num">${i + 1}.</span>
+        <span class="rank-doc">${d.title}</span>
+        <span class="rank-score">${score}</span>
+      `;
+      el.appendChild(li);
+    });
+  }
+  renderRanking('rank-baseline', baseline, 'base_score');
+  renderRanking('rank-fresh', fresh, 'r_t');
+
+  // ─── Render answers from data.json ────────────────────────────────────
+  // baked_answers is the default. innerHTML is safe here because we own
+  // the source data; a future BYOK flow would need DOMPurify or a proper
+  // markdown→HTML pipeline before rendering user-supplied content.
+  const ans = data.baked_answers;
+
+  function renderAnswer(side) {
+    const a = ans[side];
+    document.getElementById(`${side}-context-label`).textContent = `Top context: ${a.context_label}`;
+    const html = [
+      `<p>${a.intro}</p>`,
+      '<ul>' + a.bullets.map(b => `<li>${b}</li>`).join('') + '</ul>',
+      `<p>${a.outro}</p>`,
+    ].join('');
+    document.getElementById(`${side}-answer`).innerHTML = html;
+    const v = document.getElementById(`${side}-verdict`);
+    v.classList.add(a.verdict_class);
+    v.textContent = a.verdict_text;
+  }
+  renderAnswer('stale');
+  renderAnswer('fresh');
+
+  // ─── Regen-source note ────────────────────────────────────────────────
+  const note = document.getElementById('regen-note-anchor');
+  if (ans._last_regenerated) {
+    const when = new Date(ans._last_regenerated).toISOString().slice(0, 10);
+    note.innerHTML = `
+      <div class="regen-note">
+        <strong>Live regeneration:</strong> these two answers were produced by
+        <code>${ans._last_model || 'Claude'}</code> on <code>${when}</code> from the
+        retrieval set above. Same model, same query, different top-3 docs.
+      </div>`;
+  } else {
+    note.innerHTML = `
+      <div class="regen-note">
+        <strong>Illustrative outputs:</strong> the two answers below are baked
+        into <code>data.json</code> — no API key needed to view this page.
+        Run <code>node generate.mjs</code> with your own
+        <code>ANTHROPIC_API_KEY</code> to replace them with a fresh Claude call
+        against the same retrieval set.
+      </div>`;
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+{
+  "query": "What's the recommended way to chunk documents for RAG in 2026?",
+  "now": "2026-05-08T00:00:00Z",
+  "decay": {
+    "lambda_per_hour": 0.0001,
+    "halflife_hours": 6931,
+    "halflife_days_human": "≈ 9.5 months",
+    "note": "Single decay constant across sources for demo clarity. The live engine uses source-specific lambdas (HN: 14h half-life, blogs: 29 days, papers: 1.6 years)."
+  },
+  "documents": [
+    {
+      "id": "doc_2022_langchain_blog",
+      "source": "blog.langchain.dev",
+      "title": "RAG Chunking: The Complete Guide",
+      "published_at": "2022-08-15T00:00:00Z",
+      "base_score": 92,
+      "content": "For most RAG applications, the recommended approach is fixed-size chunking with 1000 tokens per chunk and 200 token overlap. Use RecursiveCharacterTextSplitter with this configuration. This works for almost any document type and is the LangChain default. Studies show fixed-size chunking is sufficient for 95% of use cases when paired with a good embedding model like ada-002.",
+      "why_high_semantic_score": "Authoritative source, dense keyword match (RAG, chunking, recommended, LangChain), confident tone."
+    },
+    {
+      "id": "doc_2023_reddit_localllama",
+      "source": "reddit.com/r/LocalLLaMA",
+      "title": "What chunk size do you use for RAG?",
+      "published_at": "2023-01-20T00:00:00Z",
+      "base_score": 81,
+      "content": "Most people use 512 or 1024 tokens with 10-20% overlap. Don't overthink it. Just use the LangChain RecursiveCharacterTextSplitter and tune chunk_size to match your embedding model's context window. Higher overlap = more storage, marginal accuracy gains.",
+      "why_high_semantic_score": "Strong community signal (high upvotes), direct answer to query, confirms authoritative source above."
+    },
+    {
+      "id": "doc_2024_arxiv_paper",
+      "source": "arxiv.org/abs/2410.xxxxx",
+      "title": "Semantic Chunking vs Fixed-Size: An Empirical Study",
+      "published_at": "2024-06-12T00:00:00Z",
+      "base_score": 78,
+      "content": "We evaluate semantic chunking against fixed-size baselines across 12 retrieval tasks. Semantic chunking outperforms fixed-size in 73% of cases, particularly for technical documents. However, the computational overhead of semantic chunking is 4.2x higher.",
+      "why_high_semantic_score": "Empirical evidence, scientific framing, but slightly off-axis from the direct query."
+    },
+    {
+      "id": "doc_2025_langchain_late",
+      "source": "blog.langchain.com",
+      "title": "Late Chunking and Contextual Retrieval",
+      "published_at": "2025-09-30T00:00:00Z",
+      "base_score": 86,
+      "content": "Late chunking with embedding-aware boundaries (bge-late-chunk, jina-late) outperforms both fixed-size and semantic chunking. Combine with contextual retrieval per Anthropic's research for state-of-the-art accuracy. The fixed-size 1000-token recommendation from earlier guides is now considered a baseline at best.",
+      "why_high_semantic_score": "Same authoritative source as #1, strong keyword match, more recent."
+    },
+    {
+      "id": "doc_2026_x_post",
+      "source": "x.com/jerryjliu0",
+      "title": "RAG failures we see in 2026",
+      "published_at": "2026-02-08T00:00:00Z",
+      "base_score": 80,
+      "content": "Top RAG failure mode in production right now: teams still using fixed-size chunking from 2022 tutorials. Move to late-interaction or contextual retrieval. The math has changed; the 'best practice' docs haven't caught up. If your retrieval is still ranking by cosine similarity alone, you're shipping 2022 results in 2026.",
+      "why_high_semantic_score": "Practitioner expertise, direct claim about query topic, but social-media format slightly reduces baseline semantic confidence."
+    }
+  ],
+  "baked_answers": {
+    "_note": "These are the two answers the demo displays by default. Anyone landing on the page sees them — no API key required. To regenerate from a real Claude call, run `node generate.mjs` with ANTHROPIC_API_KEY set; the script overwrites these two fields. Last regenerated: never (illustrative outputs).",
+    "_last_regenerated": null,
+    "_last_model": null,
+    "stale": {
+      "context_label": "2022 LangChain blog · 2025 LangChain blog · 2023 Reddit",
+      "intro": "For RAG pipelines, the recommended approach is <strong>fixed-size chunking</strong>:",
+      "bullets": [
+        "1,000 tokens per chunk with 200-token overlap",
+        "Use <span class=\"inline-code\">RecursiveCharacterTextSplitter</span> — the LangChain default",
+        "Pair with a strong embedding model like <span class=\"inline-code\">ada-002</span>",
+        "Tune <span class=\"inline-code\">chunk_size</span> to match your embedding model's context window"
+      ],
+      "outro": "This approach is widely confirmed by both authoritative documentation and community consensus.",
+      "verdict_class": "bad",
+      "verdict_text": "⚠ This is 2022 advice. ada-002 is no longer SOTA. Fixed-size chunking has been superseded."
+    },
+    "fresh": {
+      "context_label": "2026 X post · 2025 LangChain blog · 2024 arXiv paper",
+      "intro": "In 2026, the current state-of-the-art is <strong>late chunking with embedding-aware boundaries</strong>:",
+      "bullets": [
+        "Use late-chunking models like <span class=\"inline-code\">bge-late-chunk</span> or <span class=\"inline-code\">jina-late</span>",
+        "Combine with <strong>contextual retrieval</strong> (per Anthropic's research) for SOTA accuracy",
+        "Avoid fixed-size 1000-token chunking — it's now considered a baseline at best",
+        "For technical documents, semantic chunking remains viable (73% win rate over fixed-size per the 2024 study), but carries 4.2× compute overhead"
+      ],
+      "outro": "Common 2026 production failure: teams still applying 2022-era tutorial recommendations.",
+      "verdict_class": "good",
+      "verdict_text": "✓ Current as of May 2026. Reflects 2025–2026 consensus while preserving the 2024 empirical context."
+    }
+  }
+}
