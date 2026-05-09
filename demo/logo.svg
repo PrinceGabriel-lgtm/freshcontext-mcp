@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="150" height="150" viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="150" height="150" fill="#fafaf7"/>
+
+  <!-- Floor line (subtle): represents R_t hard floor / threshold -->
+  <line x1="20" y1="115" x2="130" y2="115"
+        stroke="#2a4d8f"
+        stroke-width="2"
+        stroke-linecap="round"
+        opacity="0.25"
+        stroke-dasharray="3,4"/>
+
+  <!-- Decay curve (main): R_t = R_0 · e^(-λt) -->
+  <path d="M 25 28 C 55 28, 70 105, 125 116"
+        stroke="#2a4d8f"
+        stroke-width="8"
+        fill="none"
+        stroke-linecap="round"/>
+
+  <!-- R_0 anchor dot (top-left, where the data starts fresh) -->
+  <circle cx="25" cy="28" r="5" fill="#2a4d8f"/>
+</svg>

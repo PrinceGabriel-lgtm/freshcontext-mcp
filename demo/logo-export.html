@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FreshContext logo — JPEG exporter</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 40px; background: #fafaf7; color: #1a1a1a; }
+  h1 { font-size: 20px; margin: 0 0 16px; }
+  p { margin: 0 0 12px; color: #555; font-size: 14px; }
+  .preview { display: inline-block; padding: 12px; background: white; border: 1px solid #d4d0c4; border-radius: 4px; margin: 16px 0; }
+  canvas { display: block; }
+  button { background: #2a4d8f; color: white; border: 0; padding: 10px 20px; border-radius: 4px; font-size: 14px; cursor: pointer; }
+  button:hover { background: #1f3a6e; }
+</style>
+</head>
+<body>
+
+<h1>FreshContext logo — JPEG export</h1>
+<p>150×150 JPEG, exactly what AgenticMarket requires. Click the button to download.</p>
+
+<div class="preview">
+  <canvas id="canvas" width="150" height="150"></canvas>
+</div>
+
+<p><button id="download">Download as JPEG</button></p>
+
+<script>
+// SVG inlined directly to avoid browser fetch() restrictions on file:// URLs.
+const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150" viewBox="0 0 150 150">
+  <rect width="150" height="150" fill="#fafaf7"/>
+  <line x1="20" y1="115" x2="130" y2="115" stroke="#2a4d8f" stroke-width="2" stroke-linecap="round" opacity="0.25" stroke-dasharray="3,4"/>
+  <path d="M 25 28 C 55 28, 70 105, 125 116" stroke="#2a4d8f" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <circle cx="25" cy="28" r="5" fill="#2a4d8f"/>
+</svg>`;
+
+const blob = new Blob([svgString], { type: 'image/svg+xml' });
+const url = URL.createObjectURL(blob);
+
+const img = new Image();
+img.onload = () => {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fafaf7';
+  ctx.fillRect(0, 0, 150, 150);
+  ctx.drawImage(img, 0, 0, 150, 150);
+};
+img.src = url;
+
+document.getElementById('download').onclick = () => {
+  const canvas = document.getElementById('canvas');
+  canvas.toBlob((b) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'freshcontext-logo.jpg';
+    a.click();
+  }, 'image/jpeg', 0.95);
+};
+</script>
+
+</body>
+</html>

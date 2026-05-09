@@ -1175,13 +1175,15 @@ export default {
     }
 
     // ── MCP transport (only /mcp reaches here) ───────────────────────────────────────
+    // /mcp is the public interface — read-only, cached, rate-limited.
+    // Auth is NOT enforced here so MCP marketplace probes (AgenticMarket,
+    // MCP Registry health checks) can verify the endpoint speaks MCP.
+    // Authenticated endpoints that touch private D1 data keep auth.
     try {
-      checkAuth(request, env);
       const ip = getClientIp(request);
       await checkRateLimit(ip, env.RATE_LIMITER);
     } catch (err: any) {
-      const status = err.message.startsWith("Unauthorized") ? 401 : 429;
-      return errResponse(err.message, status);
+      return errResponse(err.message, 429);
     }
 
     const transport = new WebStandardStreamableHTTPServerTransport();
