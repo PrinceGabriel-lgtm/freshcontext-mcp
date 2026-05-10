@@ -227,6 +227,586 @@ async function withCache(
   return result;
 }
 
+// ─── Adapter helpers ──────────────────────────────────────────────────────────
+//
+// Pure data-fetch helpers used by the 6 base adapters added in Pass 4
+// and by the 4 composite tools that aggregate them. Each returns
+// { raw, date, conf } so the caller can stamp consistently.
+//
+// The original 11 tools keep their inline logic — these helpers exist so
+// composites do not have to re-inline the same fetches.
+
+interface AdapterHit {
+  raw: string;
+  date: string | null;
+  conf: "high" | "medium" | "low";
+}
+
+const UA = "freshcontext-mcp/0.3.15 (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)";
+const SEC_UA = "freshcontext-mcp/1.0 contact@freshcontext.dev";
+
+function asciiSanitize(s: string): string {
+  return s.replace(/[^\x20-\x7E\n]/g, "").trim();
+}
+
+function formatUSD(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined || isNaN(amount)) return "N/A";
+  const abs = Math.abs(amount);
+  if (abs >= 1_000_000_000) return `$${(amount / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `$${(amount / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `$${(amount / 1_000).toFixed(1)}K`;
+  return `$${amount.toFixed(0)}`;
+}
+
+// ── arXiv (HTTP, Atom XML) ───────────────────────────────────────────────────
+async function fetchArxiv(query: string, maxLength: number): Promise<AdapterHit> {
+  const apiUrl = query.startsWith("http")
+    ? query
+    : `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&start=0&max_results=10&sortBy=relevance&sortOrder=descending`;
+
+  const res = await fetch(apiUrl, { headers: { "User-Agent": UA } });
+  if (!res.ok) throw new Error(`arXiv API ${res.status}`);
+
+  const xml = await res.text();
+  const entries = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)];
+  if (!entries.length) return { raw: "No results found.", date: null, conf: "low" };
+
+  const getTag = (block: string, tag: string): string => {
+    const m = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
+    return m ? m[1].trim().replace(/\s+/g, " ") : "";
+  };
+
+  const papers = entries.map((match, i) => {
+    const block = match[1];
+    const title = getTag(block, "title").replace(/\n/g, " ");
+    const summary = getTag(block, "summary").slice(0, 300).replace(/\n/g, " ");
+    const published = getTag(block, "published").slice(0, 10);
+    const updated = getTag(block, "updated").slice(0, 10);
+    const id = getTag(block, "id").replace("http://arxiv.org/abs/", "https://arxiv.org/abs/");
+    const authorMatches = [...block.matchAll(/<author>([\s\S]*?)<\/author>/g)];
+    const authors = authorMatches.map(a => getTag(a[1], "name")).filter(Boolean).slice(0, 4).join(", ");
+    return [
+      `[${i + 1}] ${title}`,
+      `Authors: ${authors || "Unknown"}`,
+      `Published: ${published}${updated && updated !== published ? ` (updated ${updated})` : ""}`,
+      `Abstract: ${summary}…`,
+      `Link: ${id}`,
+    ].join("\n");
+  });
+
+  const raw = papers.join("\n\n").slice(0, maxLength);
+  const dates = entries
+    .map(m => getTag(m[1], "published").slice(0, 10))
+    .filter(Boolean)
+    .sort()
+    .reverse();
+  const date = dates[0] ?? null;
+  return { raw, date, conf: date ? "high" : "medium" };
+}
+
+// ── Changelog (npm registry + GitHub Releases; no browser fallback) ──────────
+async function fetchChangelog(input: string, maxLength: number): Promise<AdapterHit> {
+  // npm package name — no protocol, no slash
+  if (!input.startsWith("http") && !input.includes("/") && input.length > 0) {
+    const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(input)}`, {
+      headers: { "User-Agent": UA },
+    });
+    if (!res.ok) throw new Error(`npm registry ${res.status}`);
+    const data = await res.json() as {
+      name: string;
+      description?: string;
+      time?: Record<string, string>;
+      "dist-tags"?: { latest?: string };
+    };
+    const times = data.time ?? {};
+    const versions = Object.keys(times)
+      .filter(k => k !== "created" && k !== "modified" && /^\d/.test(k))
+      .sort((a, b) => new Date(times[b]).getTime() - new Date(times[a]).getTime())
+      .slice(0, 10);
+    const latest = data["dist-tags"]?.latest ?? versions[0] ?? "?";
+    const raw = [
+      `Package: ${data.name}`,
+      `Description: ${data.description ?? "N/A"}`,
+      `Latest: ${latest} (${times[latest]?.slice(0, 10) ?? "unknown"})`,
+      ``,
+      `Recent versions:`,
+      ...versions.map(v => `  ${v} — ${times[v]?.slice(0, 10) ?? "unknown"}`),
+    ].join("\n").slice(0, maxLength);
+    const newest = versions[0] ? times[versions[0]] : null;
+    return { raw, date: newest ?? null, conf: newest ? "high" : "medium" };
+  }
+
+  // GitHub repo URL → Releases API
+  const ghMatch = input.match(/github\.com\/([^/]+)\/([^/?\s]+)/);
+  if (ghMatch) {
+    const owner = ghMatch[1];
+    const repo = ghMatch[2].replace(/\.git$/, "");
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases?per_page=10`, {
+      headers: { "Accept": "application/vnd.github.v3+json", "User-Agent": UA },
+    });
+    if (!res.ok) throw new Error(`GitHub releases ${res.status}`);
+    const releases = await res.json() as Array<{
+      tag_name: string; name: string; published_at: string; body: string;
+      prerelease: boolean; draft: boolean;
+    }>;
+    if (!releases.length) throw new Error("No releases found");
+    const stable = releases.filter(r => !r.prerelease && !r.draft);
+    const items = stable.length ? stable : releases;
+    const raw = items.slice(0, 8).map((r, i) => {
+      const body = asciiSanitize(r.body ?? "").slice(0, 500);
+      return [
+        `[${i + 1}] ${r.tag_name}${r.name && r.name !== r.tag_name ? ` — ${r.name}` : ""}`,
+        `Released: ${r.published_at?.slice(0, 10) ?? "unknown"}`,
+        body ? `\n${body}` : "(no release notes)",
+      ].join("\n");
+    }).join("\n\n").slice(0, maxLength);
+    const newest = items[0]?.published_at ?? null;
+    return { raw, date: newest, conf: "high" };
+  }
+
+  throw new Error("Changelog: pass an npm package name (e.g. 'react') or a GitHub repo URL. Arbitrary URL discovery is not supported in the Worker.");
+}
+
+// ── GDELT (HTTP) ─────────────────────────────────────────────────────────────
+async function fetchGdelt(query: string, maxLength: number): Promise<AdapterHit> {
+  const params = new URLSearchParams({
+    query, mode: "artlist", maxrecords: "15", format: "json",
+    timespan: "1month", sort: "DateDesc",
+  });
+  const res = await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`, {
+    headers: { "Accept": "application/json", "User-Agent": SEC_UA },
+  });
+  if (!res.ok) throw new Error(`GDELT ${res.status}`);
+  const text = await res.text();
+  if (!text.trim() || text.trim() === "null") {
+    return { raw: `No GDELT articles for "${query}".`, date: null, conf: "high" };
+  }
+  const data = JSON.parse(text) as {
+    articles?: Array<{
+      url?: string; title?: string; seendate?: string;
+      domain?: string; language?: string; sourcecountry?: string;
+    }>;
+  };
+  const articles = data.articles ?? [];
+  if (!articles.length) {
+    return { raw: `No GDELT articles for "${query}" in last 30 days.`, date: null, conf: "high" };
+  }
+
+  const parseDate = (raw?: string): string | null => {
+    if (!raw) return null;
+    const m = raw.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/);
+    return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z` : null;
+  };
+
+  const lines: string[] = [
+    `GDELT Global News — ${query}`,
+    `${articles.length} articles (last 30 days)`,
+    "",
+  ];
+  let latest: string | null = null;
+  articles.forEach((a, i) => {
+    const date = parseDate(a.seendate);
+    if (date && (!latest || date > latest)) latest = date;
+    lines.push(`[${i + 1}] ${(a.title ?? "No title").slice(0, 200)}`);
+    lines.push(`    Source: ${a.domain ?? "?"} (${a.sourcecountry ?? "?"})  Lang: ${a.language ?? "?"}`);
+    lines.push(`    Date:   ${date ?? a.seendate ?? "?"}`);
+    if (a.url) lines.push(`    URL:    ${a.url.slice(0, 200)}`);
+    lines.push("");
+  });
+  return { raw: lines.join("\n").slice(0, maxLength), date: latest, conf: "high" };
+}
+
+// ── GeBIZ (Singapore data.gov.sg) ────────────────────────────────────────────
+async function fetchGebiz(query: string, maxLength: number): Promise<AdapterHit> {
+  const params = new URLSearchParams({
+    resource_id: "d_acde1106003906a75c3fa052592f2fcb",
+    limit: "15",
+    sort: "_id desc",
+  });
+  if (query.trim()) params.set("q", query.trim());
+  const res = await fetch(`https://data.gov.sg/api/action/datastore_search?${params}`, {
+    headers: { "Accept": "application/json", "User-Agent": SEC_UA },
+  });
+  if (!res.ok) throw new Error(`GeBIZ ${res.status}`);
+  const data = await res.json() as {
+    result?: { records?: Array<Record<string, string>>; total?: number };
+  };
+  const records = data.result?.records ?? [];
+  const total = data.result?.total ?? 0;
+  if (!records.length) {
+    return { raw: `No GeBIZ tenders for "${query || "(all)"}"`, date: null, conf: "high" };
+  }
+
+  const fmtAmt = (raw?: string): string => {
+    if (!raw || raw === "NA" || raw === "") return "N/A";
+    const n = parseFloat(raw.replace(/[^0-9.]/g, ""));
+    if (isNaN(n)) return raw;
+    if (n >= 1_000_000) return `S$${(n / 1_000_000).toFixed(2)}M`;
+    if (n >= 1_000) return `S$${(n / 1_000).toFixed(1)}K`;
+    return `S$${n.toFixed(0)}`;
+  };
+
+  const lines: string[] = [
+    `GeBIZ Singapore Procurement — ${query || "All Recent"}`,
+    `${total.toLocaleString()} total (showing ${records.length})`,
+    "",
+  ];
+  let latest: string | null = null;
+  records.forEach((r, i) => {
+    const dateStr = r.awarded_date ?? r.tender_close_date ?? null;
+    if (dateStr && dateStr !== "NA") {
+      const parts = dateStr.split("/");
+      let iso: string | null = null;
+      if (parts.length === 3) iso = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      else if (dateStr.length >= 10) iso = dateStr.slice(0, 10);
+      if (iso && (!latest || iso > latest)) latest = iso;
+    }
+    lines.push(`[${i + 1}] ${(r.description ?? "No description").slice(0, 300)}`);
+    lines.push(`    Agency:    ${r.agency ?? "N/A"}`);
+    lines.push(`    Tender No: ${r.tender_no ?? "N/A"}`);
+    lines.push(`    Status:    ${r.tender_detail_status ?? "N/A"}`);
+    if (r.supplier_name && r.supplier_name !== "N/A") lines.push(`    Supplier:  ${r.supplier_name}`);
+    const amt = fmtAmt(r.awarded_amt);
+    if (amt !== "N/A") lines.push(`    Amount:    ${amt}`);
+    if (r.tender_close_date) lines.push(`    Closes:    ${r.tender_close_date.slice(0, 10)}`);
+    if (r.awarded_date) lines.push(`    Awarded:   ${r.awarded_date.slice(0, 10)}`);
+    lines.push("");
+  });
+  return { raw: lines.join("\n").slice(0, maxLength), date: latest, conf: "high" };
+}
+
+// ── USASpending.gov contracts ────────────────────────────────────────────────
+const CONTRACT_FIELDS = [
+  "Award ID", "Recipient Name", "Award Amount", "Award Date",
+  "Start Date", "End Date", "Awarding Agency", "Awarding Sub Agency",
+  "Description", "Place of Performance State Code", "Place of Performance City Name",
+  "naics_code", "naics_description",
+];
+
+async function fetchGovContracts(query: string, maxLength: number): Promise<AdapterHit> {
+  const input = query.trim();
+  if (!input) throw new Error("Query required: company name, keyword, or NAICS code");
+
+  const buildBody = (filters: object, days = 730): object => ({
+    filters: {
+      ...filters,
+      time_period: [{
+        start_date: new Date(Date.now() - days * 86400000).toISOString().slice(0, 10),
+        end_date: new Date().toISOString().slice(0, 10),
+      }],
+      award_type_codes: ["A", "B", "C", "D"],
+    },
+    fields: CONTRACT_FIELDS,
+    page: 1, limit: 10, sort: "Award Amount", order: "desc", subawards: false,
+  });
+
+  const post = async (body: object) => {
+    const res = await fetch("https://api.usaspending.gov/api/v2/search/spending_by_award/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json", "User-Agent": SEC_UA },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`USASpending ${res.status}`);
+    return await res.json() as { results?: Array<Record<string, string | number | null>> };
+  };
+
+  let data: { results?: Array<Record<string, string | number | null>> };
+  if (/^\d{6}$/.test(input)) {
+    data = await post(buildBody({ keywords: [input] }, 365));
+  } else {
+    data = await post(buildBody({ recipient_search_text: [input] }));
+    if (!data.results?.length) data = await post(buildBody({ keywords: [input] }, 365));
+  }
+
+  const results = data.results ?? [];
+  if (!results.length) {
+    return {
+      raw: `No federal contracts found for "${input}".`,
+      date: null, conf: "high",
+    };
+  }
+
+  const lines: string[] = [`Federal contracts — ${input}`, ""];
+  results.forEach((a, i) => {
+    const desc = asciiSanitize(String(a["Description"] ?? "No description")).slice(0, 300);
+    const location = [a["Place of Performance City Name"], a["Place of Performance State Code"]]
+      .filter(Boolean).join(", ") || "N/A";
+    lines.push(`[${i + 1}] ${asciiSanitize(String(a["Recipient Name"] ?? "Unknown"))}`);
+    lines.push(`    Amount:  ${formatUSD(typeof a["Award Amount"] === "number" ? a["Award Amount"] : null)}`);
+    lines.push(`    Awarded: ${String(a["Award Date"] ?? "unknown").slice(0, 10)}`);
+    lines.push(`    Period:  ${String(a["Start Date"] ?? "?").slice(0, 10)} → ${String(a["End Date"] ?? "?").slice(0, 10)}`);
+    lines.push(`    Agency:  ${asciiSanitize(String(a["Awarding Agency"] ?? "N/A"))}`);
+    if (a["naics_code"]) {
+      lines.push(`    NAICS:   ${a["naics_code"]} — ${asciiSanitize(String(a["naics_description"] ?? ""))}`);
+    }
+    lines.push(`    Location: ${location}`);
+    lines.push(`    Desc:    ${desc}`);
+    lines.push("");
+  });
+
+  const dates = results
+    .map(r => r["Award Date"])
+    .filter((d): d is string => typeof d === "string" && d.length > 0)
+    .sort()
+    .reverse();
+  return { raw: lines.join("\n").slice(0, maxLength), date: dates[0] ?? null, conf: "high" };
+}
+
+// ── SEC EDGAR 8-K ────────────────────────────────────────────────────────────
+async function fetchSecFilings(query: string, maxLength: number): Promise<AdapterHit> {
+  const q = query.trim();
+  if (!q) throw new Error("Query required");
+  const today = new Date().toISOString().slice(0, 10);
+  const oneYearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+  const params = new URLSearchParams({
+    q: `"${q}"`, forms: "8-K", dateRange: "custom",
+    startdt: oneYearAgo, enddt: today, hits: "10",
+  });
+  const res = await fetch(`https://efts.sec.gov/LATEST/search-index?${params}`, {
+    headers: { "Accept": "application/json", "User-Agent": SEC_UA },
+  });
+  if (!res.ok) throw new Error(`SEC EDGAR ${res.status}`);
+  const data = await res.json() as {
+    hits?: { hits?: Array<{
+      _id?: string;
+      _source?: { period_of_report?: string; filed_at?: string; entity_name?: string;
+                  form_type?: string; biz_location?: string; inc_states?: string; };
+    }>; total?: { value: number } };
+  };
+  const hits = data.hits?.hits ?? [];
+  const total = data.hits?.total?.value ?? 0;
+  if (!hits.length) {
+    return { raw: `No 8-K filings for "${q}" in last year.`, date: null, conf: "high" };
+  }
+  const lines: string[] = [
+    `SEC 8-K — ${q}`,
+    `${total.toLocaleString()} filings (showing ${hits.length})`,
+    "",
+  ];
+  let latest: string | null = null;
+  hits.forEach((hit, i) => {
+    const src = hit._source ?? {};
+    const fileDate = src.filed_at?.slice(0, 10) ?? "unknown";
+    if (fileDate !== "unknown" && (!latest || fileDate > latest)) latest = fileDate;
+    lines.push(`[${i + 1}] ${src.entity_name ?? "Unknown"}`);
+    lines.push(`    Form:    ${src.form_type ?? "8-K"}`);
+    lines.push(`    Filed:   ${fileDate}`);
+    lines.push(`    Period:  ${src.period_of_report?.slice(0, 10) ?? "unknown"}`);
+    lines.push(`    Location: ${[src.biz_location, src.inc_states].filter(Boolean).join(" / ") || "N/A"}`);
+    lines.push(`    Filing:  ${hit._id ?? "N/A"}`);
+    lines.push("");
+  });
+  return { raw: lines.join("\n").slice(0, maxLength), date: latest, conf: "high" };
+}
+
+// ── HN (Algolia search) — composite helper ───────────────────────────────────
+async function fetchHN(query: string, maxLength: number): Promise<AdapterHit> {
+  const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=10`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HN Algolia ${res.status}`);
+  const json = await res.json() as { hits: Array<{ title: string; url: string | null; points: number; num_comments: number; author: string; created_at: string; objectID: string }> };
+  if (!json.hits.length) return { raw: `No HN stories for "${query}".`, date: null, conf: "low" };
+  const raw = json.hits.map((r, i) =>
+    `[${i + 1}] ${r.title}\nURL: ${r.url ?? `https://news.ycombinator.com/item?id=${r.objectID}`}\nScore: ${r.points} | ${r.num_comments} comments\nAuthor: ${r.author} | Posted: ${r.created_at}`
+  ).join("\n\n").slice(0, maxLength);
+  const newest = json.hits.map(r => r.created_at).sort().reverse()[0] ?? null;
+  return { raw, date: newest, conf: newest ? "high" : "medium" };
+}
+
+// ── GitHub repo search — composite helper ────────────────────────────────────
+async function fetchRepoSearch(query: string, maxLength: number, ghToken?: string): Promise<AdapterHit> {
+  const q = query.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
+  const headers: Record<string, string> = { "User-Agent": UA, "Accept": "application/vnd.github+json" };
+  if (ghToken) headers["Authorization"] = `Bearer ${ghToken}`;
+  const res = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&sort=stars&order=desc&per_page=10`, { headers });
+  if (!res.ok) throw new Error(`GitHub search ${res.status}`);
+  const json = await res.json() as { items: Array<{ full_name: string; description: string | null; stargazers_count: number; forks_count: number; language: string | null; pushed_at: string; html_url: string }> };
+  const raw = json.items.map((r, i) =>
+    `[${i + 1}] ${r.full_name}\n⭐ ${r.stargazers_count} stars | 🍴 ${r.forks_count} | ${r.language ?? "?"}\n${r.description ?? "No description"}\nLast push: ${r.pushed_at}\nURL: ${r.html_url}`
+  ).join("\n\n").slice(0, maxLength);
+  const newest = json.items.map(r => r.pushed_at).filter(Boolean).sort().reverse()[0] ?? null;
+  return { raw, date: newest, conf: newest ? "high" : "medium" };
+}
+
+// ── Reddit — composite helper ────────────────────────────────────────────────
+async function fetchReddit(query: string, maxLength: number): Promise<AdapterHit> {
+  let apiUrl = query;
+  if (!apiUrl.startsWith("http")) {
+    const clean = apiUrl.replace(/^r\//, "");
+    apiUrl = `https://www.reddit.com/search.json?q=${encodeURIComponent(clean)}&sort=new&limit=15`;
+  } else {
+    if (!apiUrl.includes(".json")) apiUrl = apiUrl.replace(/\/?$/, ".json");
+    if (!apiUrl.includes("limit=")) apiUrl += (apiUrl.includes("?") ? "&" : "?") + "limit=15";
+  }
+  const res = await fetch(apiUrl, { headers: { "User-Agent": UA, "Accept": "application/json" } });
+  if (!res.ok) throw new Error(`Reddit ${res.status}`);
+  const json = await res.json() as { data?: { children?: Array<{ data: { title: string; author: string; subreddit: string; score: number; num_comments: number; created_utc: number; permalink: string } }> } };
+  const posts = json?.data?.children ?? [];
+  if (!posts.length) return { raw: `No Reddit posts for "${query}".`, date: null, conf: "low" };
+  const raw = posts.slice(0, 15).map((c, i) => {
+    const p = c.data;
+    const date = new Date(p.created_utc * 1000).toISOString();
+    return `[${i + 1}] ${p.title}\nr/${p.subreddit} · u/${p.author} · ${date.slice(0, 10)}\n↑ ${p.score} · ${p.num_comments} comments\nhttps://reddit.com${p.permalink}`;
+  }).join("\n\n").slice(0, maxLength);
+  const newest = posts.map(c => c.data.created_utc).sort((a, b) => b - a)[0];
+  const date = newest ? new Date(newest * 1000).toISOString() : null;
+  return { raw, date, conf: date ? "high" : "medium" };
+}
+
+// ── Yahoo Finance — composite helper ─────────────────────────────────────────
+async function fetchFinance(tickers: string, maxLength: number): Promise<AdapterHit> {
+  const list = tickers.split(",").map(t => t.trim().toUpperCase()).filter(Boolean).slice(0, 5);
+  const out: string[] = [];
+  let latestTs: number | null = null;
+  for (const t of list) {
+    try {
+      const res = await fetch(
+        `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(t)}&fields=shortName,longName,regularMarketPrice,regularMarketChange,regularMarketChangePercent,marketCap,regularMarketVolume,fiftyTwoWeekHigh,fiftyTwoWeekLow,trailingPE,dividendYield,currency,exchangeName,regularMarketTime`,
+        { headers: { "User-Agent": "Mozilla/5.0 (compatible; freshcontext-mcp/0.3.15)" } }
+      );
+      if (!res.ok) { out.push(`[${t}] Error ${res.status}`); continue; }
+      const j = await res.json() as { quoteResponse?: { result?: Array<Record<string, number | string>> } };
+      const q = j?.quoteResponse?.result?.[0];
+      if (!q) { out.push(`[${t}] No data`); continue; }
+      if (typeof q.regularMarketTime === "number") latestTs = Math.max(latestTs ?? 0, q.regularMarketTime);
+      const sign = (typeof q.regularMarketChange === "number" && q.regularMarketChange >= 0) ? "+" : "";
+      const cap = typeof q.marketCap === "number"
+        ? (q.marketCap >= 1e12 ? `$${(q.marketCap/1e12).toFixed(2)}T` : q.marketCap >= 1e9 ? `$${(q.marketCap/1e9).toFixed(2)}B` : `$${q.marketCap.toLocaleString()}`)
+        : "N/A";
+      const price = typeof q.regularMarketPrice === "number" ? `$${q.regularMarketPrice.toFixed(2)}` : "N/A";
+      const chg = typeof q.regularMarketChange === "number" && typeof q.regularMarketChangePercent === "number"
+        ? `${sign}${q.regularMarketChange.toFixed(2)} (${sign}${q.regularMarketChangePercent.toFixed(2)}%)` : "N/A";
+      out.push([
+        `${q.symbol} — ${q.longName ?? q.shortName ?? "Unknown"}`,
+        `Price: ${price}  Change: ${chg}  Cap: ${cap}`,
+        `P/E: ${typeof q.trailingPE === "number" ? q.trailingPE.toFixed(2) : "N/A"}  Vol: ${typeof q.regularMarketVolume === "number" ? q.regularMarketVolume.toLocaleString() : "N/A"}`,
+      ].join("\n"));
+    } catch (e: unknown) {
+      out.push(`[${t}] Error: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  const raw = out.join("\n\n─────────────\n\n").slice(0, maxLength);
+  const date = latestTs ? new Date(latestTs * 1000).toISOString() : new Date().toISOString();
+  return { raw, date, conf: "high" };
+}
+
+// ── YC companies (yc-oss feed) — composite helper ────────────────────────────
+async function fetchYC(query: string, maxLength: number): Promise<AdapterHit> {
+  const res = await fetch("https://yc-oss.github.io/api/companies/all.json", { headers: { "User-Agent": UA } });
+  if (!res.ok) throw new Error(`YC ${res.status}`);
+  const all = await res.json() as Array<{ name: string; one_liner?: string; tags?: string[]; batch?: string; status?: string; website?: string }>;
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = all.filter(c => {
+    const text = `${c.name ?? ""} ${c.one_liner ?? ""} ${(c.tags ?? []).join(" ")}`.toLowerCase();
+    return terms.some(t => text.includes(t));
+  }).slice(0, 15);
+  if (!hits.length) return { raw: `No YC companies for "${query}".`, date: null, conf: "low" };
+  const raw = hits.map((h, i) => [
+    `[${i + 1}] ${h.name} [${h.batch ?? "?"}] ${h.status ?? ""}`,
+    `Tags: ${(h.tags ?? []).join(", ") || "none"}`,
+    `${h.one_liner ?? "N/A"}`,
+    h.website ? `Website: ${h.website}` : null,
+  ].filter(Boolean).join("\n")).join("\n\n").slice(0, maxLength);
+  return { raw, date: new Date().toISOString().slice(0, 10), conf: "medium" };
+}
+
+// ── Jobs (Remotive) — composite helper ───────────────────────────────────────
+async function fetchJobs(query: string, maxLength: number): Promise<AdapterHit> {
+  const q = query.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
+  const res = await fetch(`https://remotive.com/api/remote-jobs?search=${encodeURIComponent(q)}&limit=12`, {
+    headers: { "User-Agent": UA, "Accept": "application/json" },
+  });
+  if (!res.ok) throw new Error(`Remotive ${res.status}`);
+  const data = await res.json() as { jobs?: Array<{ title: string; company_name: string; job_type: string; publication_date: string; candidate_required_location: string; salary: string; url: string }> };
+  const jobs = data.jobs ?? [];
+  if (!jobs.length) return { raw: `No remote jobs for "${q}".`, date: null, conf: "low" };
+  const raw = jobs.slice(0, 12).map((j, i) => [
+    `[${i + 1}] ${j.title} — ${j.company_name}`,
+    `Type: ${j.job_type || "N/A"}  Location: ${j.candidate_required_location || "Remote"}`,
+    `Posted: ${j.publication_date}`,
+    j.salary ? `Salary: ${j.salary}` : null,
+    `Apply: ${j.url}`,
+  ].filter(Boolean).join("\n")).join("\n\n").slice(0, maxLength);
+  const newest = jobs.map(j => j.publication_date).filter(Boolean).sort().reverse()[0] ?? null;
+  return { raw, date: newest, conf: newest ? "high" : "medium" };
+}
+
+// ── Package trends (npm + PyPI) — composite helper ──────────────────────────
+async function fetchPackageTrends(packages: string, maxLength: number): Promise<AdapterHit> {
+  const entries = packages.split(",").map(s => s.trim()).filter(Boolean).slice(0, 5);
+  const out: string[] = [];
+  let latest: string | null = null;
+  for (const entry of entries) {
+    const isExplicitPypi = entry.startsWith("pypi:");
+    const isExplicitNpm = entry.startsWith("npm:");
+    const name = entry.replace(/^(npm:|pypi:)/, "");
+    if (!isExplicitPypi) {
+      try {
+        const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`, { headers: { "User-Agent": UA } });
+        if (res.ok) {
+          const j = await res.json() as { name: string; description?: string; "dist-tags"?: { latest?: string }; time?: Record<string, string> };
+          const modified = j.time?.modified ?? null;
+          if (modified && (!latest || modified > latest)) latest = modified;
+          out.push([
+            `📦 [npm] ${j.name}`,
+            `Latest: ${j["dist-tags"]?.latest ?? "?"} (${modified?.slice(0, 10) ?? "?"})`,
+            `Description: ${j.description ?? "N/A"}`,
+          ].join("\n"));
+          continue;
+        }
+      } catch { /* fall through */ }
+    }
+    if (!isExplicitNpm) {
+      try {
+        const res = await fetch(`https://pypi.org/pypi/${encodeURIComponent(name)}/json`, { headers: { "User-Agent": UA } });
+        if (res.ok) {
+          const j = await res.json() as { info: { name: string; version: string; summary?: string }; urls?: Array<{ upload_time: string }> };
+          const upload = j.urls?.[0]?.upload_time ?? null;
+          if (upload && (!latest || upload > latest)) latest = upload;
+          out.push([
+            `🐍 [PyPI] ${j.info.name}`,
+            `Latest: ${j.info.version} (${upload?.slice(0, 10) ?? "?"})`,
+            `Description: ${j.info.summary ?? "N/A"}`,
+          ].join("\n"));
+          continue;
+        }
+      } catch { /* not found */ }
+    }
+    out.push(`❌ Not found on npm or PyPI: ${name}`);
+  }
+  return { raw: out.join("\n\n").slice(0, maxLength), date: latest, conf: latest ? "high" : "low" };
+}
+
+// ── Product Hunt (GraphQL) — composite helper ────────────────────────────────
+async function fetchProductHunt(query: string, maxLength: number, phToken?: string): Promise<AdapterHit> {
+  if (!phToken) return { raw: "Product Hunt requires PH_TOKEN env binding.", date: null, conf: "low" };
+  const isUrl = query.startsWith("http");
+  const gql = `{ posts(first: 15, order: VOTES${isUrl ? "" : `, search: ${JSON.stringify(query)}`}) { edges { node { name tagline url votesCount commentsCount createdAt topics { edges { node { name } } } } } } }`;
+  const res = await fetch("https://api.producthunt.com/v2/api/graphql", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${phToken}` },
+    body: JSON.stringify({ query: gql }),
+  });
+  if (!res.ok) throw new Error(`Product Hunt ${res.status}`);
+  const j = await res.json() as { data?: { posts?: { edges?: Array<{ node: { name: string; tagline: string; url: string; votesCount: number; commentsCount: number; createdAt: string; topics?: { edges?: Array<{ node: { name: string } }> } } }> } } };
+  const edges = j?.data?.posts?.edges ?? [];
+  if (!edges.length) return { raw: `No Product Hunt launches for "${query}".`, date: null, conf: "low" };
+  const raw = edges.map((e, i) => {
+    const p = e.node;
+    const topics = p.topics?.edges?.map(t => t.node.name).join(", ") ?? "";
+    return [
+      `[${i + 1}] ${p.name}`,
+      `"${p.tagline}"`,
+      `↑ ${p.votesCount} · ${p.commentsCount} comments`,
+      topics ? `Topics: ${topics}` : null,
+      `Launched: ${p.createdAt?.slice(0, 10) ?? "?"}`,
+      `Link: ${p.url}`,
+    ].filter(Boolean).join("\n");
+  }).join("\n\n").slice(0, maxLength);
+  const newest = edges.map(e => e.node.createdAt).filter(Boolean).sort().reverse()[0] ?? null;
+  return { raw, date: newest, conf: newest ? "high" : "medium" };
+}
+
 // ─── MCP Server ───────────────────────────────────────────────────────────────
 
 function createServer(env: Env): McpServer {
@@ -592,6 +1172,242 @@ function createServer(env: Env): McpServer {
         ].join("\n");
         return ok(stamp(sections, `freshcontext:landscape:${t}`, new Date().toISOString().slice(0,10), "medium", "landscape"));
       } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
+    });
+  });
+
+  // ─── Tool: extract_arxiv ────────────────────────────────────────────────
+  server.registerTool("extract_arxiv", {
+    description: "Search arXiv for research papers via the official API. Pass a topic or full arXiv API URL. Returns titles, authors, dates, abstracts.",
+    inputSchema: z.object({ url: z.string().describe("Search query e.g. 'temporal retrieval', or a full arXiv API URL") }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  }, async ({ url }) => {
+    return withCache("arxiv", url, env.CACHE, async () => {
+      try {
+        const r = await fetchArxiv(url, 6000);
+        const source = url.startsWith("http") ? url : `arxiv:${url}`;
+        return ok(stamp(r.raw, source, r.date, r.conf, "arxiv"));
+      } catch (err: unknown) { return ok(`[ERROR] ${err instanceof Error ? err.message : String(err)}`); }
+    });
+  });
+
+  // ─── Tool: extract_changelog ────────────────────────────────────────────
+  server.registerTool("extract_changelog", {
+    description: "Update history for any product. Accepts a GitHub repo URL or an npm package name. Returns version numbers, release dates, and entries.",
+    inputSchema: z.object({ url: z.string().describe("GitHub repo URL or npm package name e.g. 'react'") }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  }, async ({ url }) => {
+    return withCache("changelog", url, env.CACHE, async () => {
+      try {
+        const r = await fetchChangelog(url, 6000);
+        return ok(stamp(r.raw, `changelog:${url}`, r.date, r.conf, "changelog"));
+      } catch (err: unknown) { return ok(`[ERROR] ${err instanceof Error ? err.message : String(err)}`); }
+    });
+  });
+
+  // ─── Tool: extract_gdelt ────────────────────────────────────────────────
+  server.registerTool("extract_gdelt", {
+    description: "Global news intelligence from GDELT. Monitors news from every country in 100+ languages, updated every 15 minutes. Returns articles with source country, language, date.",
+    inputSchema: z.object({ url: z.string().describe("Query: company name, topic, or keyword") }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  }, async ({ url }) => {
+    return withCache("gdelt", url, env.CACHE, async () => {
+      try {
+        const r = await fetchGdelt(url, 6000);
+        return ok(stamp(r.raw, `gdelt:${url}`, r.date, r.conf, "gdelt"));
+      } catch (err: unknown) { return ok(`[ERROR] ${err instanceof Error ? err.message : String(err)}`); }
+    });
+  });
+
+  // ─── Tool: extract_gebiz ────────────────────────────────────────────────
+  server.registerTool("extract_gebiz", {
+    description: "Singapore Government procurement opportunities (GeBIZ via data.gov.sg). Search by keyword, agency name, or empty for all recent tenders.",
+    inputSchema: z.object({ url: z.string().describe("Keyword, agency, or empty for latest tenders") }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  }, async ({ url }) => {
+    return withCache("gebiz", url, env.CACHE, async () => {
+      try {
+        const r = await fetchGebiz(url, 6000);
+        return ok(stamp(r.raw, `gebiz:${url || "all"}`, r.date, r.conf, "gebiz"));
+      } catch (err: unknown) { return ok(`[ERROR] ${err instanceof Error ? err.message : String(err)}`); }
+    });
+  });
+
+  // ─── Tool: extract_govcontracts ─────────────────────────────────────────
+  server.registerTool("extract_govcontracts", {
+    description: "US federal contract awards from USASpending.gov. Search by company name (e.g. 'Palantir'), keyword, or NAICS code. Returns amounts, dates, agencies.",
+    inputSchema: z.object({ url: z.string().describe("Company name, keyword, or NAICS code") }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  }, async ({ url }) => {
+    return withCache("govcontracts", url, env.CACHE, async () => {
+      try {
+        const r = await fetchGovContracts(url, 6000);
+        return ok(stamp(r.raw, `govcontracts:${url}`, r.date, r.conf, "govcontracts"));
+      } catch (err: unknown) { return ok(`[ERROR] ${err instanceof Error ? err.message : String(err)}`); }
+    });
+  });
+
+  // ─── Tool: extract_sec_filings ──────────────────────────────────────────
+  server.registerTool("extract_sec_filings", {
+    description: "SEC 8-K filings via EDGAR full-text search. 8-K = legally mandated material event disclosures (CEO changes, M&A, breaches). Pass company name, ticker, or keyword.",
+    inputSchema: z.object({ url: z.string().describe("Company name, ticker, or keyword") }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  }, async ({ url }) => {
+    return withCache("sec_filings", url, env.CACHE, async () => {
+      try {
+        const r = await fetchSecFilings(url, 6000);
+        return ok(stamp(r.raw, `sec:${url}`, r.date, r.conf, "sec_filings"));
+      } catch (err: unknown) { return ok(`[ERROR] ${err instanceof Error ? err.message : String(err)}`); }
+    });
+  });
+
+  // ─── Composite section helper ───────────────────────────────────────────
+  // Wraps each Promise.allSettled result into a "## label\n<content>" section,
+  // surfacing partial failures rather than collapsing the whole call.
+  const section = (label: string, r: PromiseSettledResult<AdapterHit>): string => {
+    if (r.status !== "fulfilled") {
+      const reason = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      return `## ${label}\n[Unavailable: ${reason}]`;
+    }
+    return `## ${label}\n${r.value.raw}`;
+  };
+
+  // ─── Tool: extract_gov_landscape ────────────────────────────────────────
+  server.registerTool("extract_gov_landscape", {
+    description: "Composite government intelligence: federal contract awards (USASpending) + dev community awareness (HN) + GitHub repo activity + product release velocity (changelog). 4-source unified report.",
+    inputSchema: z.object({
+      query: z.string().describe("Company name, keyword, or NAICS code"),
+      github_url: z.string().optional().describe("Optional GitHub repo URL for the company"),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  }, async ({ query, github_url }) => {
+    return withCache("gov_landscape", query + (github_url ?? ""), env.CACHE, async () => {
+      const per = 3000;
+      const repoQuery = github_url ?? query;
+      const [contracts, hn, repos, changelog] = await Promise.allSettled([
+        fetchGovContracts(query, per),
+        fetchHN(query, per),
+        fetchRepoSearch(repoQuery, per, env.GITHUB_TOKEN),
+        fetchChangelog(repoQuery, per),
+      ]);
+      const body = [
+        `# Government Intelligence Landscape: "${query}"`,
+        `Generated: ${new Date().toISOString()}`,
+        `Sources: USASpending.gov · Hacker News · GitHub · Changelog`,
+        "",
+        section("🏛️ Federal Contract Awards", contracts),
+        section("💬 Developer Community Awareness (Hacker News)", hn),
+        section("📦 GitHub Repository Activity", repos),
+        section("🔄 Product Release Velocity (Changelog)", changelog),
+      ].join("\n\n");
+      return ok(stamp(body, `gov_landscape:${query}`, new Date().toISOString(), "high", "gov_landscape"));
+    });
+  });
+
+  // ─── Tool: extract_finance_landscape ────────────────────────────────────
+  server.registerTool("extract_finance_landscape", {
+    description: "Composite financial intelligence: Yahoo Finance market data + HN sentiment + Reddit discussion + GitHub ecosystem + product changelog. 5-source unified report.",
+    inputSchema: z.object({
+      tickers: z.string().describe("One or more ticker symbols e.g. 'PLTR' or 'PLTR,MSFT'"),
+      company_name: z.string().optional().describe("Company name for HN/Reddit/GitHub searches"),
+      github_query: z.string().optional().describe("GitHub search query or repo URL"),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  }, async ({ tickers, company_name, github_query }) => {
+    return withCache("finance_landscape", `${tickers}|${company_name ?? ""}|${github_query ?? ""}`, env.CACHE, async () => {
+      const per = 2400;
+      const searchTerm = company_name ?? tickers.split(",")[0].trim();
+      const repoQuery = github_query ?? searchTerm;
+      const [price, hn, reddit, repos, changelog] = await Promise.allSettled([
+        fetchFinance(tickers, per),
+        fetchHN(searchTerm, per),
+        fetchReddit(searchTerm, per),
+        fetchRepoSearch(repoQuery, per, env.GITHUB_TOKEN),
+        fetchChangelog(repoQuery, per),
+      ]);
+      const body = [
+        `# Finance + Developer Intelligence: "${tickers}"${company_name ? ` (${company_name})` : ""}`,
+        `Generated: ${new Date().toISOString()}`,
+        `Sources: Yahoo Finance · Hacker News · Reddit · GitHub · Changelog`,
+        "",
+        section("📈 Market Data (Yahoo Finance)", price),
+        section("💬 Developer Sentiment (Hacker News)", hn),
+        section("🗣️ Community Discussion (Reddit)", reddit),
+        section("📦 Repo Ecosystem (GitHub)", repos),
+        section("🔄 Product Release Velocity (Changelog)", changelog),
+      ].join("\n\n");
+      return ok(stamp(body, `finance_landscape:${tickers}`, new Date().toISOString(), "high", "finance_landscape"));
+    });
+  });
+
+  // ─── Tool: extract_company_landscape ────────────────────────────────────
+  server.registerTool("extract_company_landscape", {
+    description: "Most complete single-call company intelligence: SEC 8-K filings + USASpending federal contracts + GDELT global news + product changelog + Yahoo Finance. 5 unique sources.",
+    inputSchema: z.object({
+      company: z.string().describe("Company name e.g. 'Palantir', 'Anthropic'"),
+      ticker: z.string().optional().describe("Stock ticker for finance data"),
+      github_url: z.string().optional().describe("Optional GitHub repo or org URL for changelog accuracy"),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  }, async ({ company, ticker, github_url }) => {
+    return withCache("company_landscape", `${company}|${ticker ?? ""}|${github_url ?? ""}`, env.CACHE, async () => {
+      const per = 3000;
+      const repoQuery = github_url ?? company;
+      const [sec, contracts, gdelt, changelog, finance] = await Promise.allSettled([
+        fetchSecFilings(company, per),
+        fetchGovContracts(company, per),
+        fetchGdelt(company, per),
+        fetchChangelog(repoQuery, per),
+        fetchFinance(ticker ?? company, per),
+      ]);
+      const body = [
+        `# Company Intelligence Landscape: "${company}"${ticker ? ` (${ticker})` : ""}`,
+        `Generated: ${new Date().toISOString()}`,
+        `Sources: SEC EDGAR · USASpending.gov · GDELT · Changelog · Yahoo Finance`,
+        "",
+        section("📋 SEC 8-K Filings — Legal Disclosures", sec),
+        section("🏛️ Federal Contract Awards", contracts),
+        section("🌍 Global News Intelligence (GDELT)", gdelt),
+        section("🔄 Product Release Velocity (Changelog)", changelog),
+        section("📈 Market Data (Yahoo Finance)", finance),
+      ].join("\n\n");
+      return ok(stamp(body, `company_landscape:${company}`, new Date().toISOString(), "high", "company_landscape"));
+    });
+  });
+
+  // ─── Tool: extract_idea_landscape ───────────────────────────────────────
+  server.registerTool("extract_idea_landscape", {
+    description: "Idea validation composite: HN pain signals + YC funded competitors + GitHub crowding + jobs market signal + npm/PyPI ecosystem + Product Hunt launches. 6 sources.",
+    inputSchema: z.object({
+      idea: z.string().describe("Your idea, problem space, or keyword"),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  }, async ({ idea }) => {
+    return withCache("idea_landscape", idea, env.CACHE, async () => {
+      const per = 2200;
+      const [hn, yc, repos, jobs, pkg, ph] = await Promise.allSettled([
+        fetchHN(idea, per),
+        fetchYC(idea, per),
+        fetchRepoSearch(idea, per, env.GITHUB_TOKEN),
+        fetchJobs(idea, per),
+        fetchPackageTrends(idea, per),
+        fetchProductHunt(idea, per, env.PH_TOKEN),
+      ]);
+      const body = [
+        `# Idea Validation Landscape: "${idea}"`,
+        `Generated: ${new Date().toISOString()}`,
+        `Sources: Hacker News · YC · GitHub · Jobs · npm/PyPI · Product Hunt`,
+        "",
+        `## ℹ️ How to read this report`,
+        `Pain (HN) · Funding (YC) · Crowding (GitHub) · Market (Jobs) · Ecosystem (Packages) · Launches (PH)`,
+        "",
+        section("🗣️ Pain Signal — HN Discussions", hn),
+        section("💰 Funding Signal — YC Companies", yc),
+        section("📦 Crowding Signal — GitHub Repos", repos),
+        section("💼 Market Signal — Job Listings", jobs),
+        section("🔧 Ecosystem Signal — Packages", pkg),
+        section("🚀 Launch Signal — Product Hunt", ph),
+      ].join("\n\n");
+      return ok(stamp(body, `idea_landscape:${idea}`, new Date().toISOString(), "high", "idea_landscape"));
     });
   });
 
