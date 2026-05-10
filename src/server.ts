@@ -164,6 +164,98 @@ server.registerTool(
   }
 );
 
+// ─── Tool: extract_arxiv ─────────────────────────────────────────────────────
+server.registerTool(
+  "extract_arxiv",
+  {
+    description:
+      "Search arXiv for research papers via the official API. Pass a topic, keyword, or full arXiv API URL. Returns titles, authors, publication dates, primary category, and abstracts — all timestamped.",
+    inputSchema: z.object({
+      url: z.string().describe("Search query e.g. 'temporal retrieval', or a full arXiv API URL"),
+      max_length: z.number().optional().default(6000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ url, max_length }) => {
+    try {
+      const result = await arxivAdapter({ url, maxLength: max_length });
+      const ctx = stampFreshness(result, { url, maxLength: max_length }, "arxiv");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
+  }
+);
+
+// ─── Tool: extract_finance ───────────────────────────────────────────────────
+server.registerTool(
+  "extract_finance",
+  {
+    description:
+      "Live stock data via Yahoo Finance — price, change, market cap, P/E, 52w range, sector, business summary. Accepts up to 5 comma-separated tickers. Returns timestamped freshcontext.",
+    inputSchema: z.object({
+      url: z.string().describe("Ticker symbol(s) e.g. 'AAPL' or 'MSFT,GOOG,PLTR'"),
+      max_length: z.number().optional().default(5000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ url, max_length }) => {
+    try {
+      const result = await financeAdapter({ url, maxLength: max_length });
+      const ctx = stampFreshness(result, { url, maxLength: max_length }, "finance");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
+  }
+);
+
+// ─── Tool: extract_reddit ────────────────────────────────────────────────────
+server.registerTool(
+  "extract_reddit",
+  {
+    description:
+      "Extract posts and community sentiment from Reddit via the public JSON API. Accepts a subreddit URL (https://www.reddit.com/r/MachineLearning/.json), a search URL, or a subreddit shorthand ('r/MachineLearning'). Returns titles, authors, scores, comment counts, and per-post timestamps.",
+    inputSchema: z.object({
+      url: z.string().describe("Subreddit URL, search URL, or 'r/<subreddit>' shorthand"),
+      max_length: z.number().optional().default(6000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ url, max_length }) => {
+    try {
+      const result = await redditAdapter({ url, maxLength: max_length });
+      const ctx = stampFreshness(result, { url, maxLength: max_length }, "reddit");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
+  }
+);
+
+// ─── Tool: extract_producthunt ───────────────────────────────────────────────
+server.registerTool(
+  "extract_producthunt",
+  {
+    description:
+      "Recent Product Hunt launches by keyword or topic. Uses the Product Hunt GraphQL API (with HTML scrape fallback). Returns names, taglines, vote counts, comment counts, topics, and launch dates — all timestamped.",
+    inputSchema: z.object({
+      url: z.string().describe("Search query e.g. 'mcp ai agents' or a Product Hunt topic URL"),
+      max_length: z.number().optional().default(6000),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ url, max_length }) => {
+    try {
+      const result = await productHuntAdapter({ url, maxLength: max_length });
+      const ctx = stampFreshness(result, { url, maxLength: max_length }, "producthunt");
+      return { content: [{ type: "text", text: formatForLLM(ctx) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatSecurityError(err) }] };
+    }
+  }
+);
+
 // ─── Shared freshness filter for composite tools ────────────────────────────
 // Used by all 5 composite tools to implement min_freshness_score filtering.
 // When a section's freshness score falls below the threshold, it's replaced

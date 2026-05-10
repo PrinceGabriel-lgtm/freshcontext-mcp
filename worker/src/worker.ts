@@ -519,7 +519,7 @@ function createServer(env: Env): McpServer {
         }
         const raw = results.join("\n\n─────────────────────────────\n\n");
         const date = latestTs ? new Date(latestTs * 1000).toISOString() : new Date().toISOString();
-        return ok(stamp(raw, `yahoo-finance:${tickers.join(",")}`, date, "high", "yahoo_finance"));
+        return ok(stamp(raw, `yahoo-finance:${tickers.join(",")}`, date, "high", "finance"));
       } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });
