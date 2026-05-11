@@ -2,7 +2,7 @@
   "name": "freshcontext-mcp",
   "mcpName": "io.github.PrinceGabriel-lgtm/freshcontext",
   "version": "0.3.16",
-  "description": "Real-time web intelligence for AI agents. 20 tools, no API keys. Every result timestamped with a freshness score.",
+  "description": "Real-time web intelligence for AI agents. 21 tools, no required API keys. Every result timestamped with a freshness score.",
   "keywords": [
     "mcp",
     "mcp-server",
@@ -24,6 +24,9 @@
   },
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "main": "dist/server.js",
   "bin": {
     "freshcontext-mcp": "dist/server.js"
@@ -38,15 +41,18 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "apify": "^3.0.0",
+    "dotenv": "^16.4.0",
     "playwright": "^1.44.0",
-    "zod": "^3.23.0",
-    "dotenv": "^16.4.0"
+    "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/jest": "^29.0.0",
     "@types/node": "^20.0.0",
-    "tsx": "^4.0.0",
-    "typescript": "^5.4.0",
     "jest": "^29.0.0",
-    "@types/jest": "^29.0.0"
+    "tsx": "^4.0.0",
+    "typescript": "^5.4.0"
+  },
+  "overrides": {
+    "file-type": "21.3.4"
   }
 }

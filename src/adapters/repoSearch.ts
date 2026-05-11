@@ -25,7 +25,7 @@ export async function repoSearchAdapter(options: ExtractOptions): Promise<Adapte
   const res = await fetch(apiUrl, {
     headers: {
       Accept: "application/vnd.github.v3+json",
-      "User-Agent": "freshcontext-mcp/0.1.0",
+      "User-Agent": "freshcontext-mcp/0.3.16 (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)",
     },
   });
 

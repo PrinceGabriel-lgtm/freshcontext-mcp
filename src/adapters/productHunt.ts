@@ -1,8 +1,10 @@
 import { AdapterResult, ExtractOptions } from "../types.js";
+import { validateUrl } from "../security.js";
 
 /**
- * Product Hunt adapter — scrapes today's/recent launches.
- * Uses PH's unofficial JSON feed (no auth needed for public data).
+ * Product Hunt adapter — fetches today's/recent launches.
+ * Uses the Product Hunt GraphQL API when PH_TOKEN is configured, with HTML
+ * scraping as a no-secret fallback.
  * Accepts:
  *   - A search query string e.g. "mcp ai agents"
  *   - A PH URL e.g. https://www.producthunt.com/topics/developer-tools
@@ -22,7 +24,11 @@ interface PHPost {
 }
 
 export async function productHuntAdapter(options: ExtractOptions): Promise<AdapterResult> {
-  // PH GraphQL API — public, no auth for published posts
+  const token = process.env.PH_TOKEN?.trim() || process.env.PRODUCTHUNT_TOKEN?.trim();
+  if (!token) return scrapeProductHunt(options);
+
+  // Product Hunt GraphQL API requires a bearer token. Keep it in env/secrets,
+  // never in source.
   const query = options.url.startsWith("http")
     ? null
     : options.url;
@@ -53,8 +59,7 @@ export async function productHuntAdapter(options: ExtractOptions): Promise<Adapt
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      // Public access token (read-only, rate-limited but usable)
-      "Authorization": "Bearer irgTzMNAz-S-p1P8H5pFCxzU4TEF7GIJZ8vZZi0gLJg",
+      "Authorization": `Bearer ${token}`,
     },
     body: JSON.stringify({ query: gql }),
   });
@@ -105,7 +110,7 @@ async function scrapeProductHunt(options: ExtractOptions): Promise<AdapterResult
   const { chromium } = await import("playwright");
 
   const url = options.url.startsWith("http")
-    ? options.url
+    ? validateUrl(options.url, "productHunt")
     : `https://www.producthunt.com/search?q=${encodeURIComponent(options.url)}`;
 
   const browser = await chromium.launch({ headless: true });

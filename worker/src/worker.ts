@@ -5,6 +5,9 @@ import { z } from "zod";
 import { synthesizeBriefing as generateAIBriefing } from "./synthesize.js";
 import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate, applyDecay, RT_EXPIRY_FLOOR, calculateFreshnessScore, freshnessLabel } from "./intelligence.js";
 
+const SERVICE_VERSION = "0.3.16";
+const SERVICE_UA = `freshcontext-mcp/${SERVICE_VERSION} (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)`;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Env {
@@ -167,10 +170,27 @@ async function checkRateLimit(ip: string, kv: KVNamespace): Promise<void> {
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
+function constantTimeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const left = enc.encode(a);
+  const right = enc.encode(b);
+  const max = Math.max(left.length, right.length, 1);
+  let diff = left.length ^ right.length;
+  for (let i = 0; i < max; i++) {
+    const l = left.length ? left[i % left.length] : 0;
+    const r = right.length ? right[i % right.length] : 0;
+    diff |= l ^ r;
+  }
+  return diff === 0;
+}
+
 function checkAuth(request: Request, env: Env): void {
-  if (!env.API_KEY) return;
-  const token = (request.headers.get("Authorization") ?? "").replace("Bearer ", "");
-  if (token !== env.API_KEY) throw new SecurityError("Unauthorized");
+  if (!env.API_KEY) throw new SecurityError("API_KEY is not configured");
+  const auth = request.headers.get("Authorization") ?? "";
+  const prefix = "Bearer ";
+  if (!auth.startsWith(prefix)) throw new SecurityError("Unauthorized");
+  const token = auth.slice(prefix.length);
+  if (!constantTimeEqual(token, env.API_KEY)) throw new SecurityError("Unauthorized");
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -271,8 +291,8 @@ interface AdapterHit {
   conf: "high" | "medium" | "low";
 }
 
-const UA = "freshcontext-mcp/0.3.15 (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)";
-const SEC_UA = "freshcontext-mcp/1.0 contact@freshcontext.dev";
+const UA = SERVICE_UA;
+const SEC_UA = SERVICE_UA;
 
 function asciiSanitize(s: string): string {
   return s.replace(/[^\x20-\x7E\n]/g, "").trim();
@@ -691,7 +711,7 @@ async function fetchFinance(tickers: string, maxLength: number): Promise<Adapter
     try {
       const res = await fetch(
         `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(t)}&fields=shortName,longName,regularMarketPrice,regularMarketChange,regularMarketChangePercent,marketCap,regularMarketVolume,fiftyTwoWeekHigh,fiftyTwoWeekLow,trailingPE,dividendYield,currency,exchangeName,regularMarketTime`,
-        { headers: { "User-Agent": "Mozilla/5.0 (compatible; freshcontext-mcp/0.3.15)" } }
+        { headers: { "User-Agent": `Mozilla/5.0 (compatible; freshcontext-mcp/${SERVICE_VERSION})` } }
       );
       if (!res.ok) { out.push(`[${t}] Error ${res.status}`); continue; }
       const j = await res.json() as { quoteResponse?: { result?: Array<Record<string, number | string>> } };
@@ -839,7 +859,7 @@ async function fetchProductHunt(query: string, maxLength: number, phToken?: stri
 // ─── MCP Server ───────────────────────────────────────────────────────────────
 
 function createServer(env: Env): McpServer {
-  const server = new McpServer({ name: "freshcontext-mcp", version: "0.3.15" });
+  const server = new McpServer({ name: "freshcontext-mcp", version: SERVICE_VERSION });
 
   const ok = (text: string): ToolResult => ({ content: [{ type: "text", text }] });
 
@@ -995,7 +1015,7 @@ function createServer(env: Env): McpServer {
     return withCache("reposearch", query, env.CACHE, async () => {
       try {
         const q = query.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
-        const ghHeaders: Record<string, string> = { "User-Agent": "freshcontext-mcp/0.3.15", "Accept": "application/vnd.github+json" };
+        const ghHeaders: Record<string, string> = { "User-Agent": SERVICE_UA, "Accept": "application/vnd.github+json" };
         if (env.GITHUB_TOKEN) ghHeaders["Authorization"] = `Bearer ${env.GITHUB_TOKEN}`;
         const res = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&sort=stars&order=desc&per_page=15`, {
           headers: ghHeaders,
@@ -1057,7 +1077,7 @@ function createServer(env: Env): McpServer {
         }
         if (!apiUrl.includes(".json")) apiUrl = apiUrl.replace(/\/?$/, ".json");
         if (!apiUrl.includes("limit=")) apiUrl += (apiUrl.includes("?") ? "&" : "?") + "limit=25";
-        const res = await fetch(apiUrl, { headers: { "User-Agent": "freshcontext-mcp/0.3.15", "Accept": "application/json" } });
+        const res = await fetch(apiUrl, { headers: { "User-Agent": SERVICE_UA, "Accept": "application/json" } });
         if (!res.ok) throw new Error(`Reddit API error: ${res.status}`);
         const json = await res.json() as any;
         const posts = json?.data?.children ?? [];
@@ -1115,7 +1135,7 @@ function createServer(env: Env): McpServer {
         for (const ticker of tickers) {
           const res = await fetch(
             `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${ticker}&fields=shortName,longName,regularMarketPrice,regularMarketChange,regularMarketChangePercent,marketCap,regularMarketVolume,fiftyTwoWeekHigh,fiftyTwoWeekLow,trailingPE,dividendYield,currency,exchangeName,regularMarketTime`,
-            { headers: { "User-Agent": "Mozilla/5.0 (compatible; freshcontext-mcp/0.3.15)" } }
+            { headers: { "User-Agent": `Mozilla/5.0 (compatible; freshcontext-mcp/${SERVICE_VERSION})` } }
           );
           if (!res.ok) { results.push(`[${ticker}] Error: ${res.status}`); continue; }
           const json = await res.json() as any;
@@ -1146,7 +1166,7 @@ function createServer(env: Env): McpServer {
         const q = query.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
         const perSource = Math.floor((max_length ?? 6000) / 2);
         const [remotiveRes, hnRes] = await Promise.allSettled([
-          fetch(`https://remotive.com/api/remote-jobs?search=${encodeURIComponent(q)}&limit=10`, { headers: { "User-Agent": "freshcontext-mcp/0.3.15", "Accept": "application/json" } }).then(r => r.json()),
+          fetch(`https://remotive.com/api/remote-jobs?search=${encodeURIComponent(q)}&limit=10`, { headers: { "User-Agent": SERVICE_UA, "Accept": "application/json" } }).then(r => r.json()),
           fetch(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(q + " hiring")}&tags=comment&hitsPerPage=8`).then(r => r.json()),
         ]);
         const sections: string[] = [`# Job Search: "${q}"`, `⚠️  Every listing below includes its publication date. Check it before you apply.`, ""];
@@ -1183,7 +1203,7 @@ function createServer(env: Env): McpServer {
         const t = topic.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
         const [hn, repos, pkg] = await Promise.allSettled([
           fetch(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(t)}&tags=story&hitsPerPage=10`).then(r => r.json()),
-          fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(t)}&sort=stars&per_page=8`, { headers: { "User-Agent": "freshcontext-mcp/0.3.15" } }).then(r => r.json()),
+          fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(t)}&sort=stars&per_page=8`, { headers: { "User-Agent": SERVICE_UA } }).then(r => r.json()),
           fetch(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(t)}&size=5`).then(r => r.json()),
         ]);
         const sections = [
@@ -1806,7 +1826,7 @@ export default {
       return new Response(JSON.stringify({
         status: "ok",
         service: "freshcontext-mcp",
-        version: "0.3.15",
+        version: SERVICE_VERSION,
         time: new Date().toISOString(),
       }), { headers: { "Content-Type": "application/json" } });
     }
@@ -1995,7 +2015,7 @@ export default {
     if (url.pathname === "/" || url.pathname === "") {
       return new Response(JSON.stringify({
         service: "freshcontext-mcp",
-        version: "0.3.15",
+        version: SERVICE_VERSION,
         description: "FreshContext — timestamped web intelligence with Decay-Adjusted Relevancy scoring",
         endpoints: {
           mcp: "POST /mcp  (JSON-RPC 2.0)",

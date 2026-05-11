@@ -269,7 +269,7 @@ For acquirers, investors, and licensing partners:
 
 5. **The Historical D1 Ledger** (data asset) — the continuously accumulating time-series dataset. As of the date of this document, the ledger has been running since early 2026 with 6-hour collection intervals across 18 watched queries. The dataset grows in defensibility with every passing day.
 
-6. **The Reference Implementation** — `freshcontext-mcp@0.3.15`, listed on the official MCP Registry and npm. Deployed globally on Cloudflare's edge infrastructure.
+6. **The Reference Implementation** — `freshcontext-mcp@0.3.16`, listed on the official MCP Registry and npm. Deployed globally on Cloudflare's edge infrastructure.
 
 ---
 

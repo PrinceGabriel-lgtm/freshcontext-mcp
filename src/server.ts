@@ -23,7 +23,7 @@ import { SecurityError, formatSecurityError } from "./security.js";
 
 const server = new McpServer({
   name: "freshcontext-mcp",
-  version: "0.1.0",
+  version: "0.3.16",
 });
 
 // ─── Tool: extract_github ────────────────────────────────────────────────────
@@ -723,7 +723,6 @@ async function main() {
 }
 
 main().catch(console.error);
-
 
 
 

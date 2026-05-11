@@ -24,7 +24,7 @@ const BASE_URL = "https://data.gov.sg/api/action/datastore_search";
 
 const HEADERS = {
   "Accept": "application/json",
-  "User-Agent": "freshcontext-mcp/1.0 contact@freshcontext.dev",
+  "User-Agent": "freshcontext-mcp/0.3.16 (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)",
 };
 
 interface GeBIZRecord {

@@ -153,7 +153,7 @@ Restart Claude. Done.
 
 ### Local (full Playwright)
 
-**Requires:** Node.js 18+ ([nodejs.org](https://nodejs.org))
+**Requires:** Node.js 20+ ([nodejs.org](https://nodejs.org))
 
 ```bash
 git clone https://github.com/PrinceGabriel-lgtm/freshcontext-mcp
@@ -259,7 +259,7 @@ Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 ## Roadmap
 
 - [x] FreshContext Specification v1.1 published (MIT, open standard)
-- [x] DAR engine with proprietary λ constants (v0.3.15)
+- [x] DAR engine with proprietary λ constants (v0.3.16)
 - [x] Ha-Pri audit signatures on every signal
 - [x] Semantic deduplication via fingerprinting
 - [x] Live before/after demo at `/demo`

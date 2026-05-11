@@ -15,7 +15,7 @@ import { AdapterResult, ExtractOptions } from "../types.js";
 
 const HEADERS = {
   "Accept": "application/json",
-  "User-Agent": "freshcontext-mcp/1.0 contact@freshcontext.dev",
+  "User-Agent": "freshcontext-mcp/0.3.16 (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)",
 };
 
 interface SecFiling {
