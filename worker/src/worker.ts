@@ -22,6 +22,133 @@ interface Env {
   PH_TOKEN?: string;
 }
 
+type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error";
+
+type LogFields = {
+  request_id?: string;
+  cron_id?: string;
+  route?: string;
+  method?: string;
+  path?: string;
+  tool?: string;
+  adapter?: string;
+  source_host?: string;
+  status?: number;
+  duration_ms?: number;
+  watched_query_id?: string;
+  input_hash?: string;
+  phase?: string;
+};
+
+function sanitizeLogText(value: unknown): string {
+  return String(value)
+    .replace(/https?:\/\/[^\s)]+/g, (raw) => {
+      try {
+        const u = new URL(raw);
+        return `${u.origin}${u.pathname}`;
+      } catch {
+        return "[url]";
+      }
+    })
+    .slice(0, 500);
+}
+
+function errorLogFields(err: unknown): { error_name: string; error_message: string } {
+  if (err instanceof Error) {
+    return {
+      error_name: err.name || "Error",
+      error_message: sanitizeLogText(err.message),
+    };
+  }
+  return { error_name: "Error", error_message: sanitizeLogText(err) };
+}
+
+function hashInput(input: unknown): string | undefined {
+  if (input === undefined || input === null) return undefined;
+  const raw = typeof input === "string" ? input : JSON.stringify(input);
+  return simpleHash(raw.slice(0, 500));
+}
+
+function sourceHost(input: string | URL | Request): string | undefined {
+  try {
+    const raw = input instanceof Request ? input.url : String(input);
+    return new URL(raw).hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+function logEvent(event: LogEventName, fields: LogFields = {}, err?: unknown): void {
+  const payload: Record<string, unknown> = {
+    event,
+    level: "error",
+    service: "freshcontext-mcp",
+    version: SERVICE_VERSION,
+    timestamp: new Date().toISOString(),
+    ...fields,
+    ...(err === undefined ? {} : errorLogFields(err)),
+  };
+
+  for (const key of Object.keys(payload)) {
+    if (payload[key] === undefined || payload[key] === null || payload[key] === "") {
+      delete payload[key];
+    }
+  }
+
+  console.error(payload);
+}
+
+async function sourceFetch(
+  input: string | URL | Request,
+  init?: RequestInit,
+  fields: LogFields = {}
+): Promise<Response> {
+  const started = Date.now();
+  try {
+    const res = await fetch(input, init);
+    if (!res.ok) {
+      logEvent("source_fetch_error", {
+        ...fields,
+        source_host: sourceHost(input),
+        status: res.status,
+        duration_ms: Date.now() - started,
+      });
+    }
+    return res;
+  } catch (err) {
+    logEvent("source_fetch_error", {
+      ...fields,
+      source_host: sourceHost(input),
+      duration_ms: Date.now() - started,
+    }, err);
+    throw err;
+  }
+}
+
+function isAllowedRoute(pathname: string): boolean {
+  return pathname === ""
+    || pathname === "/"
+    || pathname === "/health"
+    || pathname === "/demo"
+    || pathname.startsWith("/demo/")
+    || pathname === "/mcp"
+    || pathname === "/mcp/"
+    || pathname === "/watched-queries"
+    || pathname === "/briefing"
+    || pathname === "/briefing/now"
+    || pathname === "/debug/db"
+    || pathname === "/debug/scrape"
+    || pathname.startsWith("/v1/intel/feed/");
+}
+
+function routeName(pathname: string): string {
+  if (pathname === "" || pathname === "/") return "/";
+  if (pathname === "/demo" || pathname.startsWith("/demo/")) return "/demo";
+  if (pathname === "/mcp" || pathname === "/mcp/") return "/mcp";
+  if (pathname.startsWith("/v1/intel/feed/")) return "/v1/intel/feed/:profile_id";
+  return pathname;
+}
+
 // ─── Schema Migrations ────────────────────────────────────────────────────────
 //
 // Idempotent ALTER TABLE statements. Pulled to module scope so any DB-touching
@@ -308,12 +435,12 @@ function formatUSD(amount: number | null | undefined): string {
 }
 
 // ── arXiv (HTTP, Atom XML) ───────────────────────────────────────────────────
-async function fetchArxiv(query: string, maxLength: number): Promise<AdapterHit> {
+async function fetchArxiv(query: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
   const apiUrl = query.startsWith("http")
     ? query
     : `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&start=0&max_results=10&sortBy=relevance&sortOrder=descending`;
 
-  const res = await fetch(apiUrl, { headers: { "User-Agent": UA } });
+  const res = await sourceFetch(apiUrl, { headers: { "User-Agent": UA } }, { ...log, adapter: "arxiv" });
   if (!res.ok) throw new Error(`arXiv API ${res.status}`);
 
   const xml = await res.text();
@@ -354,12 +481,12 @@ async function fetchArxiv(query: string, maxLength: number): Promise<AdapterHit>
 }
 
 // ── Changelog (npm registry + GitHub Releases; no browser fallback) ──────────
-async function fetchChangelog(input: string, maxLength: number): Promise<AdapterHit> {
+async function fetchChangelog(input: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
   // npm package name — no protocol, no slash
   if (!input.startsWith("http") && !input.includes("/") && input.length > 0) {
-    const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(input)}`, {
+    const res = await sourceFetch(`https://registry.npmjs.org/${encodeURIComponent(input)}`, {
       headers: { "User-Agent": UA },
-    });
+    }, { ...log, adapter: "changelog" });
     if (!res.ok) throw new Error(`npm registry ${res.status}`);
     const data = await res.json() as {
       name: string;
@@ -390,9 +517,9 @@ async function fetchChangelog(input: string, maxLength: number): Promise<Adapter
   if (ghMatch) {
     const owner = ghMatch[1];
     const repo = ghMatch[2].replace(/\.git$/, "");
-    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases?per_page=10`, {
+    const res = await sourceFetch(`https://api.github.com/repos/${owner}/${repo}/releases?per_page=10`, {
       headers: { "Accept": "application/vnd.github.v3+json", "User-Agent": UA },
-    });
+    }, { ...log, adapter: "changelog" });
     if (!res.ok) throw new Error(`GitHub releases ${res.status}`);
     const releases = await res.json() as Array<{
       tag_name: string; name: string; published_at: string; body: string;
@@ -417,14 +544,14 @@ async function fetchChangelog(input: string, maxLength: number): Promise<Adapter
 }
 
 // ── GDELT (HTTP) ─────────────────────────────────────────────────────────────
-async function fetchGdelt(query: string, maxLength: number): Promise<AdapterHit> {
+async function fetchGdelt(query: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
   const params = new URLSearchParams({
     query, mode: "artlist", maxrecords: "15", format: "json",
     timespan: "1month", sort: "DateDesc",
   });
-  const res = await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`, {
+  const res = await sourceFetch(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`, {
     headers: { "Accept": "application/json", "User-Agent": SEC_UA },
-  });
+  }, { ...log, adapter: "gdelt" });
   if (!res.ok) throw new Error(`GDELT ${res.status}`);
   const text = await res.text();
   if (!text.trim() || text.trim() === "null") {
@@ -466,16 +593,16 @@ async function fetchGdelt(query: string, maxLength: number): Promise<AdapterHit>
 }
 
 // ── GeBIZ (Singapore data.gov.sg) ────────────────────────────────────────────
-async function fetchGebiz(query: string, maxLength: number): Promise<AdapterHit> {
+async function fetchGebiz(query: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
   const params = new URLSearchParams({
     resource_id: "d_acde1106003906a75c3fa052592f2fcb",
     limit: "15",
     sort: "_id desc",
   });
   if (query.trim()) params.set("q", query.trim());
-  const res = await fetch(`https://data.gov.sg/api/action/datastore_search?${params}`, {
+  const res = await sourceFetch(`https://data.gov.sg/api/action/datastore_search?${params}`, {
     headers: { "Accept": "application/json", "User-Agent": SEC_UA },
-  });
+  }, { ...log, adapter: "gebiz" });
   if (!res.ok) throw new Error(`GeBIZ ${res.status}`);
   const data = await res.json() as {
     result?: { records?: Array<Record<string, string>>; total?: number };
@@ -532,7 +659,7 @@ const CONTRACT_FIELDS = [
   "naics_code", "naics_description",
 ];
 
-async function fetchGovContracts(query: string, maxLength: number): Promise<AdapterHit> {
+async function fetchGovContracts(query: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
   const input = query.trim();
   if (!input) throw new Error("Query required: company name, keyword, or NAICS code");
 
@@ -550,11 +677,11 @@ async function fetchGovContracts(query: string, maxLength: number): Promise<Adap
   });
 
   const post = async (body: object) => {
-    const res = await fetch("https://api.usaspending.gov/api/v2/search/spending_by_award/", {
+    const res = await sourceFetch("https://api.usaspending.gov/api/v2/search/spending_by_award/", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Accept": "application/json", "User-Agent": SEC_UA },
       body: JSON.stringify(body),
-    });
+    }, { ...log, adapter: "govcontracts" });
     if (!res.ok) throw new Error(`USASpending ${res.status}`);
     return await res.json() as { results?: Array<Record<string, string | number | null>> };
   };
@@ -602,7 +729,7 @@ async function fetchGovContracts(query: string, maxLength: number): Promise<Adap
 }
 
 // ── SEC EDGAR 8-K ────────────────────────────────────────────────────────────
-async function fetchSecFilings(query: string, maxLength: number): Promise<AdapterHit> {
+async function fetchSecFilings(query: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
   const q = query.trim();
   if (!q) throw new Error("Query required");
   const today = new Date().toISOString().slice(0, 10);
@@ -611,9 +738,9 @@ async function fetchSecFilings(query: string, maxLength: number): Promise<Adapte
     q: `"${q}"`, forms: "8-K", dateRange: "custom",
     startdt: oneYearAgo, enddt: today, hits: "10",
   });
-  const res = await fetch(`https://efts.sec.gov/LATEST/search-index?${params}`, {
+  const res = await sourceFetch(`https://efts.sec.gov/LATEST/search-index?${params}`, {
     headers: { "Accept": "application/json", "User-Agent": SEC_UA },
-  });
+  }, { ...log, adapter: "sec_filings" });
   if (!res.ok) throw new Error(`SEC EDGAR ${res.status}`);
   const data = await res.json() as {
     hits?: { hits?: Array<{
@@ -649,9 +776,9 @@ async function fetchSecFilings(query: string, maxLength: number): Promise<Adapte
 }
 
 // ── HN (Algolia search) — composite helper ───────────────────────────────────
-async function fetchHN(query: string, maxLength: number): Promise<AdapterHit> {
+async function fetchHN(query: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
   const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=10`;
-  const res = await fetch(url);
+  const res = await sourceFetch(url, undefined, { ...log, adapter: "hackernews" });
   if (!res.ok) throw new Error(`HN Algolia ${res.status}`);
   const json = await res.json() as { hits: Array<{ title: string; url: string | null; points: number; num_comments: number; author: string; created_at: string; objectID: string }> };
   if (!json.hits.length) return { raw: `No HN stories for "${query}".`, date: null, conf: "low" };
@@ -663,11 +790,11 @@ async function fetchHN(query: string, maxLength: number): Promise<AdapterHit> {
 }
 
 // ── GitHub repo search — composite helper ────────────────────────────────────
-async function fetchRepoSearch(query: string, maxLength: number, ghToken?: string): Promise<AdapterHit> {
+async function fetchRepoSearch(query: string, maxLength: number, ghToken?: string, log: LogFields = {}): Promise<AdapterHit> {
   const q = query.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
   const headers: Record<string, string> = { "User-Agent": UA, "Accept": "application/vnd.github+json" };
   if (ghToken) headers["Authorization"] = `Bearer ${ghToken}`;
-  const res = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&sort=stars&order=desc&per_page=10`, { headers });
+  const res = await sourceFetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&sort=stars&order=desc&per_page=10`, { headers }, { ...log, adapter: "reposearch" });
   if (!res.ok) throw new Error(`GitHub search ${res.status}`);
   const json = await res.json() as { items: Array<{ full_name: string; description: string | null; stargazers_count: number; forks_count: number; language: string | null; pushed_at: string; html_url: string }> };
   const raw = json.items.map((r, i) =>
@@ -678,7 +805,7 @@ async function fetchRepoSearch(query: string, maxLength: number, ghToken?: strin
 }
 
 // ── Reddit — composite helper ────────────────────────────────────────────────
-async function fetchReddit(query: string, maxLength: number): Promise<AdapterHit> {
+async function fetchReddit(query: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
   let apiUrl = query;
   if (!apiUrl.startsWith("http")) {
     const clean = apiUrl.replace(/^r\//, "");
@@ -687,7 +814,7 @@ async function fetchReddit(query: string, maxLength: number): Promise<AdapterHit
     if (!apiUrl.includes(".json")) apiUrl = apiUrl.replace(/\/?$/, ".json");
     if (!apiUrl.includes("limit=")) apiUrl += (apiUrl.includes("?") ? "&" : "?") + "limit=15";
   }
-  const res = await fetch(apiUrl, { headers: { "User-Agent": UA, "Accept": "application/json" } });
+  const res = await sourceFetch(apiUrl, { headers: { "User-Agent": UA, "Accept": "application/json" } }, { ...log, adapter: "reddit" });
   if (!res.ok) throw new Error(`Reddit ${res.status}`);
   const json = await res.json() as { data?: { children?: Array<{ data: { title: string; author: string; subreddit: string; score: number; num_comments: number; created_utc: number; permalink: string } }> } };
   const posts = json?.data?.children ?? [];
@@ -703,15 +830,16 @@ async function fetchReddit(query: string, maxLength: number): Promise<AdapterHit
 }
 
 // ── Yahoo Finance — composite helper ─────────────────────────────────────────
-async function fetchFinance(tickers: string, maxLength: number): Promise<AdapterHit> {
+async function fetchFinance(tickers: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
   const list = tickers.split(",").map(t => t.trim().toUpperCase()).filter(Boolean).slice(0, 5);
   const out: string[] = [];
   let latestTs: number | null = null;
   for (const t of list) {
     try {
-      const res = await fetch(
+      const res = await sourceFetch(
         `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(t)}&fields=shortName,longName,regularMarketPrice,regularMarketChange,regularMarketChangePercent,marketCap,regularMarketVolume,fiftyTwoWeekHigh,fiftyTwoWeekLow,trailingPE,dividendYield,currency,exchangeName,regularMarketTime`,
-        { headers: { "User-Agent": `Mozilla/5.0 (compatible; freshcontext-mcp/${SERVICE_VERSION})` } }
+        { headers: { "User-Agent": `Mozilla/5.0 (compatible; freshcontext-mcp/${SERVICE_VERSION})` } },
+        { ...log, adapter: "finance" }
       );
       if (!res.ok) { out.push(`[${t}] Error ${res.status}`); continue; }
       const j = await res.json() as { quoteResponse?: { result?: Array<Record<string, number | string>> } };
@@ -740,8 +868,8 @@ async function fetchFinance(tickers: string, maxLength: number): Promise<Adapter
 }
 
 // ── YC companies (yc-oss feed) — composite helper ────────────────────────────
-async function fetchYC(query: string, maxLength: number): Promise<AdapterHit> {
-  const res = await fetch("https://yc-oss.github.io/api/companies/all.json", { headers: { "User-Agent": UA } });
+async function fetchYC(query: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
+  const res = await sourceFetch("https://yc-oss.github.io/api/companies/all.json", { headers: { "User-Agent": UA } }, { ...log, adapter: "yc" });
   if (!res.ok) throw new Error(`YC ${res.status}`);
   const all = await res.json() as Array<{ name: string; one_liner?: string; tags?: string[]; batch?: string; status?: string; website?: string }>;
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -760,11 +888,11 @@ async function fetchYC(query: string, maxLength: number): Promise<AdapterHit> {
 }
 
 // ── Jobs (Remotive) — composite helper ───────────────────────────────────────
-async function fetchJobs(query: string, maxLength: number): Promise<AdapterHit> {
+async function fetchJobs(query: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
   const q = query.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
-  const res = await fetch(`https://remotive.com/api/remote-jobs?search=${encodeURIComponent(q)}&limit=12`, {
+  const res = await sourceFetch(`https://remotive.com/api/remote-jobs?search=${encodeURIComponent(q)}&limit=12`, {
     headers: { "User-Agent": UA, "Accept": "application/json" },
-  });
+  }, { ...log, adapter: "jobs" });
   if (!res.ok) throw new Error(`Remotive ${res.status}`);
   const data = await res.json() as { jobs?: Array<{ title: string; company_name: string; job_type: string; publication_date: string; candidate_required_location: string; salary: string; url: string }> };
   const jobs = data.jobs ?? [];
@@ -781,7 +909,7 @@ async function fetchJobs(query: string, maxLength: number): Promise<AdapterHit> 
 }
 
 // ── Package trends (npm + PyPI) — composite helper ──────────────────────────
-async function fetchPackageTrends(packages: string, maxLength: number): Promise<AdapterHit> {
+async function fetchPackageTrends(packages: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
   const entries = packages.split(",").map(s => s.trim()).filter(Boolean).slice(0, 5);
   const out: string[] = [];
   let latest: string | null = null;
@@ -791,7 +919,7 @@ async function fetchPackageTrends(packages: string, maxLength: number): Promise<
     const name = entry.replace(/^(npm:|pypi:)/, "");
     if (!isExplicitPypi) {
       try {
-        const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`, { headers: { "User-Agent": UA } });
+          const res = await sourceFetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`, { headers: { "User-Agent": UA } }, { ...log, adapter: "packagetrends" });
         if (res.ok) {
           const j = await res.json() as { name: string; description?: string; "dist-tags"?: { latest?: string }; time?: Record<string, string> };
           const modified = j.time?.modified ?? null;
@@ -807,7 +935,7 @@ async function fetchPackageTrends(packages: string, maxLength: number): Promise<
     }
     if (!isExplicitNpm) {
       try {
-        const res = await fetch(`https://pypi.org/pypi/${encodeURIComponent(name)}/json`, { headers: { "User-Agent": UA } });
+          const res = await sourceFetch(`https://pypi.org/pypi/${encodeURIComponent(name)}/json`, { headers: { "User-Agent": UA } }, { ...log, adapter: "packagetrends" });
         if (res.ok) {
           const j = await res.json() as { info: { name: string; version: string; summary?: string }; urls?: Array<{ upload_time: string }> };
           const upload = j.urls?.[0]?.upload_time ?? null;
@@ -827,15 +955,15 @@ async function fetchPackageTrends(packages: string, maxLength: number): Promise<
 }
 
 // ── Product Hunt (GraphQL) — composite helper ────────────────────────────────
-async function fetchProductHunt(query: string, maxLength: number, phToken?: string): Promise<AdapterHit> {
+async function fetchProductHunt(query: string, maxLength: number, phToken?: string, log: LogFields = {}): Promise<AdapterHit> {
   if (!phToken) return { raw: "Product Hunt requires PH_TOKEN env binding.", date: null, conf: "low" };
   const isUrl = query.startsWith("http");
   const gql = `{ posts(first: 15, order: VOTES${isUrl ? "" : `, search: ${JSON.stringify(query)}`}) { edges { node { name tagline url votesCount commentsCount createdAt topics { edges { node { name } } } } } } }`;
-  const res = await fetch("https://api.producthunt.com/v2/api/graphql", {
+  const res = await sourceFetch("https://api.producthunt.com/v2/api/graphql", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${phToken}` },
     body: JSON.stringify({ query: gql }),
-  });
+  }, { ...log, adapter: "producthunt" });
   if (!res.ok) throw new Error(`Product Hunt ${res.status}`);
   const j = await res.json() as { data?: { posts?: { edges?: Array<{ node: { name: string; tagline: string; url: string; votesCount: number; commentsCount: number; createdAt: string; topics?: { edges?: Array<{ node: { name: string } }> } } }> } } };
   const edges = j?.data?.posts?.edges ?? [];
@@ -858,10 +986,20 @@ async function fetchProductHunt(query: string, maxLength: number, phToken?: stri
 
 // ─── MCP Server ───────────────────────────────────────────────────────────────
 
-function createServer(env: Env): McpServer {
+function createServer(env: Env, requestLog: LogFields = {}): McpServer {
   const server = new McpServer({ name: "freshcontext-mcp", version: SERVICE_VERSION });
 
   const ok = (text: string): ToolResult => ({ content: [{ type: "text", text }] });
+  const adapterLog = (tool: string, adapter: string, input?: unknown): LogFields => ({
+    ...requestLog,
+    tool,
+    adapter,
+    input_hash: hashInput(input),
+  });
+  const adapterError = (tool: string, adapter: string, input: unknown, err: unknown): ToolResult => {
+    logEvent("adapter_error", adapterLog(tool, adapter, input), err);
+    return ok(`[ERROR] ${err instanceof Error ? err.message : String(err)}`);
+  };
 
   server.registerTool("extract_github", {
     description: "Extract real-time data from a GitHub repository — README, stars, forks, last commit, topics. Returns timestamped freshcontext.",
@@ -894,7 +1032,7 @@ function createServer(env: Env): McpServer {
         const d = data as any;
         const raw = [`Description: ${d.description ?? "N/A"}`, `Stars: ${d.stars ?? "N/A"} | Forks: ${d.forks ?? "N/A"}`, `Language: ${d.language ?? "N/A"}`, `Last commit: ${d.lastCommit ?? "N/A"}`, `Topics: ${d.topics?.join(", ") ?? "none"}`, `\n--- README ---\n${d.readme ?? "No README"}`].join("\n");
         return ok(stamp(raw, safeUrl, d.lastCommit ?? null, d.lastCommit ? "high" : "medium", "github"));
-      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
+      } catch (err: unknown) { return adapterError("extract_github", "github", url, err); }
     });
   });
 
@@ -918,7 +1056,7 @@ function createServer(env: Env): McpServer {
             } catch { searchTerm = ""; }
             apiUrl = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(searchTerm)}&tags=story&hitsPerPage=20`;
           }
-          const res = await fetch(apiUrl);
+          const res = await sourceFetch(apiUrl, undefined, adapterLog("extract_hackernews", "hackernews", url));
           if (!res.ok) throw new Error(`HN API error: ${res.status}`);
           const json = await res.json() as any;
           const raw = json.hits.map((r: any, i: number) =>
@@ -944,7 +1082,7 @@ function createServer(env: Env): McpServer {
         const raw = items.map((r, i) => `[${i+1}] ${r.title}\nURL: ${r.link}\nScore: ${r.score ?? "N/A"}\nPosted: ${r.age ?? "unknown"}`).join("\n\n");
         const newest2 = items.map(r => r.age).filter(Boolean).sort().reverse()[0] ?? null;
         return ok(stamp(raw, safeUrl, newest2, newest2 ? "high" : "medium", "hackernews"));
-      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
+      } catch (err: unknown) { return adapterError("extract_hackernews", "hackernews", url, err); }
     });
   });
 
@@ -974,7 +1112,7 @@ function createServer(env: Env): McpServer {
         const raw = items.map((r, i) => `[${i+1}] ${r.title ?? "Untitled"}\nAuthors: ${r.authors ?? "Unknown"}\nYear: ${r.year ?? "Unknown"}\nSnippet: ${r.snippet ?? "N/A"}`).join("\n\n");
         const newest = items.map(r => r.year).filter(Boolean).sort().reverse()[0] ?? null;
         return ok(stamp(raw, safeUrl, newest ? `${newest}-01-01` : null, newest ? "high" : "low", "google_scholar"));
-      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
+      } catch (err: unknown) { return adapterError("extract_scholar", "google_scholar", url, err); }
     });
   });
 
@@ -1003,7 +1141,7 @@ function createServer(env: Env): McpServer {
         const items = data as any[];
         const raw = items.map((c, i) => `[${i+1}] ${c.name ?? "Unknown"} (${c.batch ?? "N/A"})\n${c.desc ?? "No description"}\nTags: ${c.tags?.join(", ") ?? "none"}`).join("\n\n");
         return ok(stamp(raw, safeUrl, new Date().toISOString().slice(0, 10), "medium", "yc"));
-      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
+      } catch (err: unknown) { return adapterError("extract_yc", "yc", url, err); }
     });
   });
 
@@ -1017,9 +1155,9 @@ function createServer(env: Env): McpServer {
         const q = query.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
         const ghHeaders: Record<string, string> = { "User-Agent": SERVICE_UA, "Accept": "application/vnd.github+json" };
         if (env.GITHUB_TOKEN) ghHeaders["Authorization"] = `Bearer ${env.GITHUB_TOKEN}`;
-        const res = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&sort=stars&order=desc&per_page=15`, {
+        const res = await sourceFetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&sort=stars&order=desc&per_page=15`, {
           headers: ghHeaders,
-        });
+        }, adapterLog("search_repos", "reposearch", query));
         if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
         const json = await res.json() as any;
         const raw = json.items.map((r: any, i: number) =>
@@ -1027,7 +1165,7 @@ function createServer(env: Env): McpServer {
         ).join("\n\n");
         const newest = json.items.map((r: any) => r.updated_at).filter(Boolean).sort().reverse()[0] ?? null;
         return ok(stamp(raw, `https://github.com/search?q=${encodeURIComponent(q)}`, newest, newest ? "high" : "medium", "reposearch"));
-      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
+      } catch (err: unknown) { return adapterError("search_repos", "reposearch", query, err); }
     });
   });
 
@@ -1044,13 +1182,13 @@ function createServer(env: Env): McpServer {
           const isNpm = !entry.startsWith("pypi:") && (entry.startsWith("npm:") || !entry.includes(":"));
           const name = entry.replace(/^(npm:|pypi:)/, "");
           if (isNpm) {
-            const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`);
+            const res = await sourceFetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`, undefined, adapterLog("package_trends", "packagetrends", packages));
             if (!res.ok) { results.push(`[npm:${name}] Not found`); continue; }
             const j = await res.json() as any;
             const versions = Object.keys(j.versions ?? {}).slice(-5).reverse();
             results.push(`npm:${name}\nLatest: ${j["dist-tags"]?.latest ?? "N/A"}\nUpdated: ${j.time?.modified?.slice(0,10) ?? "N/A"}\nRecent versions: ${versions.join(", ")}\nDescription: ${j.description ?? "N/A"}`);
           } else {
-            const res = await fetch(`https://pypi.org/pypi/${encodeURIComponent(name)}/json`);
+            const res = await sourceFetch(`https://pypi.org/pypi/${encodeURIComponent(name)}/json`, undefined, adapterLog("package_trends", "packagetrends", packages));
             if (!res.ok) { results.push(`[pypi:${name}] Not found`); continue; }
             const j = await res.json() as any;
             const versions = Object.keys(j.releases ?? {}).slice(-5).reverse();
@@ -1059,7 +1197,7 @@ function createServer(env: Env): McpServer {
         }
         const raw = results.join("\n\n─────────────\n\n");
         return ok(stamp(raw, "package-registries", new Date().toISOString(), "high", "packagetrends"));
-      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
+      } catch (err: unknown) { return adapterError("package_trends", "packagetrends", packages, err); }
     });
   });
 
@@ -1077,7 +1215,7 @@ function createServer(env: Env): McpServer {
         }
         if (!apiUrl.includes(".json")) apiUrl = apiUrl.replace(/\/?$/, ".json");
         if (!apiUrl.includes("limit=")) apiUrl += (apiUrl.includes("?") ? "&" : "?") + "limit=25";
-        const res = await fetch(apiUrl, { headers: { "User-Agent": SERVICE_UA, "Accept": "application/json" } });
+        const res = await sourceFetch(apiUrl, { headers: { "User-Agent": SERVICE_UA, "Accept": "application/json" } }, adapterLog("extract_reddit", "reddit", url));
         if (!res.ok) throw new Error(`Reddit API error: ${res.status}`);
         const json = await res.json() as any;
         const posts = json?.data?.children ?? [];
@@ -1090,7 +1228,7 @@ function createServer(env: Env): McpServer {
         const newest = posts.map((c: any) => c.data.created_utc).sort((a: number, b: number) => b - a)[0];
         const date = newest ? new Date(newest * 1000).toISOString() : null;
         return ok(stamp(raw, apiUrl, date, date ? "high" : "medium", "reddit"));
-      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
+      } catch (err: unknown) { return adapterError("extract_reddit", "reddit", url, err); }
     });
   });
 
@@ -1103,11 +1241,11 @@ function createServer(env: Env): McpServer {
       try {
         const isUrl = url.startsWith("http");
         const gql = `{ posts(first: 20, order: VOTES${isUrl ? "" : `, search: ${JSON.stringify(url)}`}) { edges { node { name tagline url votesCount commentsCount createdAt topics { edges { node { name } } } } } } }`;
-        const res = await fetch("https://api.producthunt.com/v2/api/graphql", {
+        const res = await sourceFetch("https://api.producthunt.com/v2/api/graphql", {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.PH_TOKEN ?? ""}` },
           body: JSON.stringify({ query: gql }),
-        });
+        }, adapterLog("extract_producthunt", "producthunt", url));
         const json = await res.json() as any;
         const posts = json?.data?.posts?.edges ?? [];
         if (!posts.length) throw new Error("No results found");
@@ -1118,7 +1256,7 @@ function createServer(env: Env): McpServer {
         }).join("\n\n");
         const newest = posts.map((e: any) => e.node.createdAt).filter(Boolean).sort().reverse()[0] ?? null;
         return ok(stamp(raw, url, newest, newest ? "high" : "medium", "producthunt"));
-      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
+      } catch (err: unknown) { return adapterError("extract_producthunt", "producthunt", url, err); }
     });
   });
 
@@ -1133,9 +1271,10 @@ function createServer(env: Env): McpServer {
         const results: string[] = [];
         let latestTs: number | null = null;
         for (const ticker of tickers) {
-          const res = await fetch(
+          const res = await sourceFetch(
             `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${ticker}&fields=shortName,longName,regularMarketPrice,regularMarketChange,regularMarketChangePercent,marketCap,regularMarketVolume,fiftyTwoWeekHigh,fiftyTwoWeekLow,trailingPE,dividendYield,currency,exchangeName,regularMarketTime`,
-            { headers: { "User-Agent": `Mozilla/5.0 (compatible; freshcontext-mcp/${SERVICE_VERSION})` } }
+            { headers: { "User-Agent": `Mozilla/5.0 (compatible; freshcontext-mcp/${SERVICE_VERSION})` } },
+            adapterLog("extract_finance", "finance", url)
           );
           if (!res.ok) { results.push(`[${ticker}] Error: ${res.status}`); continue; }
           const json = await res.json() as any;
@@ -1149,7 +1288,7 @@ function createServer(env: Env): McpServer {
         const raw = results.join("\n\n─────────────────────────────\n\n");
         const date = latestTs ? new Date(latestTs * 1000).toISOString() : new Date().toISOString();
         return ok(stamp(raw, `yahoo-finance:${tickers.join(",")}`, date, "high", "finance"));
-      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
+      } catch (err: unknown) { return adapterError("extract_finance", "finance", url, err); }
     });
   });
 
@@ -1166,8 +1305,8 @@ function createServer(env: Env): McpServer {
         const q = query.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
         const perSource = Math.floor((max_length ?? 6000) / 2);
         const [remotiveRes, hnRes] = await Promise.allSettled([
-          fetch(`https://remotive.com/api/remote-jobs?search=${encodeURIComponent(q)}&limit=10`, { headers: { "User-Agent": SERVICE_UA, "Accept": "application/json" } }).then(r => r.json()),
-          fetch(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(q + " hiring")}&tags=comment&hitsPerPage=8`).then(r => r.json()),
+          sourceFetch(`https://remotive.com/api/remote-jobs?search=${encodeURIComponent(q)}&limit=10`, { headers: { "User-Agent": SERVICE_UA, "Accept": "application/json" } }, adapterLog("search_jobs", "jobs", query)).then(r => r.json()),
+          sourceFetch(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(q + " hiring")}&tags=comment&hitsPerPage=8`, undefined, adapterLog("search_jobs", "hackernews", query)).then(r => r.json()),
         ]);
         const sections: string[] = [`# Job Search: "${q}"`, `⚠️  Every listing below includes its publication date. Check it before you apply.`, ""];
         let newestDate: string | null = null;
@@ -1189,7 +1328,7 @@ function createServer(env: Env): McpServer {
         }
         const raw = sections.join("\n\n");
         return ok(stamp(raw, `jobs:${q}`, newestDate ?? new Date().toISOString(), newestDate ? "high" : "medium", "jobs"));
-      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
+      } catch (err: unknown) { return adapterError("search_jobs", "jobs", query, err); }
     });
   });
 
@@ -1202,10 +1341,13 @@ function createServer(env: Env): McpServer {
       try {
         const t = topic.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
         const [hn, repos, pkg] = await Promise.allSettled([
-          fetch(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(t)}&tags=story&hitsPerPage=10`).then(r => r.json()),
-          fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(t)}&sort=stars&per_page=8`, { headers: { "User-Agent": SERVICE_UA } }).then(r => r.json()),
-          fetch(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(t)}&size=5`).then(r => r.json()),
+          sourceFetch(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(t)}&tags=story&hitsPerPage=10`, undefined, adapterLog("extract_landscape", "hackernews", topic)).then(r => r.json()),
+          sourceFetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(t)}&sort=stars&per_page=8`, { headers: { "User-Agent": SERVICE_UA } }, adapterLog("extract_landscape", "reposearch", topic)).then(r => r.json()),
+          sourceFetch(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(t)}&size=5`, undefined, adapterLog("extract_landscape", "packagetrends", topic)).then(r => r.json()),
         ]);
+        if (hn.status === "rejected") logEvent("adapter_error", adapterLog("extract_landscape", "hackernews", topic), hn.reason);
+        if (repos.status === "rejected") logEvent("adapter_error", adapterLog("extract_landscape", "reposearch", topic), repos.reason);
+        if (pkg.status === "rejected") logEvent("adapter_error", adapterLog("extract_landscape", "packagetrends", topic), pkg.reason);
         const sections = [
           `# Landscape Report: "${t}"`,
           `Generated: ${new Date().toISOString()}`,
@@ -1220,7 +1362,7 @@ function createServer(env: Env): McpServer {
           pkg.status === "fulfilled" ? (pkg.value as any).objects?.map((o: any, i: number) => `[${i+1}] ${o.package.name}@${o.package.version} — ${o.package.description ?? "N/A"}`).join("\n") : `Error`,
         ].join("\n");
         return ok(stamp(sections, `freshcontext:landscape:${t}`, new Date().toISOString().slice(0,10), "medium", "landscape"));
-      } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
+      } catch (err: unknown) { return adapterError("extract_landscape", "landscape", topic, err); }
     });
   });
 
@@ -1232,10 +1374,10 @@ function createServer(env: Env): McpServer {
   }, async ({ url }) => {
     return withCache("arxiv", url, env.CACHE, async () => {
       try {
-        const r = await fetchArxiv(url, 6000);
+        const r = await fetchArxiv(url, 6000, adapterLog("extract_arxiv", "arxiv", url));
         const source = url.startsWith("http") ? url : `arxiv:${url}`;
         return ok(stamp(r.raw, source, r.date, r.conf, "arxiv"));
-      } catch (err: unknown) { return ok(`[ERROR] ${err instanceof Error ? err.message : String(err)}`); }
+      } catch (err: unknown) { return adapterError("extract_arxiv", "arxiv", url, err); }
     });
   });
 
@@ -1247,9 +1389,9 @@ function createServer(env: Env): McpServer {
   }, async ({ url }) => {
     return withCache("changelog", url, env.CACHE, async () => {
       try {
-        const r = await fetchChangelog(url, 6000);
+        const r = await fetchChangelog(url, 6000, adapterLog("extract_changelog", "changelog", url));
         return ok(stamp(r.raw, `changelog:${url}`, r.date, r.conf, "changelog"));
-      } catch (err: unknown) { return ok(`[ERROR] ${err instanceof Error ? err.message : String(err)}`); }
+      } catch (err: unknown) { return adapterError("extract_changelog", "changelog", url, err); }
     });
   });
 
@@ -1261,9 +1403,9 @@ function createServer(env: Env): McpServer {
   }, async ({ url }) => {
     return withCache("gdelt", url, env.CACHE, async () => {
       try {
-        const r = await fetchGdelt(url, 6000);
+        const r = await fetchGdelt(url, 6000, adapterLog("extract_gdelt", "gdelt", url));
         return ok(stamp(r.raw, `gdelt:${url}`, r.date, r.conf, "gdelt"));
-      } catch (err: unknown) { return ok(`[ERROR] ${err instanceof Error ? err.message : String(err)}`); }
+      } catch (err: unknown) { return adapterError("extract_gdelt", "gdelt", url, err); }
     });
   });
 
@@ -1275,9 +1417,9 @@ function createServer(env: Env): McpServer {
   }, async ({ url }) => {
     return withCache("gebiz", url, env.CACHE, async () => {
       try {
-        const r = await fetchGebiz(url, 6000);
+        const r = await fetchGebiz(url, 6000, adapterLog("extract_gebiz", "gebiz", url));
         return ok(stamp(r.raw, `gebiz:${url || "all"}`, r.date, r.conf, "gebiz"));
-      } catch (err: unknown) { return ok(`[ERROR] ${err instanceof Error ? err.message : String(err)}`); }
+      } catch (err: unknown) { return adapterError("extract_gebiz", "gebiz", url, err); }
     });
   });
 
@@ -1289,9 +1431,9 @@ function createServer(env: Env): McpServer {
   }, async ({ url }) => {
     return withCache("govcontracts", url, env.CACHE, async () => {
       try {
-        const r = await fetchGovContracts(url, 6000);
+        const r = await fetchGovContracts(url, 6000, adapterLog("extract_govcontracts", "govcontracts", url));
         return ok(stamp(r.raw, `govcontracts:${url}`, r.date, r.conf, "govcontracts"));
-      } catch (err: unknown) { return ok(`[ERROR] ${err instanceof Error ? err.message : String(err)}`); }
+      } catch (err: unknown) { return adapterError("extract_govcontracts", "govcontracts", url, err); }
     });
   });
 
@@ -1303,21 +1445,38 @@ function createServer(env: Env): McpServer {
   }, async ({ url }) => {
     return withCache("sec_filings", url, env.CACHE, async () => {
       try {
-        const r = await fetchSecFilings(url, 6000);
+        const r = await fetchSecFilings(url, 6000, adapterLog("extract_sec_filings", "sec_filings", url));
         return ok(stamp(r.raw, `sec:${url}`, r.date, r.conf, "sec_filings"));
-      } catch (err: unknown) { return ok(`[ERROR] ${err instanceof Error ? err.message : String(err)}`); }
+      } catch (err: unknown) { return adapterError("extract_sec_filings", "sec_filings", url, err); }
     });
   });
 
   // ─── Composite section helper ───────────────────────────────────────────
   // Wraps each Promise.allSettled result into a "## label\n<content>" section,
   // surfacing partial failures rather than collapsing the whole call.
-  const section = (label: string, r: PromiseSettledResult<AdapterHit>): string => {
+  const section = (
+    label: string,
+    r: PromiseSettledResult<AdapterHit>,
+    tool?: string,
+    adapter?: string,
+    input?: unknown
+  ): string => {
     if (r.status !== "fulfilled") {
+      if (tool && adapter) logEvent("adapter_error", adapterLog(tool, adapter, input), r.reason);
       const reason = r.reason instanceof Error ? r.reason.message : String(r.reason);
       return `## ${label}\n[Unavailable: ${reason}]`;
     }
     return `## ${label}\n${r.value.raw}`;
+  };
+  const logRejectedSection = (
+    tool: string,
+    adapter: string,
+    input: unknown,
+    r: PromiseSettledResult<AdapterHit>
+  ): void => {
+    if (r.status === "rejected") {
+      logEvent("adapter_error", adapterLog(tool, adapter, input), r.reason);
+    }
   };
 
   // ─── Tool: extract_gov_landscape ────────────────────────────────────────
@@ -1333,11 +1492,15 @@ function createServer(env: Env): McpServer {
       const per = 3000;
       const repoQuery = github_url ?? query;
       const [contracts, hn, repos, changelog] = await Promise.allSettled([
-        fetchGovContracts(query, per),
-        fetchHN(query, per),
-        fetchRepoSearch(repoQuery, per, env.GITHUB_TOKEN),
-        fetchChangelog(repoQuery, per),
+        fetchGovContracts(query, per, adapterLog("extract_gov_landscape", "govcontracts", query)),
+        fetchHN(query, per, adapterLog("extract_gov_landscape", "hackernews", query)),
+        fetchRepoSearch(repoQuery, per, env.GITHUB_TOKEN, adapterLog("extract_gov_landscape", "reposearch", repoQuery)),
+        fetchChangelog(repoQuery, per, adapterLog("extract_gov_landscape", "changelog", repoQuery)),
       ]);
+      logRejectedSection("extract_gov_landscape", "govcontracts", query, contracts);
+      logRejectedSection("extract_gov_landscape", "hackernews", query, hn);
+      logRejectedSection("extract_gov_landscape", "reposearch", repoQuery, repos);
+      logRejectedSection("extract_gov_landscape", "changelog", repoQuery, changelog);
       const body = [
         `# Government Intelligence Landscape: "${query}"`,
         `Generated: ${new Date().toISOString()}`,
@@ -1367,12 +1530,17 @@ function createServer(env: Env): McpServer {
       const searchTerm = company_name ?? tickers.split(",")[0].trim();
       const repoQuery = github_query ?? searchTerm;
       const [price, hn, reddit, repos, changelog] = await Promise.allSettled([
-        fetchFinance(tickers, per),
-        fetchHN(searchTerm, per),
-        fetchReddit(searchTerm, per),
-        fetchRepoSearch(repoQuery, per, env.GITHUB_TOKEN),
-        fetchChangelog(repoQuery, per),
+        fetchFinance(tickers, per, adapterLog("extract_finance_landscape", "finance", tickers)),
+        fetchHN(searchTerm, per, adapterLog("extract_finance_landscape", "hackernews", searchTerm)),
+        fetchReddit(searchTerm, per, adapterLog("extract_finance_landscape", "reddit", searchTerm)),
+        fetchRepoSearch(repoQuery, per, env.GITHUB_TOKEN, adapterLog("extract_finance_landscape", "reposearch", repoQuery)),
+        fetchChangelog(repoQuery, per, adapterLog("extract_finance_landscape", "changelog", repoQuery)),
       ]);
+      logRejectedSection("extract_finance_landscape", "finance", tickers, price);
+      logRejectedSection("extract_finance_landscape", "hackernews", searchTerm, hn);
+      logRejectedSection("extract_finance_landscape", "reddit", searchTerm, reddit);
+      logRejectedSection("extract_finance_landscape", "reposearch", repoQuery, repos);
+      logRejectedSection("extract_finance_landscape", "changelog", repoQuery, changelog);
       const body = [
         `# Finance + Developer Intelligence: "${tickers}"${company_name ? ` (${company_name})` : ""}`,
         `Generated: ${new Date().toISOString()}`,
@@ -1402,12 +1570,17 @@ function createServer(env: Env): McpServer {
       const per = 3000;
       const repoQuery = github_url ?? company;
       const [sec, contracts, gdelt, changelog, finance] = await Promise.allSettled([
-        fetchSecFilings(company, per),
-        fetchGovContracts(company, per),
-        fetchGdelt(company, per),
-        fetchChangelog(repoQuery, per),
-        fetchFinance(ticker ?? company, per),
+        fetchSecFilings(company, per, adapterLog("extract_company_landscape", "sec_filings", company)),
+        fetchGovContracts(company, per, adapterLog("extract_company_landscape", "govcontracts", company)),
+        fetchGdelt(company, per, adapterLog("extract_company_landscape", "gdelt", company)),
+        fetchChangelog(repoQuery, per, adapterLog("extract_company_landscape", "changelog", repoQuery)),
+        fetchFinance(ticker ?? company, per, adapterLog("extract_company_landscape", "finance", ticker ?? company)),
       ]);
+      logRejectedSection("extract_company_landscape", "sec_filings", company, sec);
+      logRejectedSection("extract_company_landscape", "govcontracts", company, contracts);
+      logRejectedSection("extract_company_landscape", "gdelt", company, gdelt);
+      logRejectedSection("extract_company_landscape", "changelog", repoQuery, changelog);
+      logRejectedSection("extract_company_landscape", "finance", ticker ?? company, finance);
       const body = [
         `# Company Intelligence Landscape: "${company}"${ticker ? ` (${ticker})` : ""}`,
         `Generated: ${new Date().toISOString()}`,
@@ -1434,13 +1607,19 @@ function createServer(env: Env): McpServer {
     return withCache("idea_landscape", idea, env.CACHE, async () => {
       const per = 2200;
       const [hn, yc, repos, jobs, pkg, ph] = await Promise.allSettled([
-        fetchHN(idea, per),
-        fetchYC(idea, per),
-        fetchRepoSearch(idea, per, env.GITHUB_TOKEN),
-        fetchJobs(idea, per),
-        fetchPackageTrends(idea, per),
-        fetchProductHunt(idea, per, env.PH_TOKEN),
+        fetchHN(idea, per, adapterLog("extract_idea_landscape", "hackernews", idea)),
+        fetchYC(idea, per, adapterLog("extract_idea_landscape", "yc", idea)),
+        fetchRepoSearch(idea, per, env.GITHUB_TOKEN, adapterLog("extract_idea_landscape", "reposearch", idea)),
+        fetchJobs(idea, per, adapterLog("extract_idea_landscape", "jobs", idea)),
+        fetchPackageTrends(idea, per, adapterLog("extract_idea_landscape", "packagetrends", idea)),
+        fetchProductHunt(idea, per, env.PH_TOKEN, adapterLog("extract_idea_landscape", "producthunt", idea)),
       ]);
+      logRejectedSection("extract_idea_landscape", "hackernews", idea, hn);
+      logRejectedSection("extract_idea_landscape", "yc", idea, yc);
+      logRejectedSection("extract_idea_landscape", "reposearch", idea, repos);
+      logRejectedSection("extract_idea_landscape", "jobs", idea, jobs);
+      logRejectedSection("extract_idea_landscape", "packagetrends", idea, pkg);
+      logRejectedSection("extract_idea_landscape", "producthunt", idea, ph);
       const body = [
         `# Idea Validation Landscape: "${idea}"`,
         `Generated: ${new Date().toISOString()}`,
@@ -1475,11 +1654,11 @@ function simpleHash(str: string): string {
   return Math.abs(h).toString(36);
 }
 
-async function runAdapter(adapter: string, query: string, filters: Record<string, any>, env?: Env): Promise<string> {
+async function runAdapter(adapter: string, query: string, filters: Record<string, any>, env?: Env, log: LogFields = {}): Promise<string> {
   switch (adapter) {
     case "jobs": {
       const url = `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(query)}&limit=10`;
-      const res = await fetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron", "Accept": "application/json" } });
+      const res = await sourceFetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron", "Accept": "application/json" } }, { ...log, adapter: "jobs" });
       if (!res.ok) return `Remotive error ${res.status}`;
       const data = await res.json() as any;
       const location = filters.location ?? "";
@@ -1491,7 +1670,7 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
     }
     case "hackernews": {
       const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=10`;
-      const res = await fetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron" } });
+      const res = await sourceFetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron" } }, { ...log, adapter: "hackernews" });
       const data = await res.json() as any;
       return sanitize(data.hits?.map((h: any) => `${h.title} | score:${h.points} | ${h.created_at}`).join("\n") ?? "");
     }
@@ -1499,7 +1678,7 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
       const headers: Record<string, string> = { "User-Agent": "freshcontext-mcp/cron", "Accept": "application/vnd.github.v3+json" };
       if (env?.GITHUB_TOKEN) headers["Authorization"] = `Bearer ${env.GITHUB_TOKEN}`;
       const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&per_page=10`;
-      const res = await fetch(url, { headers });
+      const res = await sourceFetch(url, { headers }, { ...log, adapter: "reposearch" });
       const data = await res.json() as any;
       return sanitize(data.items?.map((r: any) => `${r.full_name} | stars:${r.stargazers_count} | updated:${r.updated_at?.slice(0,10)} | ${r.description ?? ""}`).join("\n") ?? "");
     }
@@ -1509,7 +1688,7 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
       const repoSlug = match[1].replace(/\.git$/, "").split("/").slice(0, 2).join("/");
       const ghHeaders: Record<string, string> = { "User-Agent": "freshcontext-mcp/cron", "Accept": "application/vnd.github.v3+json" };
       if (env?.GITHUB_TOKEN) ghHeaders["Authorization"] = `Bearer ${env.GITHUB_TOKEN}`;
-      const res = await fetch(`https://api.github.com/repos/${repoSlug}`, { headers: ghHeaders });
+      const res = await sourceFetch(`https://api.github.com/repos/${repoSlug}`, { headers: ghHeaders }, { ...log, adapter: "github" });
       if (!res.ok) return `GitHub error ${res.status} for ${repoSlug}`;
       const data = await res.json() as any;
       if (data.message) return sanitize(`GitHub: ${data.message}`);
@@ -1518,7 +1697,7 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
     case "finance": {
       const symbol = query.replace(/[^A-Z0-9=^.-]/gi, "");
       const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbol}&fields=regularMarketPrice,regularMarketTime,shortName`;
-      const res = await fetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron" } });
+      const res = await sourceFetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron" } }, { ...log, adapter: "finance" });
       const data = await res.json() as any;
       const q = data.quoteResponse?.result?.[0];
       return q ? `${symbol}: $${q.regularMarketPrice} | ${q.shortName} | ${new Date(q.regularMarketTime * 1000).toISOString()}` : `No price data for ${symbol}`;
@@ -1531,7 +1710,7 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
         : sub
           ? `https://www.reddit.com/r/${sub}/new.json?limit=10`
           : `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=10`;
-      const res = await fetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron" } });
+      const res = await sourceFetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron" } }, { ...log, adapter: "reddit" });
       if (!res.ok) return `Reddit error ${res.status}`;
       const data = await res.json() as any;
       return sanitize((data?.data?.children ?? []).map((p: any) =>
@@ -1539,7 +1718,7 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
       ).join("\n"));
     }
     case "yc": {
-      const res = await fetch("https://yc-oss.github.io/api/companies/all.json", { headers: { "User-Agent": "freshcontext-mcp/cron" } });
+      const res = await sourceFetch("https://yc-oss.github.io/api/companies/all.json", { headers: { "User-Agent": "freshcontext-mcp/cron" } }, { ...log, adapter: "yc" });
       if (!res.ok) return `YC error ${res.status}`;
       const all = await res.json() as any[];
       const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -1554,8 +1733,8 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
     case "packagetrends": {
       const pkg = encodeURIComponent(query.trim());
       const [infoRes, dlRes] = await Promise.all([
-        fetch(`https://registry.npmjs.org/${pkg}`, { headers: { "User-Agent": "freshcontext-mcp/cron" } }),
-        fetch(`https://api.npmjs.org/downloads/point/last-month/${pkg}`, { headers: { "User-Agent": "freshcontext-mcp/cron" } }),
+        sourceFetch(`https://registry.npmjs.org/${pkg}`, { headers: { "User-Agent": "freshcontext-mcp/cron" } }, { ...log, adapter: "packagetrends" }),
+        sourceFetch(`https://api.npmjs.org/downloads/point/last-month/${pkg}`, { headers: { "User-Agent": "freshcontext-mcp/cron" } }, { ...log, adapter: "packagetrends" }),
       ]);
       if (!infoRes.ok) return `npm error ${infoRes.status} for ${query}`;
       const info = await infoRes.json() as any;
@@ -1571,7 +1750,7 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
 
 // ─── Scheduled Scrape with DAR Scoring ───────────────────────────────────────
 
-async function runScheduledScrape(env: Env): Promise<void> {
+async function runScheduledScrape(env: Env, log: LogFields = {}): Promise<void> {
   // ── Schema migrations (idempotent) ───────────────────────────────────────
   // Schema migrations — single source of truth in ensureMigrations.
   // Idempotent and cheap after first call (promise-gated).
@@ -1611,7 +1790,12 @@ async function runScheduledScrape(env: Env): Promise<void> {
       }
 
       const filters = JSON.parse(wq.filters ?? "{}");
-      const raw = await runAdapter(wq.adapter, wq.query, filters, env);
+      const raw = await runAdapter(wq.adapter, wq.query, filters, env, {
+        ...log,
+        adapter: wq.adapter,
+        watched_query_id: wq.id,
+        input_hash: hashInput(wq.query),
+      });
       if (!raw || raw.startsWith("[adapter")) return null;
 
       const hash = simpleHash(raw);
@@ -1668,8 +1852,14 @@ async function runScheduledScrape(env: Env): Promise<void> {
 
       // Only count as "new signal" if above the noise floor
       return scored.is_relevant === 1 ? wq.adapter : null;
-    } catch (err: any) {
-      console.error(`Scrape error [${wq.id}/${wq.adapter}]: ${err.message}`);
+    } catch (err: unknown) {
+      logEvent("cron_error", {
+        ...log,
+        adapter: wq.adapter,
+        watched_query_id: wq.id,
+        input_hash: hashInput(wq.query),
+        phase: "scrape_one",
+      }, err);
       return null;
     }
   };
@@ -1800,10 +1990,24 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const ua = request.headers.get("User-Agent") ?? "";
+    const requestLog: LogFields = {
+      request_id: crypto.randomUUID(),
+      route: routeName(url.pathname),
+      method: request.method,
+      path: url.pathname,
+    };
+    const routeError = (err: unknown, status = 500): Response => {
+      logEvent("route_error", { ...requestLog, status }, err);
+      return errResponse(err instanceof Error ? err.message : String(err), status);
+    };
 
     // Bot probe filter — cheapest reject path, runs first
     if (isBotProbe(url, ua)) {
       return new Response("Gone", { status: 410 });
+    }
+
+    if (!isAllowedRoute(url.pathname)) {
+      return errResponse(`Not found: ${url.pathname}. See GET / for endpoint list.`, 404);
     }
 
     // ── GET /demo — static demo page (HTML + data.json) ─────────────────
@@ -1841,7 +2045,7 @@ export default {
         return new Response(JSON.stringify({ count: results.length, queries: results }), {
           headers: { "Content-Type": "application/json" },
         });
-      } catch (err: any) { return errResponse(err.message, 500); }
+      } catch (err: unknown) { return routeError(err); }
     }
 
     // ── GET /briefing — latest stored briefing ────────────────────────────────
@@ -1853,7 +2057,7 @@ export default {
         ).first<{ id: string; summary: string; new_results_count: number; adapters_run: string; created_at: string }>();
         if (!latest) return new Response(JSON.stringify({ message: "No briefings yet. Cron runs every 6h." }), { headers: { "Content-Type": "application/json" } });
         return new Response(JSON.stringify({ ...latest, adapters_run: JSON.parse(latest.adapters_run ?? "[]") }), { headers: { "Content-Type": "application/json" } });
-      } catch (err: any) { return errResponse(err.message, 500); }
+      } catch (err: unknown) { return routeError(err); }
     }
 
     // ── GET /v1/intel/feed/:profile_id — structured intelligence feed ─────────
@@ -1944,7 +2148,7 @@ export default {
         return new Response(JSON.stringify(feed), {
           headers: { "Content-Type": "application/json" },
         });
-      } catch (err: any) { return errResponse(err.message, 500); }
+      } catch (err: unknown) { return routeError(err); }
     }
 
     // ── DEBUG endpoints ───────────────────────────────────────────────────────
@@ -1954,15 +2158,17 @@ export default {
       const adapter = url.searchParams.get("adapter") ?? "hackernews";
       const query   = url.searchParams.get("query")   ?? "mcp server";
       try {
-        const raw = await runAdapter(adapter, query, {}, env);
+        const raw = await runAdapter(adapter, query, {}, env, { ...requestLog, adapter, input_hash: hashInput(query) });
         return new Response(JSON.stringify({ adapter, query, raw, length: raw.length }), { headers: { "Content-Type": "application/json" } });
-      } catch (err: any) {
-        return new Response(JSON.stringify({ adapter, query, error: err.message }), { status: 500, headers: { "Content-Type": "application/json" } });
+      } catch (err: unknown) {
+        logEvent("route_error", { ...requestLog, adapter, input_hash: hashInput(query), status: 500 }, err);
+        return new Response(JSON.stringify({ adapter, query, error: err instanceof Error ? err.message : String(err) }), { status: 500, headers: { "Content-Type": "application/json" } });
       }
     }
 
     if (url.pathname === "/debug/db") {
       try { checkAuth(request, env); } catch (e: any) { return errResponse(e.message, 401); }
+      try {
       const [wq, sr, br, up, scored, dedupe] = await Promise.all([
         env.DB.prepare("SELECT COUNT(*) as n FROM watched_queries").first<{n:number}>(),
         env.DB.prepare("SELECT COUNT(*) as n FROM scrape_results").first<{n:number}>(),
@@ -1992,13 +2198,14 @@ export default {
         },
         recent_signals: recent,
       }, null, 2), { headers: { "Content-Type": "application/json" } });
+      } catch (err: unknown) { return routeError(err); }
     }
 
     // ── POST /briefing/now — force synthesis ──────────────────────────────────
     if (url.pathname === "/briefing/now" && request.method === "POST") {
       try { checkAuth(request, env); } catch (e: any) { return errResponse(e.message, 401); }
       try {
-        await runScheduledScrape(env);
+        await runScheduledScrape(env, { ...requestLog, phase: "manual_briefing_now" });
         // Use Claude synthesis if key is set, fallback to local formatter
         let briefingText: string;
         if (env.ANTHROPIC_KEY) {
@@ -2008,7 +2215,7 @@ export default {
           briefingText = await formatBriefing(env.DB);
         }
         return new Response(JSON.stringify({ briefing: briefingText }), { headers: { "Content-Type": "application/json" } });
-      } catch (err: any) { return errResponse(err.message, 500); }
+      } catch (err: unknown) { return routeError(err); }
     }
 
     // ── GET / — landing page, stops bots from triggering errors ──────────────────
@@ -2051,23 +2258,28 @@ export default {
       return errResponse(err.message, 429);
     }
 
-    const transport = new WebStandardStreamableHTTPServerTransport();
-    const server = createServer(env);
-    await server.connect(transport);
-    return transport.handleRequest(request);
+    try {
+      const transport = new WebStandardStreamableHTTPServerTransport();
+      const server = createServer(env, requestLog);
+      await server.connect(transport);
+      return transport.handleRequest(request);
+    } catch (err: unknown) {
+      return routeError(err);
+    }
   },
 
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    const cronLog: LogFields = { cron_id: crypto.randomUUID(), route: "scheduled", phase: "cron" };
     ctx.waitUntil((async () => {
-      await runScheduledScrape(env);
       try {
+        await runScheduledScrape(env, cronLog);
         if (env.ANTHROPIC_KEY) {
           await generateAIBriefing(env.DB, env.ANTHROPIC_KEY);
         } else {
           await formatBriefing(env.DB);
         }
-      } catch (err: any) {
-        console.error("Briefing error:", err.message);
+      } catch (err: unknown) {
+        logEvent("cron_error", { ...cronLog, phase: "scheduled_handler" }, err);
       }
     })());
   },
