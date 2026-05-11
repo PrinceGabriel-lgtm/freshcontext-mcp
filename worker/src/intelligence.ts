@@ -38,19 +38,37 @@ export interface ScoringProfile {
 //
 // Half-life formula: t½ = ln(2) / λ  (in hours)
 
-const LAMBDA: Record<string, number> = {
-  hackernews:     0.050,   // t½ ≈ 14h  — HN front page dies fast
-  reddit:         0.010,   // t½ ≈ 3d   — community posts
-  producthunt:    0.010,   // t½ ≈ 3d   — launch noise fades quickly
-  jobs:           0.005,   // t½ ≈ 6d   — listings stale within a week
-  finance:        0.001,   // t½ ≈ 29d  — market context
-  yc:             0.001,   // t½ ≈ 29d  — company listings
-  packagetrends:  0.0005,  // t½ ≈ 58d  — ecosystem activity
-  github:         0.0002,  // t½ ≈ 5mo  — repos are long-lived assets
-  reposearch:     0.0002,  // t½ ≈ 5mo
-  google_scholar: 0.00005, // t½ ≈ 1.6y — academic work
-  arxiv:          0.00005, // t½ ≈ 1.6y
-  default:        0.001,   // fallback = finance/yc tier
+export const LAMBDA: Record<string, number> = {
+  // ── Existing base adapters ─────────────────────────────────────────────────
+  hackernews:        0.050,   // t½ ≈ 14h  — HN front page dies fast
+  reddit:            0.010,   // t½ ≈ 3d   — community posts
+  producthunt:       0.010,   // t½ ≈ 3d   — launch noise fades quickly
+  jobs:              0.005,   // t½ ≈ 6d   — listings stale within a week
+  finance:           0.001,   // t½ ≈ 29d  — market context
+  yc:                0.001,   // t½ ≈ 29d  — company listings
+  packagetrends:     0.0005,  // t½ ≈ 58d  — ecosystem activity
+  github:            0.0002,  // t½ ≈ 5mo  — repos are long-lived assets
+  reposearch:        0.0002,  // t½ ≈ 5mo
+  google_scholar:    0.00005, // t½ ≈ 1.6y — academic work
+  arxiv:             0.00005, // t½ ≈ 1.6y
+
+  // ── Pass 4 base adapters (added in Pass 5 alongside envelope parity) ──────
+  changelog:         0.0005,  // t½ ≈ 58d  — release cadence, similar to package activity
+  gdelt:             0.020,   // t½ ≈ 35h  — news cycle, between HN and Reddit
+  gebiz:             0.003,   // t½ ≈ 10d  — gov tender open windows
+  govcontracts:      0.001,   // t½ ≈ 29d  — federal awards data
+  sec_filings:       0.005,   // t½ ≈ 6d   — material event freshness, market absorbs fast
+
+  // ── Composites (anchor-component policy) ──────────────────────────────────
+  // Each composite inherits the rate of its primary/named source so the
+  // envelope freshness reflects the dominant signal in the report.
+  landscape:         0.050,   // = hackernews (HN drives the time signal)
+  gov_landscape:     0.001,   // = govcontracts
+  finance_landscape: 0.001,   // = finance
+  company_landscape: 0.005,   // = sec_filings (8-K disclosure cadence)
+  idea_landscape:    0.050,   // = hackernews (pain-signal lead)
+
+  default:           0.001,   // fallback = finance/yc tier
 };
 
 // ─── Published Date Extraction ────────────────────────────────────────────────
@@ -375,4 +393,33 @@ export async function isDuplicate(
       AND scraped_at >= datetime('now', '-' || ? || ' hours')
   `).bind(fingerprint, withinHours).first<{ n: number }>();
   return (result?.n ?? 0) > 0;
+}
+
+// ─── Envelope freshness score ─────────────────────────────────────────────────
+//
+// Per-tool envelope number (0-100) emitted in [FRESHCONTEXT] blocks.
+// Spec: R = 100 · e^(−λ · hoursSincePublished). Same exponential model as the
+// DAR engine — sole difference is starting from a fixed 100 (purity-of-freshness)
+// rather than R₀ (semantic relevance). Returns null when content_date is unknown.
+
+export function calculateFreshnessScore(
+  contentDate: string | null,
+  retrievedAt: string,
+  adapter: string
+): number | null {
+  if (!contentDate) return null;
+  const published = new Date(contentDate).getTime();
+  const retrieved = new Date(retrievedAt).getTime();
+  if (isNaN(published) || isNaN(retrieved)) return null;
+  const hours = Math.max(0, (retrieved - published) / (1000 * 60 * 60));
+  const lambda = LAMBDA[adapter] ?? LAMBDA.default;
+  return Math.max(0, Math.round(100 * Math.exp(-lambda * hours)));
+}
+
+export function freshnessLabel(score: number | null): string {
+  if (score === null) return "unknown";
+  if (score >= 90) return "current";
+  if (score >= 70) return "reliable";
+  if (score >= 50) return "verify before acting";
+  return "use with caution";
 }

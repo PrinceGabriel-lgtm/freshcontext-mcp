@@ -1,7 +1,7 @@
 {
   "name": "freshcontext-mcp",
   "mcpName": "io.github.PrinceGabriel-lgtm/freshcontext",
-  "version": "0.3.15",
+  "version": "0.3.16",
   "description": "Real-time web intelligence for AI agents. 20 tools, no API keys. Every result timestamped with a freshness score.",
   "keywords": [
     "mcp",

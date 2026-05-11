@@ -110,7 +110,7 @@ server.registerTool(
   async ({ url, max_length }) => {
     try {
       const result = await ycAdapter({ url, maxLength: max_length });
-      const ctx = stampFreshness(result, { url, maxLength: max_length }, "ycombinator");
+      const ctx = stampFreshness(result, { url, maxLength: max_length }, "yc");
       return { content: [{ type: "text", text: formatForLLM(ctx) }] };
     } catch (err) {
       return { content: [{ type: "text", text: formatSecurityError(err) }] };
@@ -133,7 +133,7 @@ server.registerTool(
   async ({ query, max_length }) => {
     try {
       const result = await repoSearchAdapter({ url: query, maxLength: max_length });
-      const ctx = stampFreshness(result, { url: query, maxLength: max_length }, "github_search");
+      const ctx = stampFreshness(result, { url: query, maxLength: max_length }, "reposearch");
       return { content: [{ type: "text", text: formatForLLM(ctx) }] };
     } catch (err) {
       return { content: [{ type: "text", text: formatSecurityError(err) }] };
@@ -156,7 +156,7 @@ server.registerTool(
   async ({ packages, max_length }) => {
     try {
       const result = await packageTrendsAdapter({ url: packages, maxLength: max_length });
-      const ctx = stampFreshness(result, { url: packages, maxLength: max_length }, "package_registry");
+      const ctx = stampFreshness(result, { url: packages, maxLength: max_length }, "packagetrends");
       return { content: [{ type: "text", text: formatForLLM(ctx) }] };
     } catch (err) {
       return { content: [{ type: "text", text: formatSecurityError(err) }] };
@@ -449,7 +449,7 @@ server.registerTool(
       "",
       sectionWithFreshnessCheck("🏛️ Federal Contract Awards (USASpending.gov)", contractsResult, "govcontracts", min_freshness_score),
       sectionWithFreshnessCheck("💬 Developer Community Awareness (Hacker News)", hnResult, "hackernews", min_freshness_score),
-      sectionWithFreshnessCheck("📦 GitHub Repository Activity", repoResult, "github_search", min_freshness_score),
+      sectionWithFreshnessCheck("📦 GitHub Repository Activity", repoResult, "reposearch", min_freshness_score),
       sectionWithFreshnessCheck("🔄 Product Release Velocity (Changelog)", changelogResult, "changelog", min_freshness_score),
     ].filter(Boolean).join("\n\n");
 
@@ -507,7 +507,7 @@ server.registerTool(
       sectionWithFreshnessCheck("📈 Market Data (Yahoo Finance)", priceResult, "finance", min_freshness_score),
       sectionWithFreshnessCheck("💬 Developer Sentiment (Hacker News)", hnResult, "hackernews", min_freshness_score),
       sectionWithFreshnessCheck("🗣️ Community Discussion (Reddit)", redditResult, "reddit", min_freshness_score),
-      sectionWithFreshnessCheck("📦 Repo Ecosystem (GitHub)", repoResult, "github_search", min_freshness_score),
+      sectionWithFreshnessCheck("📦 Repo Ecosystem (GitHub)", repoResult, "reposearch", min_freshness_score),
       sectionWithFreshnessCheck("🔄 Product Release Velocity (Changelog)", changelogResult, "changelog", min_freshness_score),
     ].filter(Boolean).join("\n\n");
 
@@ -704,10 +704,10 @@ server.registerTool(
       `Launch signal (Product Hunt): What just shipped — community reception and timing.`,
       "",
       sectionWithFreshnessCheck("🗣️ Pain Signal — Developer Discussions (Hacker News)", hnResult, "hackernews", min_freshness_score),
-      sectionWithFreshnessCheck("💰 Funding Signal — Backed Companies (YC)", ycResult, "ycombinator", min_freshness_score),
-      sectionWithFreshnessCheck("📦 Crowding Signal — Open Source Landscape (GitHub)", repoResult, "github_search", min_freshness_score),
+      sectionWithFreshnessCheck("💰 Funding Signal — Backed Companies (YC)", ycResult, "yc", min_freshness_score),
+      sectionWithFreshnessCheck("📦 Crowding Signal — Open Source Landscape (GitHub)", repoResult, "reposearch", min_freshness_score),
       sectionWithFreshnessCheck("💼 Market Signal — Hiring Activity (Job Listings)", jobsResult, "jobs", min_freshness_score),
-      sectionWithFreshnessCheck("🔧 Ecosystem Signal — Package Adoption (npm/PyPI)", pkgResult, "package_registry", min_freshness_score),
+      sectionWithFreshnessCheck("🔧 Ecosystem Signal — Package Adoption (npm/PyPI)", pkgResult, "packagetrends", min_freshness_score),
       sectionWithFreshnessCheck("🚀 Launch Signal — Recent Launches (Product Hunt)", phResult, "producthunt", min_freshness_score),
     ].filter(Boolean).join("\n\n");
 
@@ -723,8 +723,6 @@ async function main() {
 }
 
 main().catch(console.error);
-
-
 
 
 

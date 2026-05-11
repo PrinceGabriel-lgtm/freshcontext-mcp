@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import { synthesizeBriefing as generateAIBriefing } from "./synthesize.js";
-import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate, applyDecay, RT_EXPIRY_FLOOR } from "./intelligence.js";
+import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate, applyDecay, RT_EXPIRY_FLOOR, calculateFreshnessScore, freshnessLabel } from "./intelligence.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -194,16 +194,45 @@ function stamp(
   confidence: "high" | "medium" | "low",
   adapter: string
 ): string {
-  return [
+  const retrieved_at = new Date().toISOString();
+  const freshness_score = calculateFreshnessScore(date, retrieved_at, adapter);
+  const sliced = content.slice(0, 6000);
+
+  const scoreLine = freshness_score !== null
+    ? `Score: ${freshness_score}/100 (${freshnessLabel(freshness_score)})`
+    : `Score: unknown`;
+
+  const textEnvelope = [
     "[FRESHCONTEXT]",
     `Source: ${url}`,
     `Published: ${date ?? "unknown"}`,
-    `Retrieved: ${new Date().toISOString()}`,
+    `Retrieved: ${retrieved_at}`,
     `Confidence: ${confidence}`,
+    scoreLine,
     "---",
-    content.slice(0, 6000),
+    sliced,
     "[/FRESHCONTEXT]",
   ].join("\n");
+
+  const structured = {
+    freshcontext: {
+      source_url:           url,
+      content_date:         date,
+      retrieved_at,
+      freshness_confidence: confidence,
+      freshness_score,
+      adapter,
+    },
+    content: sliced,
+  };
+
+  const jsonBlock = [
+    "[FRESHCONTEXT_JSON]",
+    JSON.stringify(structured, null, 2),
+    "[/FRESHCONTEXT_JSON]",
+  ].join("\n");
+
+  return `${textEnvelope}\n\n${jsonBlock}`;
 }
 
 // ─── withCache helper ─────────────────────────────────────────────────────────
@@ -953,7 +982,7 @@ function createServer(env: Env): McpServer {
         await browser.close();
         const items = data as any[];
         const raw = items.map((c, i) => `[${i+1}] ${c.name ?? "Unknown"} (${c.batch ?? "N/A"})\n${c.desc ?? "No description"}\nTags: ${c.tags?.join(", ") ?? "none"}`).join("\n\n");
-        return ok(stamp(raw, safeUrl, new Date().toISOString().slice(0, 10), "medium", "ycombinator"));
+        return ok(stamp(raw, safeUrl, new Date().toISOString().slice(0, 10), "medium", "yc"));
       } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });
@@ -977,7 +1006,7 @@ function createServer(env: Env): McpServer {
           `[${i+1}] ${r.full_name}\n⭐ ${r.stargazers_count} stars | ${r.language ?? "N/A"}\n${r.description ?? "No description"}\nUpdated: ${r.updated_at?.slice(0,10)}\nURL: ${r.html_url}`
         ).join("\n\n");
         const newest = json.items.map((r: any) => r.updated_at).filter(Boolean).sort().reverse()[0] ?? null;
-        return ok(stamp(raw, `https://github.com/search?q=${encodeURIComponent(q)}`, newest, newest ? "high" : "medium", "github_search"));
+        return ok(stamp(raw, `https://github.com/search?q=${encodeURIComponent(q)}`, newest, newest ? "high" : "medium", "reposearch"));
       } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });
@@ -1009,7 +1038,7 @@ function createServer(env: Env): McpServer {
           }
         }
         const raw = results.join("\n\n─────────────\n\n");
-        return ok(stamp(raw, "package-registries", new Date().toISOString(), "high", "package_registry"));
+        return ok(stamp(raw, "package-registries", new Date().toISOString(), "high", "packagetrends"));
       } catch (err: any) { return ok(`[ERROR] ${err.message}`); }
     });
   });

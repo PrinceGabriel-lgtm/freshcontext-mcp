@@ -1,29 +1,37 @@
 import { FreshContext, AdapterResult, ExtractOptions } from "../types.js";
 
 // ─── Decay rates per adapter ──────────────────────────────────────────────────
-// From FreshContext Specification v1.0.
-// Higher decay = data goes stale faster. Half-life = 100 / (2 * decayRate) days.
-// finance=5.0 (half-life ~10d), jobs=3.0 (~17d), news/hn=2.0 (~25d),
-// github=1.0 (~50d), scholar/arxiv=0.3 (~167d), default=1.5 (~33d)
-const DECAY_RATES: Record<string, number> = {
-  finance:       5.0,
-  search_jobs:   3.0,
-  hackernews:    2.0,
-  reddit:        2.0,
-  producthunt:   2.0,
-  yc:            1.5,
-  govcontracts:  1.5,
-  github:        1.0,
-  repoSearch:    1.0,
-  packageTrends: 1.0,
-  changelog:     1.0,
-  scholar:       0.3,
-  arxiv:         0.3,
+// Spec-compliant exponential DAR model.
+// Higher lambda = data goes stale faster. Half-life formula: t½ = ln(2) / λ.
+// Lambda is measured per hour and mirrors the Worker/D1 intelligence engine.
+export const LAMBDA: Record<string, number> = {
+  hackernews:        0.050,
+  reddit:            0.010,
+  producthunt:       0.010,
+  jobs:              0.005,
+  finance:           0.001,
+  yc:                0.001,
+  packagetrends:     0.0005,
+  github:            0.0002,
+  reposearch:        0.0002,
+  google_scholar:    0.00005,
+  arxiv:             0.00005,
+  changelog:         0.0005,
+  gdelt:             0.020,
+  gebiz:             0.003,
+  govcontracts:      0.001,
+  sec_filings:       0.005,
+  landscape:         0.050,
+  gov_landscape:     0.001,
+  finance_landscape: 0.001,
+  company_landscape: 0.005,
+  idea_landscape:    0.050,
+  default:           0.001,
 };
 
 // ─── Score calculation ────────────────────────────────────────────────────────
 // Returns null when content_date is unknown — we can't calculate age without a date.
-// Returns 0 when the score would go negative (content is very old).
+// Returns a clamped 0-100 exponential freshness score.
 function calculateFreshnessScore(
   content_date: string | null,
   retrieved_at: string,
@@ -37,10 +45,10 @@ function calculateFreshnessScore(
   // Guard against unparseable dates
   if (isNaN(published) || isNaN(retrieved)) return null;
 
-  const daysSinceRetrieved = (retrieved - published) / (1000 * 60 * 60 * 24);
-  const decayRate = DECAY_RATES[adapter] ?? 1.5;
+  const hoursSinceRetrieved = Math.max(0, (retrieved - published) / (1000 * 60 * 60));
+  const lambda = LAMBDA[adapter] ?? LAMBDA.default;
 
-  return Math.max(0, Math.round(100 - daysSinceRetrieved * decayRate));
+  return Math.max(0, Math.round(100 * Math.exp(-lambda * hoursSinceRetrieved)));
 }
 
 // ─── Score label ──────────────────────────────────────────────────────────────
