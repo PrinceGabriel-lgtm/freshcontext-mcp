@@ -18,7 +18,7 @@ So "proper envelope" at the adapter layer means: the adapter returns the structu
 |---|---|---|---|---|---|---|---|
 | 1 | `arxiv` | ❌ no | ❌ imported but not registered | ✅ yes | ✅ ISO date (YYYY-MM-DD) from `<published>` | ✅ high/medium/low | None observed. Used only via composites (none in server.ts use it). |
 | 2 | `changelog` | ❌ no | ✅ `extract_changelog` | ✅ yes | ✅ ISO from GitHub Releases / npm; medium-conf scrape extracts dates from page text | ✅ all three values used | Discovery scraper has `low` confidence when scrape returns no dates — acceptable. |
-| 3 | `finance` | ✅ `extract_finance` | ❌ imported but not registered (used only via `extract_finance_landscape`) | ✅ yes | ✅ ISO from `regularMarketTime` (Yahoo); falls back to `now()` | ✅ always `"high"` | Always-`high` confidence even on `now()` fallback is mildly optimistic; not blocking. |
+| 3 | `finance` | ✅ `extract_finance` | ❌ imported but not registered (used only via `extract_finance_landscape`) | ✅ yes | Historical note: older quote source used provider timestamps and could fall back to `now()` | ✅ always `"high"` | Superseded by Pass 0.3.17 finance failure-honesty fix. |
 | 4 | `gdelt` | ❌ no | ✅ `extract_gdelt` | ✅ yes | ✅ ISO parsed from GDELT `seendate` (YYYYMMDDTHHMMSSZ) | ✅ always `"high"` | None. |
 | 5 | `gebiz` | ❌ no | ✅ `extract_gebiz` | ✅ yes | ✅ ISO converted from DD/MM/YYYY | ✅ always `"high"` | Locale-quirk: assumes DD/MM/YYYY. If data.gov.sg returns ISO it falls back to `slice(0,10)`. Acceptable. |
 | 6 | `github` | ✅ `extract_github` | ✅ `extract_github` | ✅ yes | ✅ ISO from `<relative-time datetime>` | ✅ high if commit found, medium otherwise | None. |
@@ -93,7 +93,7 @@ If the brief author considers any inline ISO date in `raw` to itself be the bug,
 - **worker.ts** defines its own simplified `stamp()` envelope (no `[FRESHCONTEXT_JSON]` block, no `freshness_score` line, content slice hard-coded to 6000). The npm package's `formatForLLM` is fuller. This divergence is pre-existing and out of scope for Pass 4.
 - **worker.ts** `extract_landscape` does not call the actual adapter functions — it inlines `fetch` calls. Porting work in Phase 3 will need to decide: (a) port adapter modules into `worker/src/`, then have composites call them, or (b) keep inlining. Existing 11 tools all inline. I recommend matching the existing pattern (inline) for the 9 wired-in adapters in Phase 3, rather than introducing a new module structure mid-stream.
 - **Hard-coded PH token** at `src/adapters/productHunt.ts:57`. Already on public npm. Should be rotated or moved to env eventually. Not in Pass 4 scope.
-- **Worker `extract_finance` uses adapter name `"yahoo_finance"`** (`worker.ts:522`) but `intelligence.ts` decay table keys it as `"finance"` (rate 5.0). Mismatch → falls through to default decay 1.5. Confirmed by reading `freshnessStamp.ts:9` (`finance: 5.0`). Pre-existing. Worth fixing in Phase 2 since it's a one-character typo with real DAR consequences. Confirm the worker side wants to use `"finance"` as the key (as the npm path does).
+- **Worker `extract_finance` previously used a provider-specific adapter name** (`worker.ts:522`) but `intelligence.ts` decay table keys it as `"finance"`. Mismatch → falls through to default decay. Fixed in later pass; worker and npm now use `"finance"`.
 
 ## Summary
 
@@ -102,7 +102,7 @@ If the brief author considers any inline ISO date in `raw` to itself be the bug,
 - **1 ghost bug from the brief** (BUG-2: HN inline timestamps — not currently happening; structured `content_date` is set correctly).
 - **4 missing `registerTool` calls** in `src/server.ts` (arxiv, finance, reddit, productHunt) — pure addition work for Phase 2, no ambiguity.
 - **6 base adapters** still need wiring into the Worker (arxiv, changelog, gdelt, gebiz, govcontracts, secFilings). Plus **4 composites** (gov_landscape, finance_landscape, company_landscape, idea_landscape).
-- **1 worth-flagging adapter-key typo** (worker `extract_finance` stamps `"yahoo_finance"` instead of `"finance"` → wrong DAR decay rate). One-line fix candidate for Phase 2 if you want it bundled.
+- **1 worth-flagging adapter-key typo** (worker `extract_finance` stamped a provider-specific adapter name instead of `"finance"` → wrong DAR decay rate). Fixed in later pass.
 
 Worker currently has 11 tools registered. Target: 21. Missing: 10 registrations (6 base + 4 composites).
 

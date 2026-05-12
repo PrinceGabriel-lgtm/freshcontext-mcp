@@ -2,10 +2,29 @@ import { chromium } from "playwright";
 import { AdapterResult, ExtractOptions } from "../types.js";
 import { validateUrl } from "../security.js";
 
+function isUrl(input: string): boolean {
+  try {
+    new URL(input);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeHnDate(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const match = raw.match(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\b/);
+  if (!match) return null;
+  const isoLike = match[0].endsWith("Z") ? match[0] : `${match[0]}Z`;
+  const parsed = new Date(isoLike);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 export async function hackerNewsAdapter(options: ExtractOptions): Promise<AdapterResult> {
-  // Validate URL — allow both HN and Algolia domains
-  validateUrl(options.url, "hackernews");
-  const url = options.url;
+  const input = options.url.trim();
+  if (!input) throw new Error("HN URL or search query is required");
+
+  const url = isUrl(input) ? validateUrl(input, "hackernews") : `hn-search:${input}`;
 
   if (url.includes("hn.algolia.com/api/") || url.startsWith("hn-search:")) {
     const query = url.startsWith("hn-search:")
@@ -36,17 +55,21 @@ export async function hackerNewsAdapter(options: ExtractOptions): Promise<Adapte
           `[${i + 1}] ${r.title ?? "Untitled"}`,
           `URL: ${r.url ?? `https://news.ycombinator.com/item?id=${r.objectID}`}`,
           `Score: ${r.points} points | ${r.num_comments} comments`,
-          `Author: ${r.author} | Posted: ${r.created_at}`,
+          `Author: ${r.author} | Posted: ${normalizeHnDate(r.created_at) ?? r.created_at}`,
         ].join("\n")
       )
       .join("\n\n")
       .slice(0, options.maxLength ?? 4000);
 
-    const newest = data.hits.map((r) => r.created_at).sort().reverse()[0] ?? null;
+    const newest = data.hits
+      .map((r) => normalizeHnDate(r.created_at))
+      .filter((d): d is string => Boolean(d))
+      .sort()
+      .reverse()[0] ?? null;
+
     return { raw, content_date: newest, freshness_confidence: newest ? "high" : "medium" };
   }
 
-  // Default: browser-based scrape for HN front page or search pages
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 
@@ -75,17 +98,22 @@ export async function hackerNewsAdapter(options: ExtractOptions): Promise<Adapte
   const typedData = data as Array<{ title: string | null; link: string | null; score: string | null; age: string | null; commentLink: string | null }>;
 
   const raw = typedData
-    .map((r, i) =>
-      [
+    .map((r, i) => {
+      const date = normalizeHnDate(r.age);
+      return [
         `[${i + 1}] ${r.title ?? "Untitled"}`,
         `URL: ${r.link ?? "N/A"}`,
         `Score: ${r.score ?? "N/A"} | ${r.commentLink ?? ""}`,
-        `Posted: ${r.age ?? "unknown"}`,
-      ].join("\n")
-    )
+        `Posted: ${date ?? "unknown"}`,
+      ].join("\n");
+    })
     .join("\n\n");
 
-  const newestDate = typedData.map((r) => r.age).filter(Boolean).sort().reverse()[0] ?? null;
+  const newestDate = typedData
+    .map((r) => normalizeHnDate(r.age))
+    .filter((d): d is string => Boolean(d))
+    .sort()
+    .reverse()[0] ?? null;
 
   return {
     raw,

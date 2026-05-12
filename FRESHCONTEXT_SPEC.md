@@ -89,13 +89,13 @@ Implementations MAY additionally expose freshness metadata as structured JSON al
 
 ### `freshness_score` (optional)
 
-A numeric representation of data freshness from 0–100, calculated as:
+A numeric representation of data freshness from 0–100. The canonical reference implementation uses exponential, source-specific temporal decay:
 
 ```
-freshness_score = max(0, 100 - (days_since_retrieved × decay_rate))
+R(t) = R0 · e^(-λt)
 ```
 
-Where `decay_rate` defaults to `1.5` for general web content. Implementations MAY use domain-specific decay rates to reflect how quickly different categories of data become unreliable.
+For envelope-level `freshness_score`, `R0` is normalised to `100`; for ranked intelligence feeds, `R0` is the semantic base score. Implementations MAY use domain-specific λ values to reflect how quickly different categories of data become unreliable.
 
 #### Recommended Decay Rates by Domain
 
@@ -195,13 +195,13 @@ Partial implementations that include only `retrieved_at` without `freshness_conf
 
 The canonical reference implementation of this specification is:
 
-**freshcontext-mcp** — an MCP server with 20 adapters covering:
+**freshcontext-mcp** — an MCP server with 21 tools covering:
 
 **Intelligence:** GitHub, Hacker News, Google Scholar, arXiv, Reddit
 
 **Competitive research:** YC Companies, Product Hunt, GitHub repo search, npm/PyPI package trends
 
-**Market data:** Yahoo Finance (up to 5 tickers), job listings (Remotive, RemoteOK, HN Hiring)
+**Market data:** Stooq quote data (up to 5 tickers), job listings (Remotive, RemoteOK, HN Hiring)
 
 **Unique — not available in any other MCP server:**
 - `extract_changelog` — release history from any repo, npm package, or website
@@ -227,7 +227,7 @@ The canonical reference implementation of this specification is:
 - Added Composite Adapters section
 - Added domain-specific decay rate table with recommended values
 - Added Compatibility Levels table (compatible / aware / scored)
-- Updated reference implementation to 20 adapters
+- Updated reference implementation to 21 tools
 - Added `extract_gdelt`, `extract_gebiz`, `extract_sec_filings` to high-confidence examples
 - Added Apify Store and MCP Registry to reference implementation listings
 

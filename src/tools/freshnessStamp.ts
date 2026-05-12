@@ -61,6 +61,24 @@ function scoreLabel(score: number | null): string {
   return "use with caution";
 }
 
+function looksLikeFailedAdapterContent(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed) return true;
+  if (/^\[(?:error|security)\]/i.test(trimmed)) return true;
+  if (/^(?:error|failed|upstream|timeout)\b/i.test(trimmed)) return true;
+
+  const meaningful = trimmed
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!meaningful.length) return true;
+
+  const failureLines = meaningful.filter((line) =>
+    /\b(?:error|failed|failure|timeout|401|403|404|429|5\d\d)\b/i.test(line)
+  );
+  return failureLines.length === meaningful.length;
+}
+
 // ─── Main stamp function ──────────────────────────────────────────────────────
 export function stampFreshness(
   result: AdapterResult,
@@ -68,8 +86,11 @@ export function stampFreshness(
   adapter: string
 ): FreshContext {
   const retrieved_at = new Date().toISOString();
+  const failedContent = looksLikeFailedAdapterContent(result.raw);
+  const content_date = failedContent ? null : result.content_date;
+  const freshness_confidence = failedContent ? "low" : result.freshness_confidence;
   const freshness_score = calculateFreshnessScore(
-    result.content_date,
+    content_date,
     retrieved_at,
     adapter
   );
@@ -77,9 +98,9 @@ export function stampFreshness(
   return {
     content: result.raw.slice(0, options.maxLength ?? 8000),
     source_url: options.url,
-    content_date: result.content_date,
+    content_date,
     retrieved_at,
-    freshness_confidence: result.freshness_confidence,
+    freshness_confidence,
     freshness_score,
     adapter,
   };

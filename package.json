@@ -1,7 +1,7 @@
 {
   "name": "freshcontext-mcp",
   "mcpName": "io.github.PrinceGabriel-lgtm/freshcontext",
-  "version": "0.3.16",
+  "version": "0.3.17",
   "description": "Real-time web intelligence for AI agents. 21 tools, no required API keys. Every result timestamped with a freshness score.",
   "keywords": [
     "mcp",
@@ -36,6 +36,7 @@
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "inspect": "npx @modelcontextprotocol/inspector tsx src/server.ts",
+    "smoke:stdio": "node scripts/smoke-stdio.mjs",
     "test": "jest"
   },
   "dependencies": {

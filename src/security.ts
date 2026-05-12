@@ -13,7 +13,7 @@ export const ALLOWED_DOMAINS: Record<string, string[]> = {
   repoSearch: [],    // uses GitHub API directly, no browser
   packageTrends: [], // uses npm/PyPI APIs directly, no browser
   reddit: [],        // uses public Reddit JSON API, no browser
-  finance: [],       // uses Yahoo Finance API, no browser
+  finance: [],       // uses Stooq quote API, no browser
   productHunt: ["www.producthunt.com", "producthunt.com"],
 };
 

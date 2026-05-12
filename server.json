@@ -6,14 +6,14 @@
     "url": "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp",
     "source": "github"
   },
-  "version": "0.3.16",
+  "version": "0.3.17",
   "website_url": "https://freshcontext-site.pages.dev",
   "packages": [
     {
       "registry_type": "npm",
       "registry_base_url": "https://registry.npmjs.org",
       "identifier": "freshcontext-mcp",
-      "version": "0.3.16",
+      "version": "0.3.17",
       "transport": {
         "type": "stdio"
       }
