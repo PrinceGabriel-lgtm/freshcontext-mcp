@@ -89,7 +89,7 @@ Pass 5's goal as written ("port npm `formatForLLM` into the worker") cannot be d
 
 - **Option B — keep exponential, port the worker's LAMBDA into the envelope.** The numbers stay consistent across the system (envelope and intel feed both reflect the engine). But the npm package and the worker would emit different freshness scores for identical content — same npm `extract_hackernews` and worker `extract_hackernews` would disagree by ~70 points on a 1-day-old story.
 
-- **Option C — make both packages exponential, treat npm as out of date.** The spec (`METHODOLOGY.md`) says exponential. Update the npm package's `freshnessStamp.ts` to match the worker's LAMBDA. This requires releasing a new npm version (`0.3.16`), but yields one consistent model across the project.
+- **Option C — make both packages exponential, treat npm as out of date.** The spec (`METHODOLOGY.md`) says exponential. Update the npm package's `freshnessStamp.ts` to match the worker's LAMBDA. This requires a new npm release, but yields one consistent model across the project.
 
 - **Option D — make both packages linear, treat worker engine as out of spec.** Pull npm's table down into worker, replace `LAMBDA` and `applyDecay()` with linear math. Larger blast radius — affects cron, intel feed, briefing scoring, all D1 stored values. Probably not desirable.
 

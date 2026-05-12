@@ -30,7 +30,7 @@ For the Worker:
 
 1. Confirm the gap: does *every* tool path call `stamp()`? Are there any direct envelope strings written elsewhere (composites, briefing, intel feed)?
 2. Compare DAR decay rates between `src/tools/freshnessStamp.ts` (`DECAY_RATES`) and `worker/src/intelligence.ts`. They must agree. If they disagree, list the differences and flag — do not fix in Phase 1.
-3. Check every adapter name passed to `stamp()` (in worker.ts) against the DAR rate table. Pass 4 Phase 2 fixed one (`yahoo_finance` → `finance`). Sweep the remaining 20 to confirm none silently fall through to default rate `1.5`.
+3. Check every adapter name passed to `stamp()` (in worker.ts) against the DAR rate table. Pass 4 Phase 2 fixed one provider-specific finance key to `finance`. Sweep the remaining tools to confirm none silently fall through to the default rate.
 4. Spot anywhere downstream that parses the envelope (e.g. cron job, intel feed, briefing synthesis) and might break if a `Score:` line and a trailing `[FRESHCONTEXT_JSON]` block are appended. Listing-only — do not change.
 
 **Output of Phase 1:** Markdown report `AUDIT_PASS5.md` at repo root. Include:

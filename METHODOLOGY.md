@@ -41,7 +41,7 @@ FreshContext implements 11 production adapters covering the following sources:
 | `reddit` | Reddit JSON API | None | Real-time |
 | `yc` | YC Open Source API | None | Per batch cycle |
 | `packagetrends` | npm Registry + npm Downloads API | None | Per publish |
-| `finance` | Yahoo Finance API | None | Market hours |
+| `finance` | Stooq quote API | None | Market hours / quote feed cadence |
 | `hackernews` | HN Algolia Full-Text Search | None | Real-time |
 
 All adapters operate exclusively on **publicly accessible data**. No credentials are required or used for data access. All fetch requests include a `User-Agent` header identifying the FreshContext crawler.
@@ -269,7 +269,7 @@ For acquirers, investors, and licensing partners:
 
 5. **The Historical D1 Ledger** (data asset) — the continuously accumulating time-series dataset. As of the date of this document, the ledger has been running since early 2026 with 6-hour collection intervals across 18 watched queries. The dataset grows in defensibility with every passing day.
 
-6. **The Reference Implementation** — `freshcontext-mcp@0.3.16`, listed on the official MCP Registry and npm. Deployed globally on Cloudflare's edge infrastructure.
+6. **The Reference Implementation** — `freshcontext-mcp@0.3.17`, listed on the official MCP Registry and npm. Deployed globally on Cloudflare's edge infrastructure.
 
 ---
 

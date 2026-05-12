@@ -41,7 +41,7 @@ R_t = R_0 · e^(−λt)
 
 That's the whole fix. No model swap. No re-embedding. No re-indexing. The layer drops onto whatever retrieval pipeline you already have.
 
-**The layer is the product.** The 20 adapters shipped with this repo are reference implementations demonstrating compatibility — useful, but commodity. The DAR engine, the freshness envelope, and the FreshContext Specification are the moat.
+**The layer is the product.** The 21 tools shipped with this repo are reference implementations demonstrating compatibility — useful, but commodity. The DAR engine, the freshness envelope, and the FreshContext Specification are the moat.
 
 ---
 
@@ -82,7 +82,7 @@ Production endpoint: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 
 ## Reference adapters
 
-The repo ships 20 adapters demonstrating how to make any data source FreshContext-compatible. Useful as drop-in tools, but the value is the layer above them.
+The repo ships 21 tools demonstrating how to make any data source FreshContext-compatible. Useful as drop-in tools, but the value is the layer above them.
 
 ### Intelligence
 | Adapter | What it returns |
@@ -104,7 +104,7 @@ The repo ships 20 adapters demonstrating how to make any data source FreshContex
 ### Market data
 | Adapter | What it returns |
 |---|---|
-| `extract_finance` | Live stock data — price, market cap, P/E, 52w range. Up to 5 tickers. |
+| `extract_finance` | No-key Stooq quote data — close, OHLC, volume, quote timestamp, source. Up to 5 tickers. |
 | `search_jobs` | Remote job listings from Remotive, RemoteOK, HN "Who is Hiring" |
 
 ### Composites — multiple sources, one call
@@ -259,12 +259,12 @@ Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 ## Roadmap
 
 - [x] FreshContext Specification v1.1 published (MIT, open standard)
-- [x] DAR engine with proprietary λ constants (v0.3.16)
+- [x] DAR engine with proprietary λ constants (v0.3.17)
 - [x] Ha-Pri audit signatures on every signal
 - [x] Semantic deduplication via fingerprinting
 - [x] Live before/after demo at `/demo`
 - [x] METHODOLOGY.md — formal IP and engineering documentation
-- [x] 20 reference adapters across intelligence, competitive research, market data, and composites
+- [x] 21 reference tools across intelligence, competitive research, market data, and composites
 - [x] Cloudflare Workers deployment — global edge, KV cache, KV rate limiting
 - [x] Listed on official MCP Registry, Apify Store, npm
 - [x] GitHub Actions CI/CD — auto-publish on every push

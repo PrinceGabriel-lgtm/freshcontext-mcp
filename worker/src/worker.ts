@@ -5,7 +5,7 @@ import { z } from "zod";
 import { synthesizeBriefing as generateAIBriefing } from "./synthesize.js";
 import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate, applyDecay, RT_EXPIRY_FLOOR, calculateFreshnessScore, freshnessLabel } from "./intelligence.js";
 
-const SERVICE_VERSION = "0.3.16";
+const SERVICE_VERSION = "0.3.17";
 const SERVICE_UA = `freshcontext-mcp/${SERVICE_VERSION} (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)`;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -334,6 +334,19 @@ function errResponse(message: string, status: number): Response {
   });
 }
 
+function looksLikeFailedAdapterContent(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed) return true;
+  if (/^\[(?:error|security)\]/i.test(trimmed)) return true;
+  if (/^(?:error|failed|upstream|timeout)\b/i.test(trimmed)) return true;
+  const meaningful = trimmed.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (!meaningful.length) return true;
+  const failureLines = meaningful.filter(line =>
+    /\b(?:error|failed|failure|timeout|401|403|404|429|5\d\d)\b/i.test(line)
+  );
+  return failureLines.length === meaningful.length;
+}
+
 function stamp(
   content: string,
   url: string,
@@ -342,7 +355,10 @@ function stamp(
   adapter: string
 ): string {
   const retrieved_at = new Date().toISOString();
-  const freshness_score = calculateFreshnessScore(date, retrieved_at, adapter);
+  const failedContent = looksLikeFailedAdapterContent(content);
+  const safeDate = failedContent ? null : date;
+  const safeConfidence = failedContent ? "low" : confidence;
+  const freshness_score = calculateFreshnessScore(safeDate, retrieved_at, adapter);
   const sliced = content.slice(0, 6000);
 
   const scoreLine = freshness_score !== null
@@ -352,9 +368,9 @@ function stamp(
   const textEnvelope = [
     "[FRESHCONTEXT]",
     `Source: ${url}`,
-    `Published: ${date ?? "unknown"}`,
+    `Published: ${safeDate ?? "unknown"}`,
     `Retrieved: ${retrieved_at}`,
-    `Confidence: ${confidence}`,
+    `Confidence: ${safeConfidence}`,
     scoreLine,
     "---",
     sliced,
@@ -364,9 +380,9 @@ function stamp(
   const structured = {
     freshcontext: {
       source_url:           url,
-      content_date:         date,
+      content_date:         safeDate,
       retrieved_at,
-      freshness_confidence: confidence,
+      freshness_confidence: safeConfidence,
       freshness_score,
       adapter,
     },
@@ -432,6 +448,59 @@ function formatUSD(amount: number | null | undefined): string {
   if (abs >= 1_000_000) return `$${(amount / 1_000_000).toFixed(2)}M`;
   if (abs >= 1_000) return `$${(amount / 1_000).toFixed(1)}K`;
   return `$${amount.toFixed(0)}`;
+}
+
+function normalizeHnDate(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const match = raw.match(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\b/);
+  if (!match) return null;
+  const isoLike = match[0].endsWith("Z") ? match[0] : `${match[0]}Z`;
+  const parsed = new Date(isoLike);
+  return isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+interface StooqQuote {
+  symbol: string;
+  date: string;
+  time: string;
+  open: number | string;
+  high: number | string;
+  low: number | string;
+  close: number | string;
+  volume: number | string;
+}
+
+interface ParsedFinanceQuote {
+  requested: string;
+  stooqSymbol: string;
+  quote: StooqQuote;
+  timestamp: string;
+}
+
+function toStooqSymbol(ticker: string): string {
+  const clean = ticker.trim().toUpperCase().replace(/[^A-Z0-9.^=-]/g, "");
+  if (!clean) throw new Error("Ticker cannot be empty");
+  if (clean.includes(".") || clean.startsWith("^") || clean.includes("=")) return clean;
+  return `${clean}.US`;
+}
+
+function quoteNumber(value: number | string | undefined): number | null {
+  if (value === undefined || value === "N/D") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeQuoteTimestamp(date: string, time: string): string {
+  if (!date || date === "N/D") throw new Error("Quote date unavailable");
+  const clock = time && time !== "N/D" ? time : "00:00:00";
+  const parsed = new Date(`${date}T${clock}Z`);
+  if (isNaN(parsed.getTime())) throw new Error(`Invalid quote timestamp: ${date} ${time}`);
+  return parsed.toISOString();
+}
+
+function formatQuoteValue(value: number | string | undefined, prefix = ""): string {
+  const n = quoteNumber(value);
+  return n === null ? "N/A" : `${prefix}${n.toLocaleString(undefined, { maximumFractionDigits: 4 })}`;
 }
 
 // ── arXiv (HTTP, Atom XML) ───────────────────────────────────────────────────
@@ -783,9 +852,9 @@ async function fetchHN(query: string, maxLength: number, log: LogFields = {}): P
   const json = await res.json() as { hits: Array<{ title: string; url: string | null; points: number; num_comments: number; author: string; created_at: string; objectID: string }> };
   if (!json.hits.length) return { raw: `No HN stories for "${query}".`, date: null, conf: "low" };
   const raw = json.hits.map((r, i) =>
-    `[${i + 1}] ${r.title}\nURL: ${r.url ?? `https://news.ycombinator.com/item?id=${r.objectID}`}\nScore: ${r.points} | ${r.num_comments} comments\nAuthor: ${r.author} | Posted: ${r.created_at}`
+    `[${i + 1}] ${r.title}\nURL: ${r.url ?? `https://news.ycombinator.com/item?id=${r.objectID}`}\nScore: ${r.points} | ${r.num_comments} comments\nAuthor: ${r.author} | Posted: ${normalizeHnDate(r.created_at) ?? r.created_at}`
   ).join("\n\n").slice(0, maxLength);
-  const newest = json.hits.map(r => r.created_at).sort().reverse()[0] ?? null;
+  const newest = json.hits.map(r => normalizeHnDate(r.created_at)).filter((d): d is string => Boolean(d)).sort().reverse()[0] ?? null;
   return { raw, date: newest, conf: newest ? "high" : "medium" };
 }
 
@@ -829,42 +898,54 @@ async function fetchReddit(query: string, maxLength: number, log: LogFields = {}
   return { raw, date, conf: date ? "high" : "medium" };
 }
 
-// ── Yahoo Finance — composite helper ─────────────────────────────────────────
+// ── Finance quotes (Stooq, no key) — composite helper ────────────────────────
 async function fetchFinance(tickers: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
-  const list = tickers.split(",").map(t => t.trim().toUpperCase()).filter(Boolean).slice(0, 5);
-  const out: string[] = [];
-  let latestTs: number | null = null;
+  const list = tickers.split(",").map(t => t.trim()).filter(Boolean).slice(0, 5);
+  if (!list.length) throw new Error("At least one ticker is required");
+  const successes: ParsedFinanceQuote[] = [];
+  const failures: string[] = [];
   for (const t of list) {
     try {
+      const stooqSymbol = toStooqSymbol(t);
       const res = await sourceFetch(
-        `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(t)}&fields=shortName,longName,regularMarketPrice,regularMarketChange,regularMarketChangePercent,marketCap,regularMarketVolume,fiftyTwoWeekHigh,fiftyTwoWeekLow,trailingPE,dividendYield,currency,exchangeName,regularMarketTime`,
-        { headers: { "User-Agent": `Mozilla/5.0 (compatible; freshcontext-mcp/${SERVICE_VERSION})` } },
+        `https://stooq.com/q/l/?s=${encodeURIComponent(stooqSymbol.toLowerCase())}&f=sd2t2ohlcv&h&e=json`,
+        { headers: { "User-Agent": SERVICE_UA, "Accept": "application/json" } },
         { ...log, adapter: "finance" }
       );
-      if (!res.ok) { out.push(`[${t}] Error ${res.status}`); continue; }
-      const j = await res.json() as { quoteResponse?: { result?: Array<Record<string, number | string>> } };
-      const q = j?.quoteResponse?.result?.[0];
-      if (!q) { out.push(`[${t}] No data`); continue; }
-      if (typeof q.regularMarketTime === "number") latestTs = Math.max(latestTs ?? 0, q.regularMarketTime);
-      const sign = (typeof q.regularMarketChange === "number" && q.regularMarketChange >= 0) ? "+" : "";
-      const cap = typeof q.marketCap === "number"
-        ? (q.marketCap >= 1e12 ? `$${(q.marketCap/1e12).toFixed(2)}T` : q.marketCap >= 1e9 ? `$${(q.marketCap/1e9).toFixed(2)}B` : `$${q.marketCap.toLocaleString()}`)
-        : "N/A";
-      const price = typeof q.regularMarketPrice === "number" ? `$${q.regularMarketPrice.toFixed(2)}` : "N/A";
-      const chg = typeof q.regularMarketChange === "number" && typeof q.regularMarketChangePercent === "number"
-        ? `${sign}${q.regularMarketChange.toFixed(2)} (${sign}${q.regularMarketChangePercent.toFixed(2)}%)` : "N/A";
-      out.push([
-        `${q.symbol} — ${q.longName ?? q.shortName ?? "Unknown"}`,
-        `Price: ${price}  Change: ${chg}  Cap: ${cap}`,
-        `P/E: ${typeof q.trailingPE === "number" ? q.trailingPE.toFixed(2) : "N/A"}  Vol: ${typeof q.regularMarketVolume === "number" ? q.regularMarketVolume.toLocaleString() : "N/A"}`,
-      ].join("\n"));
+      if (!res.ok) throw new Error(`Stooq quote API error: ${res.status}`);
+      const json = await res.json() as { symbols?: StooqQuote[] };
+      const quote = json.symbols?.[0];
+      if (!quote || quote.close === "N/D" || quote.date === "N/D") throw new Error(`No Stooq quote data found for ${t}`);
+      successes.push({
+        requested: t,
+        stooqSymbol,
+        quote,
+        timestamp: normalizeQuoteTimestamp(quote.date, quote.time),
+      });
     } catch (e: unknown) {
-      out.push(`[${t}] Error: ${e instanceof Error ? e.message : String(e)}`);
+      failures.push(`[${t.toUpperCase()}] ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+
+  if (!successes.length) {
+    throw new Error(`Finance quote lookup failed for all tickers via source=stooq. ${failures.join("; ")}`);
+  }
+
+  const out = successes.map(({ requested, quote, timestamp }) => [
+    `${requested.toUpperCase()} — ${quote.symbol}`,
+    `source: stooq`,
+    `Quote timestamp: ${timestamp}`,
+    "",
+    `Close:  ${formatQuoteValue(quote.close, "$")}`,
+    `Open:   ${formatQuoteValue(quote.open, "$")}`,
+    `High:   ${formatQuoteValue(quote.high, "$")}`,
+    `Low:    ${formatQuoteValue(quote.low, "$")}`,
+    `Volume: ${formatQuoteValue(quote.volume)}`,
+  ].join("\n"));
+  if (failures.length) out.push(["Partial failures:", ...failures.map(f => `- ${f}`)].join("\n"));
   const raw = out.join("\n\n─────────────\n\n").slice(0, maxLength);
-  const date = latestTs ? new Date(latestTs * 1000).toISOString() : new Date().toISOString();
-  return { raw, date, conf: "high" };
+  const date = successes.map(s => s.timestamp).sort().reverse()[0] ?? null;
+  return { raw, date, conf: failures.length ? "medium" : "high" };
 }
 
 // ── YC companies (yc-oss feed) — composite helper ────────────────────────────
@@ -1037,32 +1118,32 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
   });
 
   server.registerTool("extract_hackernews", {
-    description: "Extract top stories or search results from Hacker News with real-time timestamps.",
-    inputSchema: z.object({ url: z.string().url().describe("HN URL e.g. https://news.ycombinator.com or https://hn.algolia.com/?q=...") }),
+    description: "Extract top stories or search results from Hacker News. The url field accepts an HN/Algolia URL or a plain search query.",
+    inputSchema: z.object({ url: z.string().min(1).describe("HN URL e.g. https://news.ycombinator.com/news, Algolia API URL, or search query e.g. 'browser agents'") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
     return withCache("hackernews", url, env.CACHE, async () => {
       try {
-        if (url.includes("hn.algolia.com")) {
+        let parsedInput: URL | null = null;
+        try { parsedInput = new URL(url); } catch { parsedInput = null; }
+        if (!parsedInput || url.includes("hn.algolia.com")) {
           let apiUrl: string;
-          if (url.includes("/api/")) {
+          if (parsedInput && url.includes("/api/")) {
             apiUrl = url;
           } else {
             // Extract ?q= or ?query= param if present — don't encode the whole URL as the query
             let searchTerm: string;
-            try {
-              const parsed = new URL(url);
-              searchTerm = parsed.searchParams.get("q") ?? parsed.searchParams.get("query") ?? "";
-            } catch { searchTerm = ""; }
+            if (parsedInput) searchTerm = parsedInput.searchParams.get("q") ?? parsedInput.searchParams.get("query") ?? "";
+            else searchTerm = url.trim();
             apiUrl = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(searchTerm)}&tags=story&hitsPerPage=20`;
           }
           const res = await sourceFetch(apiUrl, undefined, adapterLog("extract_hackernews", "hackernews", url));
           if (!res.ok) throw new Error(`HN API error: ${res.status}`);
           const json = await res.json() as any;
           const raw = json.hits.map((r: any, i: number) =>
-            `[${i+1}] ${r.title}\nURL: ${r.url ?? `https://news.ycombinator.com/item?id=${r.objectID}`}\nScore: ${r.points} | ${r.num_comments} comments\nPosted: ${r.created_at}`
+            `[${i+1}] ${r.title}\nURL: ${r.url ?? `https://news.ycombinator.com/item?id=${r.objectID}`}\nScore: ${r.points} | ${r.num_comments} comments\nPosted: ${normalizeHnDate(r.created_at) ?? r.created_at}`
           ).join("\n\n");
-          const newest = json.hits.map((r: any) => r.created_at).sort().reverse()[0] ?? null;
+          const newest = json.hits.map((r: any) => normalizeHnDate(r.created_at)).filter(Boolean).sort().reverse()[0] ?? null;
           return ok(stamp(raw, url, newest, newest ? "high" : "medium", "hackernews"));
         }
         const safeUrl = validateUrl(url, "hackernews");
@@ -1079,8 +1160,8 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
         })()`);
         await browser.close();
         const items = data as any[];
-        const raw = items.map((r, i) => `[${i+1}] ${r.title}\nURL: ${r.link}\nScore: ${r.score ?? "N/A"}\nPosted: ${r.age ?? "unknown"}`).join("\n\n");
-        const newest2 = items.map(r => r.age).filter(Boolean).sort().reverse()[0] ?? null;
+        const raw = items.map((r, i) => `[${i+1}] ${r.title}\nURL: ${r.link}\nScore: ${r.score ?? "N/A"}\nPosted: ${normalizeHnDate(r.age) ?? "unknown"}`).join("\n\n");
+        const newest2 = items.map(r => normalizeHnDate(r.age)).filter(Boolean).sort().reverse()[0] ?? null;
         return ok(stamp(raw, safeUrl, newest2, newest2 ? "high" : "medium", "hackernews"));
       } catch (err: unknown) { return adapterError("extract_hackernews", "hackernews", url, err); }
     });
@@ -1261,33 +1342,14 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
   });
 
   server.registerTool("extract_finance", {
-    description: "Live stock data via Yahoo Finance. Accepts comma-separated ticker symbols.",
+    description: "No-key stock quote data via Stooq. Accepts comma-separated ticker symbols and returns quote/OHLC/volume observations with timestamps.",
     inputSchema: z.object({ url: z.string().describe("Ticker symbol(s) e.g. 'AAPL' or 'MSFT,GOOG'") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
     return withCache("finance", url, env.CACHE, async () => {
       try {
-        const tickers = url.split(",").map(t => t.trim().toUpperCase()).filter(Boolean).slice(0, 5);
-        const results: string[] = [];
-        let latestTs: number | null = null;
-        for (const ticker of tickers) {
-          const res = await sourceFetch(
-            `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${ticker}&fields=shortName,longName,regularMarketPrice,regularMarketChange,regularMarketChangePercent,marketCap,regularMarketVolume,fiftyTwoWeekHigh,fiftyTwoWeekLow,trailingPE,dividendYield,currency,exchangeName,regularMarketTime`,
-            { headers: { "User-Agent": `Mozilla/5.0 (compatible; freshcontext-mcp/${SERVICE_VERSION})` } },
-            adapterLog("extract_finance", "finance", url)
-          );
-          if (!res.ok) { results.push(`[${ticker}] Error: ${res.status}`); continue; }
-          const json = await res.json() as any;
-          const q = json?.quoteResponse?.result?.[0];
-          if (!q) { results.push(`[${ticker}] No data found`); continue; }
-          if (q.regularMarketTime) latestTs = Math.max(latestTs ?? 0, q.regularMarketTime);
-          const sign = (q.regularMarketChange ?? 0) >= 0 ? "+" : "";
-          const cap = q.marketCap >= 1e12 ? `$${(q.marketCap/1e12).toFixed(2)}T` : q.marketCap >= 1e9 ? `$${(q.marketCap/1e9).toFixed(2)}B` : "N/A";
-          results.push([`${q.symbol} — ${q.longName ?? q.shortName ?? "Unknown"}`, `Price: $${q.regularMarketPrice?.toFixed(2) ?? "N/A"}`, `Change: ${sign}${q.regularMarketChange?.toFixed(2) ?? "N/A"} (${sign}${q.regularMarketChangePercent?.toFixed(2) ?? "N/A"}%)`, `Market Cap: ${cap}`, `P/E: ${q.trailingPE?.toFixed(2) ?? "N/A"}`].join("\n"));
-        }
-        const raw = results.join("\n\n─────────────────────────────\n\n");
-        const date = latestTs ? new Date(latestTs * 1000).toISOString() : new Date().toISOString();
-        return ok(stamp(raw, `yahoo-finance:${tickers.join(",")}`, date, "high", "finance"));
+        const r = await fetchFinance(url, 5000, adapterLog("extract_finance", "finance", url));
+        return ok(stamp(r.raw, `stooq:${url}`, r.date, r.conf, "finance"));
       } catch (err: unknown) { return adapterError("extract_finance", "finance", url, err); }
     });
   });
@@ -1517,7 +1579,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
 
   // ─── Tool: extract_finance_landscape ────────────────────────────────────
   server.registerTool("extract_finance_landscape", {
-    description: "Composite financial intelligence: Yahoo Finance market data + HN sentiment + Reddit discussion + GitHub ecosystem + product changelog. 5-source unified report.",
+    description: "Composite financial intelligence: Stooq quote data + HN sentiment + Reddit discussion + GitHub ecosystem + product changelog. 5-source unified report.",
     inputSchema: z.object({
       tickers: z.string().describe("One or more ticker symbols e.g. 'PLTR' or 'PLTR,MSFT'"),
       company_name: z.string().optional().describe("Company name for HN/Reddit/GitHub searches"),
@@ -1544,9 +1606,9 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
       const body = [
         `# Finance + Developer Intelligence: "${tickers}"${company_name ? ` (${company_name})` : ""}`,
         `Generated: ${new Date().toISOString()}`,
-        `Sources: Yahoo Finance · Hacker News · Reddit · GitHub · Changelog`,
+        `Sources: Stooq · Hacker News · Reddit · GitHub · Changelog`,
         "",
-        section("📈 Market Data (Yahoo Finance)", price),
+        section("📈 Market Data (Stooq)", price),
         section("💬 Developer Sentiment (Hacker News)", hn),
         section("🗣️ Community Discussion (Reddit)", reddit),
         section("📦 Repo Ecosystem (GitHub)", repos),
@@ -1558,7 +1620,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
 
   // ─── Tool: extract_company_landscape ────────────────────────────────────
   server.registerTool("extract_company_landscape", {
-    description: "Most complete single-call company intelligence: SEC 8-K filings + USASpending federal contracts + GDELT global news + product changelog + Yahoo Finance. 5 unique sources.",
+    description: "Most complete single-call company intelligence: SEC 8-K filings + USASpending federal contracts + GDELT global news + product changelog + Stooq quote data. 5 unique sources.",
     inputSchema: z.object({
       company: z.string().describe("Company name e.g. 'Palantir', 'Anthropic'"),
       ticker: z.string().optional().describe("Stock ticker for finance data"),
@@ -1584,13 +1646,13 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
       const body = [
         `# Company Intelligence Landscape: "${company}"${ticker ? ` (${ticker})` : ""}`,
         `Generated: ${new Date().toISOString()}`,
-        `Sources: SEC EDGAR · USASpending.gov · GDELT · Changelog · Yahoo Finance`,
+        `Sources: SEC EDGAR · USASpending.gov · GDELT · Changelog · Stooq`,
         "",
         section("📋 SEC 8-K Filings — Legal Disclosures", sec),
         section("🏛️ Federal Contract Awards", contracts),
         section("🌍 Global News Intelligence (GDELT)", gdelt),
         section("🔄 Product Release Velocity (Changelog)", changelog),
-        section("📈 Market Data (Yahoo Finance)", finance),
+        section("📈 Market Data (Stooq)", finance),
       ].join("\n\n");
       return ok(stamp(body, `company_landscape:${company}`, new Date().toISOString(), "high", "company_landscape"));
     });
@@ -1695,12 +1757,8 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
       return sanitize(`Stars:${data.stargazers_count} Forks:${data.forks_count} Updated:${data.updated_at} Issues:${data.open_issues_count} Lang:${data.language ?? "N/A"} Description:${data.description ?? ""}`);
     }
     case "finance": {
-      const symbol = query.replace(/[^A-Z0-9=^.-]/gi, "");
-      const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbol}&fields=regularMarketPrice,regularMarketTime,shortName`;
-      const res = await sourceFetch(url, { headers: { "User-Agent": "freshcontext-mcp/cron" } }, { ...log, adapter: "finance" });
-      const data = await res.json() as any;
-      const q = data.quoteResponse?.result?.[0];
-      return q ? `${symbol}: $${q.regularMarketPrice} | ${q.shortName} | ${new Date(q.regularMarketTime * 1000).toISOString()}` : `No price data for ${symbol}`;
+      const r = await fetchFinance(query, 1200, { ...log, adapter: "finance" });
+      return sanitize(r.raw);
     }
     case "reddit": {
       const sub = query.match(/r\/(\w+)/)?.[1];

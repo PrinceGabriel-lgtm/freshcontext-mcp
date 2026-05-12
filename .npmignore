@@ -15,7 +15,14 @@ src/
 worker/
 
 # Development docs (not needed by npm consumers)
+.claude/
+.github/
 _archive/
+CLAUDE.md
+AUDIT_*.md
+PASS_*.md
+RESEARCH.md
+RISKS.md
 SESSION_SAVE_*.md
 HANDOFF.md
 ARCHITECTURE_UPGRADE_*.md
@@ -26,6 +33,14 @@ METHODOLOGY.md
 FRESHCONTEXT_SPEC.md
 ROADMAP.md
 USAGE.md
+TIME_CHECK_README.md
+
+# Repo-only smoke/demo/development helpers
+scripts/
+demo/
+cleanup.ps1
+time-check.ps1
+freshcontext-validate.js
 
 # Database snapshots
 backup.sql

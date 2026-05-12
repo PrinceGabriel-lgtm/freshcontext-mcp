@@ -23,7 +23,7 @@ import { SecurityError, formatSecurityError } from "./security.js";
 
 const server = new McpServer({
   name: "freshcontext-mcp",
-  version: "0.3.16",
+  version: "0.3.17",
 });
 
 // ─── Tool: extract_github ────────────────────────────────────────────────────
@@ -77,9 +77,9 @@ server.registerTool(
   "extract_hackernews",
   {
     description:
-      "Extract top stories or search results from Hacker News. Real-time dev/tech community sentiment with post timestamps.",
+      "Extract top stories or search results from Hacker News. Accepts an HN/Algolia URL or a plain search query while preserving the url field for compatibility.",
     inputSchema: z.object({
-      url: z.string().url().describe("HN URL e.g. https://news.ycombinator.com or https://hn.algolia.com/?q=..."),
+      url: z.string().min(1).describe("HN URL e.g. https://news.ycombinator.com/news, Algolia API URL, or search query e.g. 'browser agents'"),
       max_length: z.number().optional().default(4000),
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
@@ -192,7 +192,7 @@ server.registerTool(
   "extract_finance",
   {
     description:
-      "Live stock data via Yahoo Finance — price, change, market cap, P/E, 52w range, sector, business summary. Accepts up to 5 comma-separated tickers. Returns timestamped freshcontext.",
+      "No-key stock quote data via Stooq — close, open, high, low, volume, quote timestamp, and source. Accepts up to 5 comma-separated tickers. Returns timestamped freshcontext only for successful observations.",
     inputSchema: z.object({
       url: z.string().describe("Ticker symbol(s) e.g. 'AAPL' or 'MSFT,GOOG,PLTR'"),
       max_length: z.number().optional().default(5000),
@@ -466,7 +466,7 @@ server.registerTool(
   "extract_finance_landscape",
   {
     description:
-      "Composite financial intelligence tool for developers. Given one or more ticker symbols, simultaneously queries: (1) Yahoo Finance for live price/market data, (2) Hacker News for developer community sentiment, (3) Reddit for investor and tech community discussion, (4) GitHub for repo ecosystem activity around the company's tech, and (5) their product changelog for release velocity as a company health signal. Answers: What's the price? What are developers saying? Is the company actually shipping? Returns a unified 5-source timestamped report. Bloomberg Terminal doesn't give you this.",
+      "Composite financial intelligence tool for developers. Given one or more ticker symbols, simultaneously queries: (1) Stooq for no-key quote data, (2) Hacker News for developer community sentiment, (3) Reddit for investor and tech community discussion, (4) GitHub for repo ecosystem activity around the company's tech, and (5) their product changelog for release velocity as a company health signal. Answers: What's the price? What are developers saying? Is the company actually shipping? Returns a unified 5-source timestamped report.",
     inputSchema: z.object({
       tickers: z.string().describe(
         "One or more ticker symbols e.g. 'PLTR' or 'PLTR,MSFT,GOOG'. Up to 5 tickers."
@@ -501,10 +501,10 @@ server.registerTool(
     const combined = [
       `# Finance + Developer Intelligence: "${tickers}"${company_name ? ` (${company_name})` : ""}`,
       `Generated: ${new Date().toISOString()}`,
-      `Sources: Yahoo Finance · Hacker News · Reddit · GitHub · Changelog`,
+      `Sources: Stooq · Hacker News · Reddit · GitHub · Changelog`,
       min_freshness_score ? `min_freshness_score: ${min_freshness_score}` : null,
       "",
-      sectionWithFreshnessCheck("📈 Market Data (Yahoo Finance)", priceResult, "finance", min_freshness_score),
+      sectionWithFreshnessCheck("📈 Market Data (Stooq)", priceResult, "finance", min_freshness_score),
       sectionWithFreshnessCheck("💬 Developer Sentiment (Hacker News)", hnResult, "hackernews", min_freshness_score),
       sectionWithFreshnessCheck("🗣️ Community Discussion (Reddit)", redditResult, "reddit", min_freshness_score),
       sectionWithFreshnessCheck("📦 Repo Ecosystem (GitHub)", repoResult, "reposearch", min_freshness_score),
@@ -578,7 +578,7 @@ server.registerTool(
   "extract_company_landscape",
   {
     description:
-      "Composite company intelligence tool. The most complete single-call company analysis available. Simultaneously queries 5 unique sources: (1) SEC EDGAR for 8-K material event filings — what the company legally just disclosed, (2) USASpending.gov for federal contract footprint — who is giving them government money, (3) GDELT for global news intelligence — what the world is saying about them right now, (4) their product changelog — are they actually shipping, (5) Yahoo Finance — what the market is pricing in. Returns a unified 5-source timestamped report. Unique: this combination is not available in any other MCP server.",
+      "Composite company intelligence tool. The most complete single-call company analysis available. Simultaneously queries 5 unique sources: (1) SEC EDGAR for 8-K material event filings — what the company legally just disclosed, (2) USASpending.gov for federal contract footprint — who is giving them government money, (3) GDELT for global news intelligence — what the world is saying about them right now, (4) their product changelog — are they actually shipping, (5) Stooq quote data — what the market is pricing in. Returns a unified 5-source timestamped report. Unique: this combination is not available in any other MCP server.",
     inputSchema: z.object({
       company: z.string().describe(
         "Company name e.g. 'Palantir', 'Anthropic', 'OpenAI'"
@@ -609,14 +609,14 @@ server.registerTool(
     const combined = [
       `# Company Intelligence Landscape: "${company}"${ticker ? ` (${ticker})` : ""}`,
       `Generated: ${new Date().toISOString()}`,
-      `Sources: SEC EDGAR · USASpending.gov · GDELT · Changelog · Yahoo Finance`,
+      `Sources: SEC EDGAR · USASpending.gov · GDELT · Changelog · Stooq`,
       min_freshness_score ? `min_freshness_score: ${min_freshness_score}` : null,
       "",
       sectionWithFreshnessCheck("📋 SEC 8-K Filings — Legal Disclosures", secResult, "sec_filings", min_freshness_score),
       sectionWithFreshnessCheck("🏛️ Federal Contract Awards (USASpending.gov)", contractsResult, "govcontracts", min_freshness_score),
       sectionWithFreshnessCheck("🌍 Global News Intelligence (GDELT)", gdeltResult, "gdelt", min_freshness_score),
       sectionWithFreshnessCheck("🔄 Product Release Velocity (Changelog)", changelogResult, "changelog", min_freshness_score),
-      sectionWithFreshnessCheck("📈 Market Data (Yahoo Finance)", financeResult, "finance", min_freshness_score),
+      sectionWithFreshnessCheck("📈 Market Data (Stooq)", financeResult, "finance", min_freshness_score),
     ].filter(Boolean).join("\n\n");
 
     return { content: [{ type: "text", text: combined }] };
@@ -723,6 +723,4 @@ async function main() {
 }
 
 main().catch(console.error);
-
-
 

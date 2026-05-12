@@ -1,159 +1,139 @@
 import { AdapterResult, ExtractOptions } from "../types.js";
 
 /**
- * Finance adapter — Yahoo Finance public API, no auth required.
+ * Finance adapter — no-key Stooq quote feed.
  * Accepts:
- *   - A ticker symbol e.g. "AAPL" or "MSFT,GOOG"
- *   - A company name e.g. "Apple" (will search for ticker first)
+ *   - A ticker symbol e.g. "AAPL" or "MSFT"
  *   - Comma-separated tickers for comparison
+ *
+ * Stooq provides quote/OHLC/volume data, not fundamentals. FreshContext should
+ * only stamp observations it actually received.
  */
 
-interface YahooQuote {
+interface StooqQuote {
   symbol: string;
-  shortName?: string;
-  longName?: string;
-  regularMarketPrice?: number;
-  regularMarketChange?: number;
-  regularMarketChangePercent?: number;
-  marketCap?: number;
-  regularMarketVolume?: number;
-  fiftyTwoWeekHigh?: number;
-  fiftyTwoWeekLow?: number;
-  trailingPE?: number;
-  dividendYield?: number;
-  currency?: string;
-  exchangeName?: string;
-  regularMarketTime?: number;
-  longBusinessSummary?: string;
-  sector?: string;
-  industry?: string;
-  fullTimeEmployees?: number;
-  website?: string;
+  date: string;
+  time: string;
+  open: number | string;
+  high: number | string;
+  low: number | string;
+  close: number | string;
+  volume: number | string;
 }
 
-function formatMarketCap(cap: number | undefined): string {
-  if (!cap) return "N/A";
-  if (cap >= 1e12) return `$${(cap / 1e12).toFixed(2)}T`;
-  if (cap >= 1e9) return `$${(cap / 1e9).toFixed(2)}B`;
-  if (cap >= 1e6) return `$${(cap / 1e6).toFixed(2)}M`;
-  return `$${cap.toLocaleString()}`;
+interface ParsedQuote {
+  requested: string;
+  stooqSymbol: string;
+  quote: StooqQuote;
+  timestamp: string;
 }
 
-function formatChange(change: number | undefined, pct: number | undefined): string {
-  if (change === undefined || pct === undefined) return "N/A";
-  const sign = change >= 0 ? "+" : "";
-  return `${sign}${change.toFixed(2)} (${sign}${pct.toFixed(2)}%)`;
+function toStooqSymbol(ticker: string): string {
+  const clean = ticker.trim().toUpperCase().replace(/[^A-Z0-9.^=-]/g, "");
+  if (!clean) throw new Error("Ticker cannot be empty");
+  if (clean.includes(".") || clean.startsWith("^") || clean.includes("=")) return clean;
+  return `${clean}.US`;
+}
+
+function toNumber(value: number | string | undefined): number | null {
+  if (value === undefined || value === "N/D") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeQuoteTimestamp(date: string, time: string): string {
+  if (!date || date === "N/D") throw new Error("Quote date unavailable");
+  const clock = time && time !== "N/D" ? time : "00:00:00";
+  const parsed = new Date(`${date}T${clock}Z`);
+  if (Number.isNaN(parsed.getTime())) throw new Error(`Invalid quote timestamp: ${date} ${time}`);
+  return parsed.toISOString();
+}
+
+function formatNumber(value: number | string | undefined, prefix = ""): string {
+  const n = toNumber(value);
+  return n === null ? "N/A" : `${prefix}${n.toLocaleString(undefined, { maximumFractionDigits: 4 })}`;
+}
+
+async function fetchStooqQuote(ticker: string): Promise<ParsedQuote> {
+  const stooqSymbol = toStooqSymbol(ticker);
+  const url = `https://stooq.com/q/l/?s=${encodeURIComponent(stooqSymbol.toLowerCase())}&f=sd2t2ohlcv&h&e=json`;
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": "freshcontext-mcp/0.3.17",
+      "Accept": "application/json",
+    },
+  });
+  if (!res.ok) throw new Error(`Stooq quote API error: ${res.status}`);
+
+  const data = await res.json() as { symbols?: StooqQuote[] };
+  const quote = data.symbols?.[0];
+  if (!quote) throw new Error(`No quote returned for ${ticker}`);
+  if (quote.close === "N/D" || quote.date === "N/D") {
+    throw new Error(`No Stooq quote data found for ${ticker}`);
+  }
+
+  return {
+    requested: ticker,
+    stooqSymbol,
+    quote,
+    timestamp: normalizeQuoteTimestamp(quote.date, quote.time),
+  };
+}
+
+function formatQuote(result: ParsedQuote): string {
+  const q = result.quote;
+  return [
+    `${result.requested.toUpperCase()} — ${q.symbol}`,
+    `source: stooq`,
+    `Quote timestamp: ${result.timestamp}`,
+    "",
+    `Close:  ${formatNumber(q.close, "$")}`,
+    `Open:   ${formatNumber(q.open, "$")}`,
+    `High:   ${formatNumber(q.high, "$")}`,
+    `Low:    ${formatNumber(q.low, "$")}`,
+    `Volume: ${formatNumber(q.volume)}`,
+  ].join("\n");
 }
 
 export async function financeAdapter(options: ExtractOptions): Promise<AdapterResult> {
   const input = options.url.trim();
-
-  // Support comma-separated tickers
   const rawTickers = input
     .split(",")
-    .map((t) => t.trim().toUpperCase())
+    .map((t) => t.trim())
     .filter(Boolean)
-    .slice(0, 5); // max 5 at once
+    .slice(0, 5);
 
-  const results: string[] = [];
-  let latestTimestamp: number | null = null;
+  if (!rawTickers.length) throw new Error("At least one ticker is required");
+
+  const successes: ParsedQuote[] = [];
+  const failures: string[] = [];
 
   for (const ticker of rawTickers) {
     try {
-      const quoteData = await fetchQuote(ticker);
-      if (quoteData) {
-        results.push(formatQuote(quoteData));
-        if (quoteData.regularMarketTime) {
-          latestTimestamp = Math.max(latestTimestamp ?? 0, quoteData.regularMarketTime);
-        }
-      }
+      successes.push(await fetchStooqQuote(ticker));
     } catch (err) {
-      results.push(`[${ticker}] Error: ${err instanceof Error ? err.message : String(err)}`);
+      failures.push(`[${ticker.toUpperCase()}] ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  const raw = results.join("\n\n─────────────────────────────\n\n").slice(0, options.maxLength ?? 5000);
-  const content_date = latestTimestamp
-    ? new Date(latestTimestamp * 1000).toISOString()
-    : new Date().toISOString();
+  if (!successes.length) {
+    throw new Error(`Finance quote lookup failed for all tickers via source=stooq. ${failures.join("; ")}`);
+  }
 
-  return { raw, content_date, freshness_confidence: "high" };
-}
+  const sections = successes.map(formatQuote);
+  if (failures.length) {
+    sections.push(["Partial failures:", ...failures.map((f) => `- ${f}`)].join("\n"));
+  }
 
-async function fetchQuote(ticker: string): Promise<YahooQuote | null> {
-  // v7 quote endpoint — public, no auth
-  const quoteUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(ticker)}&fields=shortName,longName,regularMarketPrice,regularMarketChange,regularMarketChangePercent,marketCap,regularMarketVolume,fiftyTwoWeekHigh,fiftyTwoWeekLow,trailingPE,dividendYield,currency,exchangeName,regularMarketTime`;
+  const raw = sections.join("\n\n-----------------------------\n\n").slice(0, options.maxLength ?? 5000);
+  const content_date = successes
+    .map((s) => s.timestamp)
+    .sort()
+    .reverse()[0] ?? null;
 
-  const quoteRes = await fetch(quoteUrl, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (compatible; freshcontext-mcp/0.1.5)",
-      "Accept": "application/json",
-    },
-  });
-
-  if (!quoteRes.ok) throw new Error(`Yahoo Finance API error: ${quoteRes.status}`);
-
-  const quoteJson = await quoteRes.json() as {
-    quoteResponse?: { result?: YahooQuote[] };
+  return {
+    raw,
+    content_date,
+    freshness_confidence: failures.length ? "medium" : "high",
   };
-
-  const quote = quoteJson?.quoteResponse?.result?.[0];
-  if (!quote) throw new Error(`No data found for ticker: ${ticker}`);
-
-  // Optionally fetch company summary (v11 quoteSummary)
-  try {
-    const summaryUrl = `https://query1.finance.yahoo.com/v11/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=assetProfile`;
-    const summaryRes = await fetch(summaryUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; freshcontext-mcp/0.1.5)" },
-    });
-    if (summaryRes.ok) {
-      const summaryJson = await summaryRes.json() as {
-        quoteSummary?: { result?: Array<{ assetProfile?: YahooQuote }> };
-      };
-      const profile = summaryJson?.quoteSummary?.result?.[0]?.assetProfile;
-      if (profile) {
-        Object.assign(quote, {
-          longBusinessSummary: profile.longBusinessSummary,
-          sector: profile.sector,
-          industry: profile.industry,
-          fullTimeEmployees: profile.fullTimeEmployees,
-          website: profile.website,
-        });
-      }
-    }
-  } catch {
-    // Summary is optional — continue without it
-  }
-
-  return quote;
-}
-
-function formatQuote(q: YahooQuote): string {
-  const lines = [
-    `${q.symbol} — ${q.longName ?? q.shortName ?? "Unknown"}`,
-    `Exchange: ${q.exchangeName ?? "N/A"} · Currency: ${q.currency ?? "USD"}`,
-    "",
-    `Price:       ${q.regularMarketPrice !== undefined ? `$${q.regularMarketPrice.toFixed(2)}` : "N/A"}`,
-    `Change:      ${formatChange(q.regularMarketChange, q.regularMarketChangePercent)}`,
-    `Market Cap:  ${formatMarketCap(q.marketCap)}`,
-    `Volume:      ${q.regularMarketVolume?.toLocaleString() ?? "N/A"}`,
-    `52w High:    ${q.fiftyTwoWeekHigh !== undefined ? `$${q.fiftyTwoWeekHigh.toFixed(2)}` : "N/A"}`,
-    `52w Low:     ${q.fiftyTwoWeekLow !== undefined ? `$${q.fiftyTwoWeekLow.toFixed(2)}` : "N/A"}`,
-    `P/E Ratio:   ${q.trailingPE !== undefined ? q.trailingPE.toFixed(2) : "N/A"}`,
-    `Div Yield:   ${q.dividendYield !== undefined ? `${(q.dividendYield * 100).toFixed(2)}%` : "N/A"}`,
-  ];
-
-  if (q.sector || q.industry) {
-    lines.push("");
-    if (q.sector) lines.push(`Sector:      ${q.sector}`);
-    if (q.industry) lines.push(`Industry:    ${q.industry}`);
-    if (q.fullTimeEmployees) lines.push(`Employees:   ${q.fullTimeEmployees.toLocaleString()}`);
-    if (q.website) lines.push(`Website:     ${q.website}`);
-  }
-
-  if (q.longBusinessSummary) {
-    lines.push("", "About:", q.longBusinessSummary.slice(0, 500) + (q.longBusinessSummary.length > 500 ? "…" : ""));
-  }
-
-  return lines.join("\n");
 }

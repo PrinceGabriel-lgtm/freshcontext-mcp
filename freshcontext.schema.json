@@ -36,7 +36,7 @@
           "type": ["number", "null"],
           "minimum": 0,
           "maximum": 100,
-          "description": "Optional numeric freshness score 0-100. Calculated as: max(0, 100 - (days_since_retrieved * decay_rate)). Null if content_date is unknown.",
+          "description": "Optional numeric freshness score 0-100. Calculated with source-specific exponential temporal decay. Null if content_date is unknown.",
           "examples": [94, 72, 45, null]
         },
         "adapter": {

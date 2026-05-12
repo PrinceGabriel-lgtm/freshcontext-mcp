@@ -275,7 +275,7 @@ The gap between `Published` and `Retrieved` is your staleness indicator. If a jo
 A numeric score from 0–100 will be added to every result:
 
 ```
-freshness_score = max(0, 100 - (days_since_retrieved × decay_rate))
+R(t) = R0 · e^(-λt)
 ```
 
 Different data types decay at different rates — financial data goes stale faster than academic papers. You'll be able to filter results by `freshness_score > 70` directly in your prompts.
