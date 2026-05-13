@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
   "name": "io.github.PrinceGabriel-lgtm/freshcontext",
-  "description": "Real-time web intelligence for AI agents. 21 tools, no required API keys. GitHub, HN, Reddit, arXiv, SEC filings, US gov contracts, GDELT global news, Singapore GeBIZ, changelog & more — every result timestamped with a freshness score.",
+  "description": "Freshness-aware AI retrieval with 21 MCP tools for timestamped, decay-ranked live signals.",
   "repository": {
     "url": "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp",
     "source": "github"
@@ -10,8 +10,7 @@
   "website_url": "https://freshcontext-site.pages.dev",
   "packages": [
     {
-      "registry_type": "npm",
-      "registry_base_url": "https://registry.npmjs.org",
+      "registryType": "npm",
       "identifier": "freshcontext-mcp",
       "version": "0.3.17",
       "transport": {
