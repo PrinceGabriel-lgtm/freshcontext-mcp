@@ -22,7 +22,7 @@ interface Env {
   PH_TOKEN?: string;
 }
 
-type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error";
+type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error";
 
 type LogFields = {
   request_id?: string;
@@ -2309,6 +2309,59 @@ export default {
     // Auth is NOT enforced here so MCP marketplace probes (AgenticMarket,
     // MCP Registry health checks) can verify the endpoint speaks MCP.
     // Authenticated endpoints that touch private D1 data keep auth.
+
+    // OPTIONS preflight — must return before rate limit so CORS probes never hang.
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Accept, Authorization, Mcp-Session-Id",
+          "Access-Control-Max-Age": "86400",
+        },
+      });
+    }
+
+    // Only GET (SSE), POST (JSON-RPC), and DELETE (session close) are valid MCP methods.
+    // Anything else is rejected before the SDK transport is constructed.
+    if (request.method !== "GET" && request.method !== "POST" && request.method !== "DELETE") {
+      return new Response(
+        JSON.stringify({ error: `Method ${request.method} not allowed on /mcp. Use POST for JSON-RPC or GET for SSE.` }),
+        { status: 405, headers: { "Content-Type": "application/json", "Allow": "GET, POST, DELETE, OPTIONS" } }
+      );
+    }
+
+    // GET /mcp is SSE-only. Reject probes that don't send Accept: text/event-stream
+    // before they ever reach the transport — these would hang until Cloudflare canceled them.
+    if (request.method === "GET") {
+      const accept = request.headers.get("Accept") ?? "";
+      if (!accept.includes("text/event-stream")) {
+        console.log(JSON.stringify({ event: "mcp_sse_get_rejected", phase: "no_sse_accept", ...requestLog }));
+        return new Response(
+          JSON.stringify({ error: "GET /mcp is for SSE only. Set Accept: text/event-stream, or use POST /mcp for JSON-RPC." }),
+          { status: 406, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      // Client already disconnected before we started — skip transport setup entirely.
+      if (request.signal?.aborted) {
+        console.log(JSON.stringify({ event: "mcp_sse_get_aborted", phase: "pre_transport", ...requestLog }));
+        return new Response(null, { status: 204 });
+      }
+      console.log(JSON.stringify({ event: "mcp_sse_get_start", ...requestLog }));
+    }
+
+    // POST /mcp must carry a JSON body.
+    if (request.method === "POST") {
+      const ct = request.headers.get("Content-Type") ?? "";
+      if (!ct.includes("application/json")) {
+        return new Response(
+          JSON.stringify({ error: "POST /mcp requires Content-Type: application/json" }),
+          { status: 415, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     try {
       const ip = getClientIp(request);
       await checkRateLimit(ip, env.RATE_LIMITER);
@@ -2320,8 +2373,30 @@ export default {
       const transport = new WebStandardStreamableHTTPServerTransport();
       const server = createServer(env, requestLog);
       await server.connect(transport);
-      return transport.handleRequest(request);
+
+      // For SSE GET: race the transport against a combined abort signal (client
+      // disconnect OR 55 s wall-clock) so a hung SSE stream never triggers
+      // Cloudflare's "worker hung" cancellation.
+      if (request.method === "GET") {
+        const controller = new AbortController();
+        let tid: ReturnType<typeof setTimeout> | undefined;
+        const done = (): void => { clearTimeout(tid); controller.abort(); };
+        tid = setTimeout(() => {
+          console.log(JSON.stringify({ event: "mcp_sse_get_timeout", phase: "max_age_reached", ...requestLog }));
+          done();
+        }, 55_000);
+        if (request.signal) {
+          request.signal.addEventListener("abort", done, { once: true });
+        }
+        // NOTE: return await so any transport rejection is caught by the try/catch below.
+        return await transport.handleRequest(new Request(request, { signal: controller.signal }));
+      }
+
+      // NOTE: return await is intentional — an unawaited rejected Promise escapes this
+      // try/catch and becomes an unhandled rejection (scriptThrewException in Cloudflare).
+      return await transport.handleRequest(request);
     } catch (err: unknown) {
+      logEvent("mcp_transport_lifecycle_error", { ...requestLog, phase: "transport_handle" }, err);
       return routeError(err);
     }
   },
