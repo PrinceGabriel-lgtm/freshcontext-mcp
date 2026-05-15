@@ -9,6 +9,7 @@ That's the problem freshcontext fixes.
 [![npm version](https://img.shields.io/npm/v/freshcontext-mcp)](https://www.npmjs.com/package/freshcontext-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-Listed-blue)](https://registry.modelcontextprotocol.io)
+[![AgenticMarket](https://agenticmarket.dev/api/badge/@princegabriel73/freschcontext-mcp?style=minimal)](https://agenticmarket.dev/princegabriel73/freschcontext-mcp)
 
 > **Live demo:** [freshcontext-mcp.gimmanuel73.workers.dev/demo](https://freshcontext-mcp.gimmanuel73.workers.dev/demo) — same model, same query, two completely different answers. Only the temporal layer changed.
 
