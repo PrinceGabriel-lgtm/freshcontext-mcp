@@ -2348,6 +2348,23 @@ export default {
         console.log(JSON.stringify({ event: "mcp_sse_get_aborted", phase: "pre_transport", ...requestLog }));
         return new Response(null, { status: 204 });
       }
+      // Stateless transport: no sessionIdGenerator, so this server never issues an
+      // mcp-session-id. A standalone GET SSE stream therefore can never carry data —
+      // the SDK hands back an open ReadableStream that hangs until Cloudflare cancels
+      // the Worker (scriptThrewException). Reject GET SSE without a session header fast
+      // instead of constructing a transport whose stream never closes.
+      const sseSessionId = request.headers.get("mcp-session-id");
+      if (!sseSessionId) {
+        console.log(JSON.stringify({ event: "mcp_sse_get_rejected", phase: "no_session", ...requestLog }));
+        return new Response(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: null,
+            error: { code: -32000, message: "Bad Request: Mcp-Session-Id header is required for GET /mcp SSE. Use POST /mcp for JSON-RPC." },
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
       console.log(JSON.stringify({ event: "mcp_sse_get_start", ...requestLog }));
     }
 
