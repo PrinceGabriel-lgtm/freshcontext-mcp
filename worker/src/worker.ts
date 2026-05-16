@@ -22,7 +22,7 @@ interface Env {
   PH_TOKEN?: string;
 }
 
-type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error";
+type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error" | "cache_error";
 
 type LogFields = {
   request_id?: string;
@@ -35,6 +35,8 @@ type LogFields = {
   source_host?: string;
   status?: number;
   duration_ms?: number;
+  cache_key?: string;
+  ttl_seconds?: number;
   watched_query_id?: string;
   input_hash?: string;
   phase?: string;
@@ -192,53 +194,240 @@ async function ensureMigrations(env: Env): Promise<void> {
 
 // ─── Cache Layer ──────────────────────────────────────────────────────────────
 
+const CACHE_SCHEMA_VERSION = 2;
+
 const CACHE_TTL: Record<string, number> = {
-  jobs:          60 * 60 * 2,
-  github:        60 * 30,
-  hackernews:    60 * 15,
-  scholar:       60 * 60 * 6,
-  arxiv:         60 * 60 * 4,
-  yc:            60 * 60 * 4,
-  producthunt:   60 * 30,
-  reddit:        60 * 20,
-  finance:       60 * 5,
-  reposearch:    60 * 30,
-  packagetrends: 60 * 60 * 2,
+  github:             60 * 30,
+  hackernews:         60 * 15,
+  scholar:            60 * 60 * 6,
+  arxiv:              60 * 60 * 4,
+  reddit:             60 * 20,
+  yc:                 60 * 60 * 4,
+  producthunt:        60 * 30,
+  reposearch:         60 * 30,
+  packagetrends:      60 * 60 * 2,
+  finance:            60 * 5,
+  jobs:               60 * 60 * 2,
+  changelog:          60 * 60 * 2,
+  gdelt:              60 * 30,
+  gebiz:              60 * 60 * 6,
+  govcontracts:       60 * 60 * 6,
+  sec_filings:        60 * 60,
+  landscape:          60 * 15,
+  gov_landscape:      60 * 30,
+  finance_landscape:  60 * 5,
+  company_landscape:  60 * 60,
+  idea_landscape:     60 * 15,
 };
 const DEFAULT_TTL = 60 * 30;
 
-function cacheKey(adapter: string, input: string): string {
-  const normalized = input.trim().toLowerCase().slice(0, 200);
-  return `cache:${adapter}:${normalized}`;
+type CacheStatus = "hit" | "miss" | "bypass" | "write_skipped";
+
+interface CacheKeyParts {
+  key: string;
+  inputHash: string;
 }
 
-interface FreshContext {
-  content: string;
+interface FreshContextCacheEntry {
+  version: number;
+  key_version: string;
+  tool: string;
+  input_hash: string;
+  cached_at: string;
+  ttl_seconds: number;
+  expires_at: string;
   source_url: string;
   content_date: string | null;
-  retrieved_at: string;
   freshness_confidence: "high" | "medium" | "low";
-  adapter: string;
+  stamp_adapter: string;
+  content: string;
+  partial_failures: boolean;
 }
 
-async function getFromCache(kv: KVNamespace, adapter: string, input: string): Promise<FreshContext | null> {
+function normalizeCacheString(input: string): string {
+  const trimmed = input.trim().replace(/\s+/g, " ");
   try {
-    const key = cacheKey(adapter, input);
-    const raw = await kv.get(key);
+    const parsed = new URL(trimmed);
+    parsed.protocol = parsed.protocol.toLowerCase();
+    parsed.hostname = parsed.hostname.toLowerCase();
+    parsed.hash = "";
+    const params = [...parsed.searchParams.entries()]
+      .sort(([ak, av], [bk, bv]) => ak === bk ? av.localeCompare(bv) : ak.localeCompare(bk));
+    parsed.search = params.length ? new URLSearchParams(params).toString() : "";
+    return parsed.toString();
+  } catch {
+    return trimmed.toLowerCase();
+  }
+}
+
+function normalizeCacheArgs(input: unknown): unknown {
+  if (input === null || input === undefined) return null;
+  if (typeof input === "string") return normalizeCacheString(input);
+  if (typeof input === "number" || typeof input === "boolean") return input;
+  if (Array.isArray(input)) return input.map(normalizeCacheArgs);
+  if (typeof input === "object") {
+    const normalized: Record<string, unknown> = {};
+    for (const key of Object.keys(input as Record<string, unknown>).sort()) {
+      const value = (input as Record<string, unknown>)[key];
+      if (value !== undefined) normalized[key] = normalizeCacheArgs(value);
+    }
+    return normalized;
+  }
+  return String(input);
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  if (!globalThis.crypto?.subtle) return simpleHash(value);
+  const encoded = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+  return Array.from(new Uint8Array(digest))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function buildCacheKey(toolName: string, input: unknown): Promise<CacheKeyParts> {
+  const normalizedTool = toolName.toLowerCase();
+  const canonical = JSON.stringify({
+    key_version: `v${CACHE_SCHEMA_VERSION}`,
+    tool: normalizedTool,
+    args: normalizeCacheArgs(input),
+  });
+  const inputHash = await sha256Hex(canonical);
+  return {
+    key: `cache:v${CACHE_SCHEMA_VERSION}:${normalizedTool}:${inputHash}`,
+    inputHash,
+  };
+}
+
+function parseFreshContextJson(text: string): Record<string, any> | null {
+  const match = text.match(/\[FRESHCONTEXT_JSON\]\s*([\s\S]*?)\s*\[\/FRESHCONTEXT_JSON\]/);
+  if (!match) return null;
+  try { return JSON.parse(match[1]) as Record<string, any>; } catch { return null; }
+}
+
+function replaceFreshContextJson(text: string, structured: Record<string, any>): string {
+  const block = [
+    "[FRESHCONTEXT_JSON]",
+    JSON.stringify(structured, null, 2),
+    "[/FRESHCONTEXT_JSON]",
+  ].join("\n");
+  return text.replace(/\[FRESHCONTEXT_JSON\]\s*[\s\S]*?\s*\[\/FRESHCONTEXT_JSON\]/, block);
+}
+
+function isUncacheableContent(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  if (/^\[ERROR\]/i.test(trimmed)) return true;
+  return false;
+}
+
+// Analyses raw composite content (the unstamped body before [FRESHCONTEXT] wrapping).
+// Only composite tools use "## Section" headers; single-adapter outputs do not, so
+// inSection never flips true for them and both flags stay false.
+function analyzeCompositeContent(content: string): { allUnavailable: boolean; hasPartialFailures: boolean } {
+  const lines = content.split(/\r?\n/);
+  let inSection = false;
+  let hasUsefulContent = false;
+  let hasUnavailableContent = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("## ")) { inSection = true; continue; }
+    if (!inSection || !trimmed) continue;
+    // Matches [Unavailable: reason] (section() helper) and bare "Error" (landscape tool).
+    if (trimmed.startsWith("[Unavailable:") || trimmed === "Error") {
+      hasUnavailableContent = true;
+    } else {
+      hasUsefulContent = true;
+    }
+  }
+  return {
+    allUnavailable: inSection && !hasUsefulContent,
+    hasPartialFailures: inSection && hasUnavailableContent,
+  };
+}
+
+async function getFromCache(
+  kv: KVNamespace,
+  toolName: string,
+  input: unknown,
+): Promise<{ text: string; status: CacheStatus } | null> {
+  let keyParts: CacheKeyParts;
+  try {
+    keyParts = await buildCacheKey(toolName, input);
+  } catch (err) {
+    logEvent("cache_error", { tool: toolName, phase: "key_build_read" }, err);
+    return null;
+  }
+  try {
+    const raw = await kv.get(keyParts.key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as FreshContext & { _cached_at: string };
-    parsed.content = `[⚡ Cached — retrieved at ${parsed._cached_at}]\n\n` + parsed.content;
-    return parsed;
-  } catch { return null; }
+    const entry = JSON.parse(raw) as FreshContextCacheEntry;
+    if (entry.version !== CACHE_SCHEMA_VERSION) return null;
+    const now = new Date();
+    const cachedAt = new Date(entry.cached_at);
+    const cacheAgeSeconds = Math.floor((now.getTime() - cachedAt.getTime()) / 1000);
+    const freshText = stamp(entry.content, entry.source_url, entry.content_date, entry.freshness_confidence, entry.stamp_adapter);
+    const cacheMetadata: Record<string, unknown> = {
+      status: "hit" as CacheStatus,
+      cached_at: entry.cached_at,
+      cache_age_seconds: cacheAgeSeconds,
+      ttl_seconds: entry.ttl_seconds,
+      key_version: entry.key_version,
+    };
+    const parsed = parseFreshContextJson(freshText);
+    if (parsed) {
+      return { text: replaceFreshContextJson(freshText, { ...parsed, cache: cacheMetadata }), status: "hit" };
+    }
+    return { text: freshText, status: "hit" };
+  } catch (err) {
+    logEvent("cache_error", { tool: toolName, cache_key: keyParts.key, phase: "read" }, err);
+    return null;
+  }
 }
 
-async function setInCache(kv: KVNamespace, adapter: string, input: string, result: FreshContext): Promise<void> {
+async function setInCache(
+  kv: KVNamespace,
+  toolName: string,
+  input: unknown,
+  text: string,
+  adapter: string,
+): Promise<void> {
+  if (isUncacheableContent(text)) return;
+  const parsed = parseFreshContextJson(text);
+  if (!parsed) return;
+  const fc = parsed.freshcontext as Record<string, any> | undefined;
+  if (!fc) return;
+  const compositeAnalysis = analyzeCompositeContent(parsed.content ?? "");
+  if (compositeAnalysis.allUnavailable) return;
+  let keyParts: CacheKeyParts;
   try {
-    const key = cacheKey(adapter, input);
-    const ttl = CACHE_TTL[adapter.toLowerCase()] ?? DEFAULT_TTL;
-    const payload = JSON.stringify({ ...result, _cached_at: new Date().toISOString() });
-    await kv.put(key, payload, { expirationTtl: ttl });
-  } catch { /* non-fatal */ }
+    keyParts = await buildCacheKey(toolName, input);
+  } catch (err) {
+    logEvent("cache_error", { tool: toolName, phase: "key_build_write" }, err);
+    return;
+  }
+  const ttl = CACHE_TTL[adapter.toLowerCase()] ?? DEFAULT_TTL;
+  const now = new Date();
+  const entry: FreshContextCacheEntry = {
+    version: CACHE_SCHEMA_VERSION,
+    key_version: `v${CACHE_SCHEMA_VERSION}`,
+    tool: toolName,
+    input_hash: keyParts.inputHash,
+    cached_at: now.toISOString(),
+    ttl_seconds: ttl,
+    expires_at: new Date(now.getTime() + ttl * 1000).toISOString(),
+    source_url: fc.source_url ?? "",
+    content_date: fc.content_date ?? null,
+    freshness_confidence: fc.freshness_confidence ?? "medium",
+    stamp_adapter: fc.adapter ?? adapter,
+    content: parsed.content ?? "",
+    partial_failures: compositeAnalysis.hasPartialFailures,
+  };
+  try {
+    await kv.put(keyParts.key, JSON.stringify(entry), { expirationTtl: ttl });
+  } catch (err) {
+    logEvent("cache_error", { tool: toolName, cache_key: keyParts.key, ttl_seconds: ttl, phase: "write" }, err);
+  }
 }
 
 // ─── Security ─────────────────────────────────────────────────────────────────
@@ -404,18 +593,21 @@ type ToolResult = { content: Array<{ type: "text"; text: string }> };
 
 async function withCache(
   adapter: string,
-  cacheInput: string,
+  cacheInput: unknown,
   kv: KVNamespace,
+  ctx: ExecutionContext | null,
   handler: () => Promise<ToolResult>
 ): Promise<ToolResult> {
   const cached = await getFromCache(kv, adapter, cacheInput);
-  if (cached) return { content: [{ type: "text", text: cached.content }] };
+  if (cached) return { content: [{ type: "text", text: cached.text }] };
   const result = await handler();
   const text = result.content[0]?.text ?? "";
-  setInCache(kv, adapter, cacheInput, {
-    content: text, source_url: cacheInput, content_date: null,
-    retrieved_at: new Date().toISOString(), freshness_confidence: "medium", adapter,
-  }).catch(() => {});
+  const writePromise = setInCache(kv, adapter, cacheInput, text, adapter);
+  if (ctx) {
+    ctx.waitUntil(writePromise);
+  } else {
+    writePromise.catch(() => {});
+  }
   return result;
 }
 
@@ -1067,7 +1259,7 @@ async function fetchProductHunt(query: string, maxLength: number, phToken?: stri
 
 // ─── MCP Server ───────────────────────────────────────────────────────────────
 
-function createServer(env: Env, requestLog: LogFields = {}): McpServer {
+function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFields = {}): McpServer {
   const server = new McpServer({ name: "freshcontext-mcp", version: SERVICE_VERSION });
 
   const ok = (text: string): ToolResult => ({ content: [{ type: "text", text }] });
@@ -1087,7 +1279,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ url: z.string().url().describe("Full GitHub repo URL e.g. https://github.com/owner/repo") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
-    return withCache("github", url, env.CACHE, async () => {
+    return withCache("github", url, env.CACHE, ctx, async () => {
       try {
         const safeUrl = validateUrl(url, "github");
         const browser = await puppeteer.launch(env.BROWSER);
@@ -1122,7 +1314,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ url: z.string().min(1).describe("HN URL e.g. https://news.ycombinator.com/news, Algolia API URL, or search query e.g. 'browser agents'") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
-    return withCache("hackernews", url, env.CACHE, async () => {
+    return withCache("hackernews", url, env.CACHE, ctx, async () => {
       try {
         let parsedInput: URL | null = null;
         try { parsedInput = new URL(url); } catch { parsedInput = null; }
@@ -1172,7 +1364,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ url: z.string().url().describe("Google Scholar search URL") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
-    return withCache("scholar", url, env.CACHE, async () => {
+    return withCache("scholar", url, env.CACHE, ctx, async () => {
       try {
         const safeUrl = validateUrl(url, "scholar");
         const browser = await puppeteer.launch(env.BROWSER);
@@ -1202,7 +1394,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ url: z.string().url().describe("YC URL e.g. https://www.ycombinator.com/companies?query=mcp") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
-    return withCache("yc", url, env.CACHE, async () => {
+    return withCache("yc", url, env.CACHE, ctx, async () => {
       try {
         const safeUrl = validateUrl(url, "yc");
         const browser = await puppeteer.launch(env.BROWSER);
@@ -1231,7 +1423,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ query: z.string().describe("Search query e.g. 'mcp server typescript'") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ query }) => {
-    return withCache("reposearch", query, env.CACHE, async () => {
+    return withCache("reposearch", query, env.CACHE, ctx, async () => {
       try {
         const q = query.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
         const ghHeaders: Record<string, string> = { "User-Agent": SERVICE_UA, "Accept": "application/vnd.github+json" };
@@ -1255,7 +1447,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ packages: z.string().describe("Package name(s) e.g. 'langchain' or 'npm:zod,pypi:fastapi'") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ packages }) => {
-    return withCache("packagetrends", packages, env.CACHE, async () => {
+    return withCache("packagetrends", packages, env.CACHE, ctx, async () => {
       try {
         const entries = packages.split(",").map(s => s.trim()).filter(Boolean).slice(0, 5);
         const results: string[] = [];
@@ -1287,7 +1479,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ url: z.string().describe("Subreddit name e.g. 'r/MachineLearning' or search URL") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
-    return withCache("reddit", url, env.CACHE, async () => {
+    return withCache("reddit", url, env.CACHE, ctx, async () => {
       try {
         let apiUrl = url;
         if (!apiUrl.startsWith("http")) {
@@ -1318,7 +1510,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ url: z.string().describe("Search query or PH topic URL") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
-    return withCache("producthunt", url, env.CACHE, async () => {
+    return withCache("producthunt", url, env.CACHE, ctx, async () => {
       try {
         const isUrl = url.startsWith("http");
         const gql = `{ posts(first: 20, order: VOTES${isUrl ? "" : `, search: ${JSON.stringify(url)}`}) { edges { node { name tagline url votesCount commentsCount createdAt topics { edges { node { name } } } } } } }`;
@@ -1346,7 +1538,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ url: z.string().describe("Ticker symbol(s) e.g. 'AAPL' or 'MSFT,GOOG'") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
-    return withCache("finance", url, env.CACHE, async () => {
+    return withCache("finance", url, env.CACHE, ctx, async () => {
       try {
         const r = await fetchFinance(url, 5000, adapterLog("extract_finance", "finance", url));
         return ok(stamp(r.raw, `stooq:${url}`, r.date, r.conf, "finance"));
@@ -1362,7 +1554,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ query, max_length }) => {
-    return withCache("jobs", query, env.CACHE, async () => {
+    return withCache("jobs", query, env.CACHE, ctx, async () => {
       try {
         const q = query.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
         const perSource = Math.floor((max_length ?? 6000) / 2);
@@ -1399,7 +1591,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ topic: z.string().describe("Project idea or keyword e.g. 'mcp server'") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ topic }) => {
-    return withCache("landscape", topic, env.CACHE, async () => {
+    return withCache("landscape", topic, env.CACHE, ctx, async () => {
       try {
         const t = topic.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
         const [hn, repos, pkg] = await Promise.allSettled([
@@ -1434,7 +1626,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ url: z.string().describe("Search query e.g. 'temporal retrieval', or a full arXiv API URL") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
-    return withCache("arxiv", url, env.CACHE, async () => {
+    return withCache("arxiv", url, env.CACHE, ctx, async () => {
       try {
         const r = await fetchArxiv(url, 6000, adapterLog("extract_arxiv", "arxiv", url));
         const source = url.startsWith("http") ? url : `arxiv:${url}`;
@@ -1449,7 +1641,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ url: z.string().describe("GitHub repo URL or npm package name e.g. 'react'") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
-    return withCache("changelog", url, env.CACHE, async () => {
+    return withCache("changelog", url, env.CACHE, ctx, async () => {
       try {
         const r = await fetchChangelog(url, 6000, adapterLog("extract_changelog", "changelog", url));
         return ok(stamp(r.raw, `changelog:${url}`, r.date, r.conf, "changelog"));
@@ -1463,7 +1655,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ url: z.string().describe("Query: company name, topic, or keyword") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
-    return withCache("gdelt", url, env.CACHE, async () => {
+    return withCache("gdelt", url, env.CACHE, ctx, async () => {
       try {
         const r = await fetchGdelt(url, 6000, adapterLog("extract_gdelt", "gdelt", url));
         return ok(stamp(r.raw, `gdelt:${url}`, r.date, r.conf, "gdelt"));
@@ -1477,7 +1669,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ url: z.string().describe("Keyword, agency, or empty for latest tenders") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
-    return withCache("gebiz", url, env.CACHE, async () => {
+    return withCache("gebiz", url, env.CACHE, ctx, async () => {
       try {
         const r = await fetchGebiz(url, 6000, adapterLog("extract_gebiz", "gebiz", url));
         return ok(stamp(r.raw, `gebiz:${url || "all"}`, r.date, r.conf, "gebiz"));
@@ -1491,7 +1683,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ url: z.string().describe("Company name, keyword, or NAICS code") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
-    return withCache("govcontracts", url, env.CACHE, async () => {
+    return withCache("govcontracts", url, env.CACHE, ctx, async () => {
       try {
         const r = await fetchGovContracts(url, 6000, adapterLog("extract_govcontracts", "govcontracts", url));
         return ok(stamp(r.raw, `govcontracts:${url}`, r.date, r.conf, "govcontracts"));
@@ -1505,7 +1697,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     inputSchema: z.object({ url: z.string().describe("Company name, ticker, or keyword") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
-    return withCache("sec_filings", url, env.CACHE, async () => {
+    return withCache("sec_filings", url, env.CACHE, ctx, async () => {
       try {
         const r = await fetchSecFilings(url, 6000, adapterLog("extract_sec_filings", "sec_filings", url));
         return ok(stamp(r.raw, `sec:${url}`, r.date, r.conf, "sec_filings"));
@@ -1550,7 +1742,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ query, github_url }) => {
-    return withCache("gov_landscape", query + (github_url ?? ""), env.CACHE, async () => {
+    return withCache("gov_landscape", { query, github_url: github_url ?? null }, env.CACHE, ctx, async () => {
       const per = 3000;
       const repoQuery = github_url ?? query;
       const [contracts, hn, repos, changelog] = await Promise.allSettled([
@@ -1587,7 +1779,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ tickers, company_name, github_query }) => {
-    return withCache("finance_landscape", `${tickers}|${company_name ?? ""}|${github_query ?? ""}`, env.CACHE, async () => {
+    return withCache("finance_landscape", { tickers, company_name: company_name ?? null, github_query: github_query ?? null }, env.CACHE, ctx, async () => {
       const per = 2400;
       const searchTerm = company_name ?? tickers.split(",")[0].trim();
       const repoQuery = github_query ?? searchTerm;
@@ -1628,7 +1820,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ company, ticker, github_url }) => {
-    return withCache("company_landscape", `${company}|${ticker ?? ""}|${github_url ?? ""}`, env.CACHE, async () => {
+    return withCache("company_landscape", { company, ticker: ticker ?? null, github_url: github_url ?? null }, env.CACHE, ctx, async () => {
       const per = 3000;
       const repoQuery = github_url ?? company;
       const [sec, contracts, gdelt, changelog, finance] = await Promise.allSettled([
@@ -1666,7 +1858,7 @@ function createServer(env: Env, requestLog: LogFields = {}): McpServer {
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ idea }) => {
-    return withCache("idea_landscape", idea, env.CACHE, async () => {
+    return withCache("idea_landscape", idea, env.CACHE, ctx, async () => {
       const per = 2200;
       const [hn, yc, repos, jobs, pkg, ph] = await Promise.allSettled([
         fetchHN(idea, per, adapterLog("extract_idea_landscape", "hackernews", idea)),
@@ -2045,7 +2237,7 @@ function isBotProbe(url: URL, ua: string): boolean {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const ua = request.headers.get("User-Agent") ?? "";
     const requestLog: LogFields = {
@@ -2388,7 +2580,7 @@ export default {
 
     try {
       const transport = new WebStandardStreamableHTTPServerTransport();
-      const server = createServer(env, requestLog);
+      const server = createServer(env, ctx, requestLog);
       await server.connect(transport);
 
       // For SSE GET: race the transport against a combined abort signal (client
