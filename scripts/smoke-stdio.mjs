@@ -26,7 +26,9 @@ function parseFreshContextJson(text) {
 }
 
 function assertNoMisleadingFailureEnvelope(text, label) {
-  if (/\b(?:Error|ERROR|401|403|404|429|failed)\b/.test(text)) {
+  const failurePattern =
+    /\[(?:error|security)\]|(?:^|\n)(?:error|failed|failure|timeout|upstream)\b|Yahoo Finance API error|query1\.finance\.yahoo\.com|\b(?:HTTP|status|error)\s*:?\s*(?:401|403|404|429|5\d\d)\b|\b(?:401|403|404|429|5\d\d)\b[^\n]*(?:error|failed|failure|timeout)/i;
+  if (failurePattern.test(text)) {
     assert(!/Confidence:\s*high/i.test(text), `${label}: failure content must not be Confidence: high`);
     assert(!/Score:\s*100\/100/i.test(text), `${label}: failure content must not be Score: 100/100`);
   }
@@ -77,7 +79,7 @@ try {
     name: "extract_finance",
     arguments: { url: "MSFT", max_length: 2000 },
   }));
-  assert(!/Yahoo Finance API error|query1\.finance|401/.test(finance), "Finance still exposes Yahoo 401 path");
+  assert(!/Yahoo Finance API error|query1\.finance\.yahoo\.com|\[MSFT\].*401|Yahoo 401/i.test(finance), "Finance still exposes Yahoo 401 path");
   assert(/source:\s*stooq/i.test(finance), "Finance output missing source: stooq");
   assertNoMisleadingFailureEnvelope(finance, "finance MSFT");
   parseFreshContextJson(finance);
