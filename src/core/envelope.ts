@@ -1,4 +1,4 @@
-import { FreshContext, AdapterResult, ExtractOptions } from "../types.js";
+import type { FreshContext, AdapterResult, ExtractOptions } from "./types.js";
 import { calculateFreshnessScore, scoreLabel } from "./decay.js";
 import { looksLikeFailedAdapterContent } from "./guards.js";
 

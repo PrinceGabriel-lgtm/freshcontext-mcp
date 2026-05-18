@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { stampFreshness, formatForLLM } from "../src/tools/freshnessStamp.js";
+import { stampFreshness as stampFreshnessFromCore, formatForLLM as formatForLLMFromCore } from "../src/core/index.js";
 import type { AdapterResult, FreshContext } from "../src/types.js";
+import type { AdapterResult as CoreAdapterResult, FreshContext as CoreFreshContext } from "../src/core/index.js";
 
 function hoursAgo(hours: number): string {
   return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
@@ -155,4 +157,23 @@ test("empty, security, and timeout-only output are treated as low-confidence fai
     assert.equal(ctx.freshness_score, null, `freshness_score should be null for ${JSON.stringify(raw)}`);
     assert.doesNotMatch(formatForLLM(ctx), /Score:\s*100\/100/i);
   }
+});
+
+test("Core exports are directly consumable and match the compatibility wrapper", () => {
+  const result: CoreAdapterResult = {
+    raw: "Core seam content",
+    content_date: hoursAgo(1),
+    freshness_confidence: "high",
+  };
+
+  const ctx: CoreFreshContext = stampFreshnessFromCore(
+    result,
+    { url: "https://example.com/core", maxLength: 8000 },
+    "hackernews"
+  );
+  const text = formatForLLMFromCore(ctx);
+
+  assert.equal(ctx.source_url, "https://example.com/core");
+  assert.equal(typeof ctx.freshness_score, "number");
+  assert.match(text, /\[FRESHCONTEXT_JSON\]/);
 });
