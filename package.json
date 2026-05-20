@@ -37,7 +37,7 @@
     "start": "node dist/server.js",
     "inspect": "npx @modelcontextprotocol/inspector tsx src/server.ts",
     "smoke:stdio": "node scripts/smoke-stdio.mjs",
-    "test": "tsx --test tests/freshnessStamp.test.ts tests/hackernews.test.ts tests/core.test.ts tests/rank.test.ts tests/workerEnvelope.test.ts tests/workerCoreEnvelopeParity.test.ts"
+    "test": "tsx --test tests/freshnessStamp.test.ts tests/hackernews.test.ts tests/core.test.ts tests/rank.test.ts tests/workerEnvelope.test.ts tests/workerCoreEnvelopeParity.test.ts tests/coreEnvelopeOptions.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

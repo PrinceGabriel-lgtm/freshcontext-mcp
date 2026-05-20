@@ -7,6 +7,7 @@ export type {
   FreshContext,
   ExtractOptions,
   AdapterResult,
+  EnvelopeFormatOptions,
   SignalConfidence,
   FreshSignal,
   RankedSignal,
