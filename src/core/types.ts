@@ -24,6 +24,11 @@ export interface AdapterResult {
   freshness_confidence: "high" | "medium" | "low";
 }
 
+export interface EnvelopeFormatOptions {
+  unknownDateText?: string;
+  publishedLabel?: string;
+}
+
 export type SignalConfidence = "high" | "medium" | "low";
 
 export interface FreshSignal {

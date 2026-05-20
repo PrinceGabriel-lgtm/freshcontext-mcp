@@ -1,4 +1,4 @@
-import type { FreshContext, AdapterResult, ExtractOptions } from "./types.js";
+import type { FreshContext, AdapterResult, ExtractOptions, EnvelopeFormatOptions } from "./types.js";
 import { calculateFreshnessScore, scoreLabel } from "./decay.js";
 import { looksLikeFailedAdapterContent } from "./guards.js";
 
@@ -42,10 +42,12 @@ export function toStructuredJSON(ctx: FreshContext): object {
   };
 }
 
-export function formatForLLM(ctx: FreshContext): string {
+export function formatForLLM(ctx: FreshContext, options: EnvelopeFormatOptions = {}): string {
+  const publishedLabel = options.publishedLabel ?? "Published";
+  const unknownDateText = options.unknownDateText ?? "Publish date: unknown";
   const dateInfo = ctx.content_date
-    ? `Published: ${ctx.content_date}`
-    : "Publish date: unknown";
+    ? `${publishedLabel}: ${ctx.content_date}`
+    : unknownDateText;
 
   const scoreLine = ctx.freshness_score !== null
     ? `Score: ${ctx.freshness_score}/100 (${scoreLabel(ctx.freshness_score)})`
