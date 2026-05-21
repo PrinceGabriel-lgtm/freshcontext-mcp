@@ -1,4 +1,10 @@
-import { calculateFreshnessScore, freshnessLabel } from "./intelligence.js";
+import {
+  formatForLLM,
+  looksLikeFailedAdapterContent,
+  stampFreshness,
+} from "../../src/core/index.js";
+
+export { looksLikeFailedAdapterContent };
 
 export function parseFreshContextJson(text: string): Record<string, any> | null {
   const match = text.match(/\[FRESHCONTEXT_JSON\]\s*([\s\S]*?)\s*\[\/FRESHCONTEXT_JSON\]/);
@@ -43,19 +49,6 @@ export function analyzeCompositeContent(content: string): { allUnavailable: bool
   };
 }
 
-export function looksLikeFailedAdapterContent(raw: string): boolean {
-  const trimmed = raw.trim();
-  if (!trimmed) return true;
-  if (/^\[(?:error|security)\]/i.test(trimmed)) return true;
-  if (/^(?:error|failed|upstream|timeout)\b/i.test(trimmed)) return true;
-  const meaningful = trimmed.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (!meaningful.length) return true;
-  const failureLines = meaningful.filter(line =>
-    /\b(?:error|failed|failure|timeout|401|403|404|429|5\d\d)\b/i.test(line)
-  );
-  return failureLines.length === meaningful.length;
-}
-
 export function stamp(
   content: string,
   url: string,
@@ -63,46 +56,15 @@ export function stamp(
   confidence: "high" | "medium" | "low",
   adapter: string
 ): string {
-  const retrieved_at = new Date().toISOString();
-  const failedContent = looksLikeFailedAdapterContent(content);
-  const safeDate = failedContent ? null : date;
-  const safeConfidence = failedContent ? "low" : confidence;
-  const freshness_score = calculateFreshnessScore(safeDate, retrieved_at, adapter);
-  const sliced = content.slice(0, 6000);
-
-  const scoreLine = freshness_score !== null
-    ? `Score: ${freshness_score}/100 (${freshnessLabel(freshness_score)})`
-    : `Score: unknown`;
-
-  const textEnvelope = [
-    "[FRESHCONTEXT]",
-    `Source: ${url}`,
-    `Published: ${safeDate ?? "unknown"}`,
-    `Retrieved: ${retrieved_at}`,
-    `Confidence: ${safeConfidence}`,
-    scoreLine,
-    "---",
-    sliced,
-    "[/FRESHCONTEXT]",
-  ].join("\n");
-
-  const structured = {
-    freshcontext: {
-      source_url:           url,
-      content_date:         safeDate,
-      retrieved_at,
-      freshness_confidence: safeConfidence,
-      freshness_score,
-      adapter,
+  const ctx = stampFreshness(
+    {
+      raw: content,
+      content_date: date,
+      freshness_confidence: confidence,
     },
-    content: sliced,
-  };
+    { url, maxLength: 6000 },
+    adapter
+  );
 
-  const jsonBlock = [
-    "[FRESHCONTEXT_JSON]",
-    JSON.stringify(structured, null, 2),
-    "[/FRESHCONTEXT_JSON]",
-  ].join("\n");
-
-  return `${textEnvelope}\n\n${jsonBlock}`;
+  return formatForLLM(ctx, { unknownDateText: "Published: unknown" });
 }
