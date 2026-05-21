@@ -229,13 +229,17 @@ Every signal stored in a FreshContext Store/Ledger deployment carries a `ha_pri_
 SHA-256( result_id + ":" + content_hash + ":" + "FRESHCONTEXT_DAR_V1" )
 ```
 
-This signature serves three purposes:
+In Ha-Pri v1, this signature is a provenance stamp and audit reference for stored signals. It binds the result ID, the current content hash, and the engine version. It is not yet a full tamper-enforcement system: the current `content_hash` source is the existing rolling `result_hash`, and signatures are not recomputed on read to reject modified rows.
 
-1. **Tamper detection** — the signature binds the content hash to the result ID and the engine version. Any modification to the stored content would invalidate the signature.
-2. **Provenance chain** — every row in the `scrape_results` table is cryptographically linked to the moment it was scored by the DAR engine.
-3. **Licensing audit** — when FreshContext data is provided to a third party under licence, the `ha_pri_sig` column provides an immutable record of exactly what was delivered and when.
+Ha-Pri v1 serves three purposes:
 
-Ha-Pri is the provenance/integrity layer, while DAR and context-conditioned utility are the ranking/scoring layer.
+1. **Provenance reference** — the signature links the stored result ID, content hash, and DAR engine version.
+2. **Scoring trace** — every row in the `scrape_results` table carries a reference to the moment it was scored by the DAR engine.
+3. **Licensing audit** — when FreshContext data is provided to a third party under licence, the `ha_pri_sig` column provides an audit reference for what was delivered and when.
+
+Future Ha-Pri v2 may add canonical content SHA-256, stronger canonicalization, and explicit verification/rejection on read. That hardening is separate from the current v1 provenance stamp.
+
+Ha-Pri v1 is the provenance layer and the foundation for a stronger integrity layer, while DAR and context-conditioned utility are the ranking/scoring layer.
 
 ### 3.2 D1 Historical Ledger
 
