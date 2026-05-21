@@ -1,5 +1,5 @@
 # The FreshContext Specification
-**Version 1.1 — April 2026**
+**Version 1.2 — May 2026**
 *Authored by Immanuel Gabriel (Prince Gabriel) — Grootfontein, Namibia*
 
 ---
@@ -89,35 +89,55 @@ Implementations MAY additionally expose freshness metadata as structured JSON al
 
 ### `freshness_score` (optional)
 
-A numeric representation of data freshness from 0–100. The canonical reference implementation uses exponential, source-specific temporal decay:
+A numeric representation of data freshness from 0-100. The canonical FreshContext model is exponential Decay-Adjusted Relevancy (DAR):
 
 ```
-R(t) = R0 · e^(-λt)
+R_t = R_0 · e^(-λt)
 ```
 
-For envelope-level `freshness_score`, `R0` is normalised to `100`; for ranked intelligence feeds, `R0` is the semantic base score. Implementations MAY use domain-specific λ values to reflect how quickly different categories of data become unreliable.
+Where:
+- `R_0` is the starting relevance or freshness value.
+- `λ` is the source-specific decay constant.
+- `t` is the age of the signal, normally measured from `content_date` / `published_at` to retrieval or query time.
+- `R_t` is the decay-adjusted relevance or freshness value.
 
-#### Recommended Decay Rates by Domain
+For simple envelope-level `freshness_score`, `R_0` MAY be normalised to `100`. For ranked intelligence feeds, `R_0` MAY be semantic base relevance, profile relevance, or adapter-specific utility. The displayed `freshness_score` remains normalised to 0-100 for compatibility.
 
-| Category | Decay Rate | Approximate Half-life | Examples |
+Implementations SHOULD use source-specific `λ` values to reflect how quickly different categories of data lose temporal utility.
+
+#### Reference Decay Classes
+
+These are reference/default classes. Implementations MAY tune them by source, user profile, or deployment while preserving the exponential DAR model.
+
+| Source class | Example λ (per hour) | Approximate half-life | Examples |
 |---|---|---|---|
-| Financial data | 5.0 | ~10 days | Stock prices, market cap, P/E ratios |
-| Job listings | 3.0 | ~17 days | Remote job boards, HN Who is Hiring |
-| News / HN / Reddit | 2.0 | ~25 days | Top stories, community discussion |
-| Government procurement | 1.5 | ~33 days | USASpending.gov, GeBIZ tenders |
-| GitHub repositories | 1.0 | ~50 days | Stars, forks, last commit, README |
-| Product releases | 1.0 | ~50 days | Changelog entries, npm versions |
-| Academic papers | 0.3 | ~167 days | arXiv submissions, Google Scholar |
-| General web content | 1.5 | ~33 days | Default for unclassified sources |
+| Fast discussion | 0.050 | ~14 hours | Hacker News front-page stories |
+| News cycle | 0.020 | ~35 hours | GDELT global news |
+| Community / launch signals | 0.010 | ~3 days | Reddit, Product Hunt |
+| Jobs / material events | 0.005 | ~6 days | Job listings, SEC 8-K filings |
+| Procurement / market context | 0.001 | ~29 days | Stooq quotes, gov contracts, YC company data |
+| Package / changelog cadence | 0.0005 | ~58 days | npm/PyPI, GitHub Releases |
+| Repository activity | 0.0002 | ~5 months | GitHub repositories |
+| Academic work | 0.00005 | ~1.6 years | arXiv, Google Scholar |
 
 #### Score Interpretation
 
 | Score | Interpretation |
 |---|---|
-| 90–100 | Retrieved within hours — treat as current |
-| 70–89 | Retrieved within days — reliable for most uses |
-| 50–69 | Retrieved within weeks — verify before acting |
-| Below 50 | Retrieved more than a month ago — use with caution |
+| 90–100 | Very recent for its source class — treat as current |
+| 70–89 | Still fresh enough for most uses |
+| 50–69 | Decayed but potentially useful — verify before acting |
+| Below 50 | Low temporal utility — use with caution |
+
+### Missing, Invalid, and Future Timestamps
+
+FreshContext-compatible systems MUST NOT treat missing or invalid timestamps as fresh.
+
+- If no reliable timestamp exists, implementations SHOULD set `freshness_score` to `null` and `freshness_confidence` to `low`.
+- Missing timestamps MUST NOT be treated as current.
+- Invalid timestamps MUST NOT be treated as current.
+- Future timestamps beyond a small clock-skew tolerance MUST NOT be treated as current.
+- Implementations SHOULD surface timestamp uncertainty explicitly.
 
 ---
 
@@ -129,13 +149,25 @@ Any data source that feeds into a FreshContext-compatible system is called an **
 2. Set a `freshness_confidence` level based on how the date was determined
 3. Never fabricate or forward-date content timestamps
 4. Clearly identify which source system produced the data via the `adapter` field
+5. Surface retrieval failures explicitly
 
 Adapters SHOULD:
 
 - Prefer structured API sources over scraped content when both are available
 - Log retrieval errors without silently returning cached or stale data
 - Surface rate-limit or access-denied errors explicitly rather than returning empty content
-- Use domain-specific decay rates from the recommended table above
+- Use source-specific decay constants from the reference decay classes above
+
+### Failure Honesty
+
+Adapters MUST NOT wrap failed, empty, blocked, timeout, rate-limited, access-denied, or malformed output as high-confidence fresh context.
+
+If adapter output looks like an error, implementations SHOULD:
+
+- Downgrade `freshness_confidence` to `low`
+- Set `freshness_score` to `null`
+- Preserve enough error context for diagnosis
+- Avoid presenting the result as successful current context
 
 ---
 
@@ -189,13 +221,32 @@ Partial implementations that include only `retrieved_at` without `freshness_conf
 | **FreshContext-aware** | Includes `retrieved_at` but not `freshness_confidence` |
 | **FreshContext-scored** | Full compatible + numeric `freshness_score` with domain-specific decay |
 
+MCP is one interface, not the whole FreshContext model. The envelope and structured JSON metadata are the compatibility contract. FreshContext-compatible systems may be MCP servers, APIs, CLIs, npm packages, dashboards, agents, or internal services.
+
+---
+
+## Core-backed Implementation Status
+
+FreshContext Core now owns the envelope/scoring layer in the reference implementation:
+
+- Freshness scoring
+- Envelope generation
+- Confidence metadata
+- Failure guards
+- Shared types
+- Rank/explain primitives
+
+The live MCP Worker uses Core-backed envelope generation while Cloudflare-specific runtime behavior, MCP transport, cache policy, rate limits, and deployment concerns remain outside Core.
+
+Claude Desktop is a supported MCP client, but FreshContext Core is not Claude-dependent. MCP is one interface over the methodology; FreshContext-compatible systems may also expose results through npm packages, APIs, CLIs, dashboards, or other agent runtimes.
+
 ---
 
 ## Reference Implementation
 
 The canonical reference implementation of this specification is:
 
-**freshcontext-mcp** — an MCP server with 21 tools covering:
+**freshcontext-mcp@0.3.17** — an MCP server with 21 read-only MCP tools / reference adapters covering:
 
 **Intelligence:** GitHub, Hacker News, Google Scholar, arXiv, Reddit
 
@@ -216,12 +267,19 @@ The canonical reference implementation of this specification is:
 - npm: `freshcontext-mcp`
 - GitHub: https://github.com/PrinceGabriel-lgtm/freshcontext-mcp
 - Cloud endpoint: `https://freshcontext-mcp.gimmanuel73.workers.dev/mcp`
-- Apify Store: `https://apify.com/prince_gabriel/freshcontext-mcp`
 - MCP Registry: `io.github.PrinceGabriel-lgtm/freshcontext`
 
 ---
 
 ## Changelog
+
+### Version 1.2 — May 2026
+- Clarified exponential DAR scoring as the canonical freshness model.
+- Added missing/invalid/future timestamp handling guidance.
+- Added failure-honesty requirements for adapter output.
+- Added Core-backed envelope/scoring implementation status.
+- Clarified MCP as one interface over the FreshContext methodology.
+- Updated reference implementation language for freshcontext-mcp@0.3.17 and 21 read-only tools/reference adapters.
 
 ### Version 1.1 — April 2026
 - Added Composite Adapters section
@@ -238,7 +296,7 @@ The canonical reference implementation of this specification is:
 
 ## Versioning
 
-This document is version 1.1 of the FreshContext Specification.
+This document is version 1.2 of the FreshContext Specification.
 
 Future versions will be tagged in this repository. Breaking changes to the envelope format will increment the major version. Additive changes (new optional fields, new confidence levels, new recommended values) will increment the minor version.
 
