@@ -8,9 +8,11 @@ import {
   stampFreshness,
   toStructuredJSON,
   formatForLLM,
+  calculateContextUtility,
 } from "../src/core/index.js";
 import type {
   AdapterResult,
+  ContextUtilityResult,
   ExtractOptions,
   FreshContext,
 } from "../src/core/index.js";
@@ -120,4 +122,142 @@ test("Core formatForLLM returns the FreshContext text and JSON envelopes", () =>
   assert.match(text, /Confidence: high/);
   assert.match(text, /\[FRESHCONTEXT_JSON\]/);
   assert.match(text, /\[\/FRESHCONTEXT_JSON\]/);
+});
+
+test("Core calculateContextUtility is deterministic and exposes DAR factors", () => {
+  const first: ContextUtilityResult = calculateContextUtility({
+    contextualRelevance: 80,
+    lambda: 0.01,
+    ageHours: 24,
+    dateConfidence: "high",
+    status: "success",
+  });
+  const second = calculateContextUtility({
+    contextualRelevance: 80,
+    lambda: 0.01,
+    ageHours: 24,
+    dateConfidence: "high",
+    status: "success",
+  });
+
+  assert.deepEqual(first, second);
+  assert.ok(first.score >= 0 && first.score <= 100);
+  assert.equal(first.contextualRelevance, 80);
+  assert.equal(first.lambda, 0.01);
+  assert.equal(first.ageHours, 24);
+  assert.ok(Math.abs(first.decayFactor - Math.exp(-0.01 * 24)) < 1e-12);
+  assert.equal(first.dateConfidenceFactor, 1);
+  assert.equal(first.statusFactor, 1);
+  assert.equal(first.status, "success");
+});
+
+test("Core calculateContextUtility decays with time and lambda", () => {
+  const base = {
+    contextualRelevance: 80,
+    dateConfidence: "high" as const,
+    status: "success" as const,
+  };
+  const younger = calculateContextUtility({ ...base, lambda: 0.01, ageHours: 12 });
+  const older = calculateContextUtility({ ...base, lambda: 0.01, ageHours: 48 });
+  const slower = calculateContextUtility({ ...base, lambda: 0.005, ageHours: 24 });
+  const faster = calculateContextUtility({ ...base, lambda: 0.05, ageHours: 24 });
+
+  assert.ok(younger.score > older.score);
+  assert.ok(slower.score > faster.score);
+});
+
+test("Core calculateContextUtility applies date confidence and status factors", () => {
+  const base = {
+    contextualRelevance: 80,
+    lambda: 0.01,
+    ageHours: 24,
+  };
+  const high = calculateContextUtility({ ...base, dateConfidence: "high", status: "success" });
+  const medium = calculateContextUtility({ ...base, dateConfidence: "medium", status: "success" });
+  const low = calculateContextUtility({ ...base, dateConfidence: "low", status: "success" });
+  const success = calculateContextUtility({ ...base, dateConfidence: "high", status: "success" });
+  const partial = calculateContextUtility({ ...base, dateConfidence: "high", status: "partial" });
+  const failed = calculateContextUtility({ ...base, dateConfidence: "high", status: "failed" });
+  const unknownDate = calculateContextUtility({ ...base, dateConfidence: "unknown", status: "success" });
+
+  assert.ok(medium.score < high.score);
+  assert.ok(low.score < medium.score);
+  assert.ok(partial.score < success.score);
+  assert.equal(failed.score, 0);
+  assert.match(failed.reasons.join(" "), /failed/);
+  assert.equal(unknownDate.score, 0);
+  assert.match(unknownDate.reasons.join(" "), /unknown/);
+});
+
+test("Core calculateContextUtility keeps contextual relevance material", () => {
+  const freshWeak = calculateContextUtility({
+    contextualRelevance: 15,
+    lambda: 0.01,
+    ageHours: 0,
+    dateConfidence: "high",
+    status: "success",
+  });
+  const decayedRelevant = calculateContextUtility({
+    contextualRelevance: 90,
+    lambda: 0.001,
+    ageHours: 24,
+    dateConfidence: "high",
+    status: "success",
+  });
+
+  assert.ok(decayedRelevant.score > freshWeak.score);
+});
+
+test("Core calculateContextUtility clamps relevance, age, and lambda safely", () => {
+  const tooHigh = calculateContextUtility({
+    contextualRelevance: 150,
+    lambda: 0,
+    ageHours: 0,
+    dateConfidence: "high",
+    status: "success",
+  });
+  const tooLow = calculateContextUtility({
+    contextualRelevance: -10,
+    lambda: 0,
+    ageHours: 0,
+    dateConfidence: "high",
+    status: "success",
+  });
+  const negativeAge = calculateContextUtility({
+    contextualRelevance: 80,
+    lambda: 0.01,
+    ageHours: -24,
+    dateConfidence: "high",
+    status: "success",
+  });
+  const invalidLambda = calculateContextUtility({
+    contextualRelevance: 80,
+    lambda: Number.NaN,
+    ageHours: 24,
+    dateConfidence: "high",
+    status: "success",
+  });
+
+  assert.equal(tooHigh.contextualRelevance, 100);
+  assert.equal(tooHigh.score, 100);
+  assert.equal(tooLow.contextualRelevance, 0);
+  assert.equal(tooLow.score, 0);
+  assert.equal(negativeAge.ageHours, 0);
+  assert.match(negativeAge.reasons.join(" "), /negative/);
+  assert.equal(invalidLambda.lambda, 0);
+  assert.match(invalidLambda.reasons.join(" "), /lambda/);
+});
+
+test("Core context utility public export is available from src/core/index.ts", () => {
+  const utility = calculateContextUtility({
+    contextualRelevance: 80,
+    lambda: 0.01,
+    ageHours: 24,
+    dateConfidence: "high",
+    status: "success",
+  });
+
+  assert.equal(typeof calculateContextUtility, "function");
+  assert.equal(typeof utility.score, "number");
+  assert.equal(Array.isArray(utility.reasons), true);
 });

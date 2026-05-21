@@ -103,6 +103,8 @@ Where:
 
 For simple envelope-level `freshness_score`, `R_0` MAY be normalised to `100`. For ranked intelligence feeds, `R_0` MAY be semantic base relevance, profile relevance, or adapter-specific utility. The displayed `freshness_score` remains normalised to 0-100 for compatibility.
 
+FreshContext scoring MAY be context-conditioned. Implementations that rank multiple signals MAY compute `R_0` from the requesting user, query, agent, workflow, semantic similarity, profile relevance, or adapter-specific relevance before applying DAR. The envelope contract remains the same: systems SHOULD expose source, publication time, retrieval time, confidence, and freshness metadata regardless of how `R_0` is computed.
+
 Implementations SHOULD use source-specific `λ` values to reflect how quickly different categories of data lose temporal utility.
 
 #### Reference Decay Classes
@@ -278,6 +280,7 @@ The canonical reference implementation of this specification is:
 - Added missing/invalid/future timestamp handling guidance.
 - Added failure-honesty requirements for adapter output.
 - Added Core-backed envelope/scoring implementation status.
+- Added optional context-conditioned scoring language without changing the envelope contract.
 - Clarified MCP as one interface over the FreshContext methodology.
 - Updated reference implementation language for freshcontext-mcp@0.3.17 and 21 read-only tools/reference adapters.
 

@@ -133,7 +133,38 @@ The location accessibility bonus is applied when the content explicitly mentions
 
 This profile formula is a Store/Feed implementation example, not the only possible way to produce base relevance. For Core/MCP envelope scoring, R_0 may be normalised to 100. For feed/ranking systems, R_0 may come from semantic relevance, profile relevance, adapter-specific relevance, or another documented scoring layer.
 
-### 2.3 Decay Function (R_t)
+### 2.3 Context-Conditioned Utility
+
+FreshContext scoring is context-conditioned. The same signal can have different utility depending on the user, query, agent, platform, or workflow requesting it.
+
+In the Store/Feed implementation, this context is represented by `R_0`, the base relevance or utility score before temporal decay. `R_0` may be computed from profile targets, query terms, semantic relevance, adapter-specific relevance, or another documented scoring layer.
+
+The DAR function then applies temporal pressure:
+
+```
+R_t = R_0 · e^(-λt)
+```
+
+This means FreshContext does not treat freshness as a standalone ranking signal. A fresh but irrelevant signal should not outrank an older but highly relevant signal unless the source policy and use case justify it.
+
+FreshContext Core exposes a pure context utility primitive for this direction:
+
+```
+U(q, s, t) = R(q, s) · e^(-λt) · C_date · C_status
+```
+
+Where:
+- `q` is the requester context: user, query, agent, platform, or workflow
+- `s` is the signal or database record
+- `R(q, s)` is contextual relevance between the request and the signal
+- `λ` is the source-specific decay constant
+- `t` is signal age
+- `C_date` is a timestamp-confidence factor
+- `C_status` is a failure/partial/success factor
+
+This is an extension of the DAR methodology, not a replacement for it. The purpose is to support systems where FreshContext runs over databases, feeds, retrieved documents, or agent memory and ranks information by both relevance and temporal utility. It does not imply vector search, multi-agent orchestration, or a hosted context store.
+
+### 2.4 Decay Function (R_t)
 
 ```
 R_t = R_0 · e^(-λt)
@@ -146,7 +177,7 @@ Where:
 
 If `published_at` / `content_date` cannot be extracted, the system must not pretend the signal is fresh. Core-compatible envelope scoring SHOULD use `freshness_score: null` and low confidence. Store/feed systems MAY apply a conservative fallback assumption, such as one source half-life, but must mark confidence low and explain the assumption.
 
-### 2.4 Source Decay Constants (λ)
+### 2.5 Source Decay Constants (λ)
 
 These constants are reference/default calibration values for how quickly signals from each source class lose temporal utility:
 
@@ -164,7 +195,7 @@ These constants are reference/default calibration values for how quickly signals
 
 These constants are reference defaults used by the FreshContext methodology and may be tuned by implementation. Hosted or private deployments may use calibrated variants per source, query type, or user profile. The calibration process and production tuning may be proprietary, even when public reference defaults are documented.
 
-### 2.5 Entropy Classification
+### 2.6 Entropy Classification
 
 Each signal is classified into one of three entropy states based on its position on the decay curve:
 
@@ -176,11 +207,11 @@ Each signal is classified into one of three entropy states based on its position
 
 Entropy labels describe signal decay state, not confidence level. A high-entropy signal may still be factually accurate, but it has lost temporal utility for current retrieval unless reinforced by newer evidence.
 
-### 2.6 Relevancy Threshold
+### 2.7 Relevancy Threshold
 
 Signals with `rt_score < 35` are stored with `is_relevant = 0`. They remain in the database for audit and historical analysis but are excluded from briefings and the intelligence feed by default. The threshold is configurable per profile.
 
-### 2.7 Failure Honesty
+### 2.8 Failure Honesty
 
 Failed adapters must not be promoted by freshness scoring. Empty, blocked, timeout, malformed, rate-limited, access-denied, or error-only outputs reduce R_0 or mark the signal status as failed/unknown.
 
@@ -203,6 +234,8 @@ This signature serves three purposes:
 1. **Tamper detection** — the signature binds the content hash to the result ID and the engine version. Any modification to the stored content would invalidate the signature.
 2. **Provenance chain** — every row in the `scrape_results` table is cryptographically linked to the moment it was scored by the DAR engine.
 3. **Licensing audit** — when FreshContext data is provided to a third party under licence, the `ha_pri_sig` column provides an immutable record of exactly what was delivered and when.
+
+Ha-Pri is the provenance/integrity layer, while DAR and context-conditioned utility are the ranking/scoring layer.
 
 ### 3.2 D1 Historical Ledger
 
@@ -329,6 +362,7 @@ For technical integrators, auditors, and future platform partners:
 - Updated reference implementation language for 21 MCP tools/reference adapters.
 - Reframed source decay constants as reference defaults/calibration values.
 - Added failure-honesty methodology.
+- Added context-conditioned utility as a Core scoring primitive.
 - Clarified missing timestamp behavior.
 - Clarified MCP as one interface, not the whole system.
 

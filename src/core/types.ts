@@ -56,3 +56,30 @@ export interface RankOptions {
   defaultSourceType?: string;
   now?: Date | string;
 }
+
+export type ContextUtilityStatus =
+  | "success"
+  | "partial"
+  | "stale"
+  | "failed"
+  | "unknown";
+
+export interface ContextUtilityInput {
+  contextualRelevance: number;
+  lambda: number;
+  ageHours: number;
+  dateConfidence?: SignalConfidence | "unknown";
+  status?: ContextUtilityStatus;
+}
+
+export interface ContextUtilityResult {
+  score: number;
+  contextualRelevance: number;
+  decayFactor: number;
+  dateConfidenceFactor: number;
+  statusFactor: number;
+  lambda: number;
+  ageHours: number;
+  status: ContextUtilityStatus;
+  reasons: string[];
+}

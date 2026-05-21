@@ -3,6 +3,7 @@ export { looksLikeFailedAdapterContent } from "./guards.js";
 export { stampFreshness, toStructuredJSON, formatForLLM } from "./envelope.js";
 export { explainSignal } from "./explain.js";
 export { rankSignals, rankSignal, clampScore } from "./rank.js";
+export { calculateContextUtility } from "./utility.js";
 export type {
   FreshContext,
   ExtractOptions,
@@ -12,4 +13,7 @@ export type {
   FreshSignal,
   RankedSignal,
   RankOptions,
+  ContextUtilityStatus,
+  ContextUtilityInput,
+  ContextUtilityResult,
 } from "./types.js";
