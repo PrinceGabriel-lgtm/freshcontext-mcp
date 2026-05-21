@@ -41,7 +41,7 @@ R_t = R_0 · e^(−λt)
 
 That's the whole fix. No model swap. No re-embedding. No re-indexing. The layer drops onto whatever retrieval pipeline you already have.
 
-**The layer is the product.** The 21 tools shipped with this repo are reference implementations demonstrating compatibility — useful, but commodity. The DAR engine, the freshness envelope, and the FreshContext Specification are the moat.
+**The layer is the product.** The 21 tools shipped with this repo are reference adapters demonstrating compatibility — useful, but commodity. The DAR engine, the freshness envelope, and the FreshContext Specification are the moat.
 
 ---
 
@@ -62,7 +62,17 @@ Confidence: high
 
 **When** it was retrieved. **Where** it came from. **How confident** we are the date is accurate.
 
-The FreshContext Specification v1.1 is published as an open standard under MIT licence. Any tool, agent, or system that wraps retrieved data in this envelope is FreshContext-compatible. → [Read the spec](./FRESHCONTEXT_SPEC.md) · [Read the methodology](./METHODOLOGY.md)
+The FreshContext Specification v1.2 is published as an open standard under MIT licence. Any tool, agent, or system that wraps retrieved data in this envelope is FreshContext-compatible. → [Read the spec](./FRESHCONTEXT_SPEC.md) · [Read the methodology](./METHODOLOGY.md)
+
+---
+
+## Architecture boundary
+
+FreshContext Core is the reusable engine. It owns freshness scoring, envelope formatting, failure guards, shared types, rank/explain primitives, and the context-conditioned utility primitive.
+
+MCP is one interface over Core. Claude Desktop is supported, but not required. The 21 MCP tools in this repo are reference adapters and a live interface for using the system.
+
+The production Cloudflare Worker now uses Core-backed envelope generation. Worker-specific concerns remain outside Core: MCP transport, runtime guards, KV cache policy, cache metadata injection, JSON parse/replace cache helpers, D1 feeds, cron, rate limiting, and Store/feed scoring/provenance.
 
 ---
 
@@ -258,13 +268,14 @@ Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 
 ## Roadmap
 
-- [x] FreshContext Specification v1.1 published (MIT, open standard)
+- [x] FreshContext Specification v1.2 published (MIT, open standard)
 - [x] DAR engine with proprietary λ constants (v0.3.17)
 - [x] Ha-Pri audit signatures on every signal
 - [x] Semantic deduplication via fingerprinting
 - [x] Live before/after demo at `/demo`
 - [x] METHODOLOGY.md — formal IP and engineering documentation
 - [x] 21 reference tools across intelligence, competitive research, market data, and composites
+- [x] Core-backed envelope generation shared by npm/MCP and the Cloudflare Worker
 - [x] Cloudflare Workers deployment — global edge, KV cache, KV rate limiting
 - [x] Listed on official MCP Registry, Apify Store, npm
 - [x] GitHub Actions CI/CD — auto-publish on every push
