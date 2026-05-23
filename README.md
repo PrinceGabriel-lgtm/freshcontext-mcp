@@ -84,7 +84,7 @@ Beyond the per-call envelope, the production FreshContext deployment exposes a c
 GET /v1/intel/feed/:profile_id?limit=20&min_rt=0
 ```
 
-Every signal is stamped with `base_score`, `rt_score`, `entropy_level` (low / stable / high), `ha_pri_sig` (SHA-256 provenance), `semantic_fingerprint` (cross-adapter dedup), and `published_at`. Ready for direct LLM or agent consumption — no synthesis required.
+Every signal is stamped with `base_score`, `rt_score`, `entropy_level` (low / stable / high), `ha_pri_sig` (Ha-Pri v1 SHA-256 provenance reference), `semantic_fingerprint` (cross-adapter dedup), and `published_at`. Ready for direct LLM or agent consumption — no synthesis required.
 
 Production endpoint: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 
@@ -259,7 +259,7 @@ The reference implementation runs on Cloudflare's global edge:
 - **D1 database** — 18 watched queries running on 6-hour cron with relevancy scoring
 - **KV-backed rate limiting** — 60 req/min per IP across all edge nodes
 - **Defensive valves** — clock-skew rejection (5min tolerance), hard floor at R_t<5, lazy decay at read time
-- **Provenance** — Ha-Pri SHA-256 audit signatures on every signal
+- **Provenance** — Ha-Pri v1 SHA-256 provenance stamps on stored signals; hard tamper enforcement is a future Ha-Pri v2 path
 - **Schema migrations** — promise-gated, idempotent, run on first request after deploy
 
 Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
@@ -270,7 +270,7 @@ Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 
 - [x] FreshContext Specification v1.2 published (MIT, open standard)
 - [x] DAR engine with proprietary λ constants (v0.3.17)
-- [x] Ha-Pri audit signatures on every signal
+- [x] Ha-Pri v1 provenance signatures on stored signals
 - [x] Semantic deduplication via fingerprinting
 - [x] Live before/after demo at `/demo`
 - [x] METHODOLOGY.md — formal IP and engineering documentation
@@ -278,6 +278,7 @@ Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 - [x] Core-backed envelope generation shared by npm/MCP and the Cloudflare Worker
 - [x] Cloudflare Workers deployment — global edge, KV cache, KV rate limiting
 - [x] Listed on official MCP Registry, Apify Store, npm
+- [ ] Ha-Pri v2 hardened canonical content hash verification
 - [x] GitHub Actions CI/CD — auto-publish on every push
 - [ ] Webhook triggers — push high-entropy signals on threshold
 - [ ] Dashboard — React frontend for the D1 intelligence pipeline
