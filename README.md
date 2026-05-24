@@ -1,10 +1,12 @@
-# freshcontext-mcp
+# FreshContext
 
 I asked Claude to help me find a job. It gave me a list of openings. I applied to three of them. Two didn't exist anymore. One had been closed for two years.
 
 Claude had no idea. It presented everything with the same confidence.
 
 That's the problem freshcontext fixes.
+
+This repository is the integrated FreshContext MCP/Core package. Core is the context-integrity layer that scores, ranks, explains, and wraps retrieved context before it reaches an LLM or agent; MCP is the primary reference/interface implementation.
 
 [![npm version](https://img.shields.io/npm/v/freshcontext-mcp)](https://www.npmjs.com/package/freshcontext-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -68,9 +70,9 @@ The FreshContext Specification v1.2 is published as an open standard under MIT l
 
 ## Architecture boundary
 
-FreshContext Core is the reusable engine. It owns freshness scoring, envelope formatting, failure guards, shared types, rank/explain primitives, and the context-conditioned utility primitive.
+FreshContext Core is the reusable center of the current integrated package. It owns freshness scoring, envelope formatting, failure guards, shared types, rank/explain primitives, and the context-conditioned utility primitive.
 
-MCP is one interface over Core. Claude Desktop is supported, but not required. The 21 MCP tools in this repo are reference adapters and a live interface for using the system.
+MCP is the primary reference/interface implementation over Core. Claude Desktop is supported, but not required. The 21 MCP tools in this repo are reference adapters and a live interface for using the system.
 
 The production Cloudflare Worker now uses Core-backed envelope generation. Worker-specific concerns remain outside Core: MCP transport, runtime guards, KV cache policy, cache metadata injection, JSON parse/replace cache helpers, D1 feeds, cron, rate limiting, and Store/feed scoring/provenance.
 
