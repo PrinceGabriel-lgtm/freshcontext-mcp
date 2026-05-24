@@ -1,7 +1,7 @@
 # Ha-Pri v2 Design
 
-Status: design only
-Phase: Math Spine Phase 3-A
+Status: design + pure Core helper
+Phase: Math Spine Phase 3-A / 3-B
 Runtime impact: none
 
 ## Purpose
@@ -10,7 +10,7 @@ Ha-Pri v2 is an additive provenance-hardening model for FreshContext Store/Ledge
 
 The goal is to keep Ha-Pri v1 readable while designing a stronger future signature that binds a row to canonical content, semantic identity, source metadata, timestamps, and engine version.
 
-This document does not implement Ha-Pri v2, change the D1 schema, change Worker write paths, migrate old rows, add HMAC secrets, or alter production scoring.
+Phase 3-B adds pure Core helper functions and deterministic tests for the v2 model. Production Store wiring remains future work. This document does not change the D1 schema, change Worker write paths, migrate old rows, add HMAC secrets, or alter production scoring.
 
 ## Current Ha-Pri v1 Audit
 
@@ -165,7 +165,7 @@ Recommended rules:
 2. Normalize line endings to `\n`.
 3. Trim trailing whitespace on each line.
 4. Preserve meaningful internal whitespace.
-5. Normalize null or missing fields to explicit sentinel text, such as `<null>`.
+5. Normalize null or missing optional fields to the literal string `"null"`.
 6. Use stable field order.
 7. Use ISO-8601 timestamps where available.
 8. Do not include fields whose values change during read-time verification unless they are explicitly part of the signed record.
@@ -176,16 +176,20 @@ For future implementation, canonicalization should live in a pure helper with de
 ## Proposed v2 Formula
 
 ```text
-ha_pri_sig_v2 = SHA-256(
-  "FRESHCONTEXT_HA_PRI_V2" + "\n" +
-  result_id + "\n" +
-  canonical_content_sha256 + "\n" +
-  semantic_fingerprint_sha256 + "\n" +
-  adapter + "\n" +
-  published_at + "\n" +
-  scraped_at + "\n" +
-  engine_version
-)
+ha_pri_sig_v2 = SHA-256(signingPayload)
+```
+
+Where `signingPayload` is exactly:
+
+```text
+FRESHCONTEXT_HA_PRI_V2
+result_id=<resultId>
+canonical_content_sha256=<canonicalContentSha256>
+semantic_fingerprint_sha256=<semanticFingerprintSha256>
+adapter=<adapter>
+published_at=<publishedAt-or-null>
+retrieved_at=<retrievedAt-or-null>
+engine_version=<engineVersion>
 ```
 
 ### Field Meaning
@@ -196,8 +200,10 @@ ha_pri_sig_v2 = SHA-256(
 - `semantic_fingerprint_sha256`: cryptographic digest of semantic identity fields
 - `adapter`: source adapter name
 - `published_at`: source/content publication timestamp, or explicit null sentinel
-- `scraped_at` / `retrieved_at`: collection timestamp
+- `retrieved_at`: retrieval or collection timestamp, or explicit null sentinel
 - `engine_version`: scoring/signature engine version
+
+Store/Ledger systems may map `scraped_at` to the v2 `retrieved_at` signing field.
 
 ## Verification Model
 
@@ -271,4 +277,3 @@ This design does not:
 - reject rows in production
 - publish npm
 - deploy the Worker
-

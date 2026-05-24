@@ -9,17 +9,33 @@ import {
   toStructuredJSON,
   formatForLLM,
   calculateContextUtility,
+  canonicalizeHaPriContent,
+  sha256Hex,
+  calculateHaPriV2,
+  verifyHaPriV2,
 } from "../src/core/index.js";
 import type {
   AdapterResult,
   ContextUtilityResult,
   ExtractOptions,
   FreshContext,
+  HaPriV2Input,
+  HaPriV2Result,
 } from "../src/core/index.js";
 
 function hoursAgo(hours: number): string {
   return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 }
+
+const BASE_HA_PRI_V2_INPUT: HaPriV2Input = {
+  resultId: "sr_test_123",
+  rawContent: "Show HN: FreshContext\nhttps://example.com/freshcontext\nPublished: 2026-05-24",
+  semanticFingerprint: "abc123semantic",
+  adapter: "hackernews",
+  publishedAt: "2026-05-24T10:00:00.000Z",
+  retrievedAt: "2026-05-24T11:00:00.000Z",
+  engineVersion: "freshcontext-0.3.17",
+};
 
 test("Core exports decay policy constants for current adapters", () => {
   assert.equal(typeof LAMBDA.hackernews, "number");
@@ -260,4 +276,133 @@ test("Core context utility public export is available from src/core/index.ts", (
   assert.equal(typeof calculateContextUtility, "function");
   assert.equal(typeof utility.score, "number");
   assert.equal(Array.isArray(utility.reasons), true);
+});
+
+test("Core Ha-Pri v2 signature is deterministic and exposes signing material", () => {
+  const first: HaPriV2Result = calculateHaPriV2(BASE_HA_PRI_V2_INPUT);
+  const second = calculateHaPriV2(BASE_HA_PRI_V2_INPUT);
+
+  assert.deepEqual(first, second);
+  assert.equal(first.version, "FRESHCONTEXT_HA_PRI_V2");
+  assert.equal(first.resultId, BASE_HA_PRI_V2_INPUT.resultId);
+  assert.equal(first.adapter, BASE_HA_PRI_V2_INPUT.adapter);
+  assert.equal(first.publishedAt, BASE_HA_PRI_V2_INPUT.publishedAt);
+  assert.equal(first.retrievedAt, BASE_HA_PRI_V2_INPUT.retrievedAt);
+  assert.equal(first.engineVersion, BASE_HA_PRI_V2_INPUT.engineVersion);
+  assert.match(first.canonicalContentSha256, /^[a-f0-9]{64}$/);
+  assert.match(first.semanticFingerprintSha256, /^[a-f0-9]{64}$/);
+  assert.match(first.haPriSigV2, /^[a-f0-9]{64}$/);
+  assert.equal(first.haPriSigV2, sha256Hex(first.signingPayload));
+});
+
+test("Core Ha-Pri v2 signing payload uses stable field order", () => {
+  const result = calculateHaPriV2(BASE_HA_PRI_V2_INPUT);
+  const expectedPayload = [
+    "FRESHCONTEXT_HA_PRI_V2",
+    `result_id=${BASE_HA_PRI_V2_INPUT.resultId}`,
+    `canonical_content_sha256=${result.canonicalContentSha256}`,
+    `semantic_fingerprint_sha256=${result.semanticFingerprintSha256}`,
+    `adapter=${BASE_HA_PRI_V2_INPUT.adapter}`,
+    `published_at=${BASE_HA_PRI_V2_INPUT.publishedAt}`,
+    `retrieved_at=${BASE_HA_PRI_V2_INPUT.retrievedAt}`,
+    `engine_version=${BASE_HA_PRI_V2_INPUT.engineVersion}`,
+  ].join("\n");
+
+  assert.equal(result.signingPayload, expectedPayload);
+});
+
+test("Core Ha-Pri v2 detects content tampering through content hash and signature", () => {
+  const original = calculateHaPriV2(BASE_HA_PRI_V2_INPUT);
+  const tampered = calculateHaPriV2({
+    ...BASE_HA_PRI_V2_INPUT,
+    rawContent: `${BASE_HA_PRI_V2_INPUT.rawContent}\nTampered line`,
+  });
+
+  assert.notEqual(tampered.canonicalContentSha256, original.canonicalContentSha256);
+  assert.notEqual(tampered.haPriSigV2, original.haPriSigV2);
+});
+
+test("Core Ha-Pri v2 binds result ID, engine version, adapter, and timestamps", () => {
+  const original = calculateHaPriV2(BASE_HA_PRI_V2_INPUT);
+  const changedResultId = calculateHaPriV2({ ...BASE_HA_PRI_V2_INPUT, resultId: "sr_other" });
+  const changedEngine = calculateHaPriV2({ ...BASE_HA_PRI_V2_INPUT, engineVersion: "freshcontext-0.3.18" });
+  const changedAdapter = calculateHaPriV2({ ...BASE_HA_PRI_V2_INPUT, adapter: "reddit" });
+  const changedPublished = calculateHaPriV2({ ...BASE_HA_PRI_V2_INPUT, publishedAt: "2026-05-24T12:00:00.000Z" });
+  const changedRetrieved = calculateHaPriV2({ ...BASE_HA_PRI_V2_INPUT, retrievedAt: "2026-05-24T12:00:00.000Z" });
+
+  assert.notEqual(changedResultId.haPriSigV2, original.haPriSigV2);
+  assert.notEqual(changedEngine.haPriSigV2, original.haPriSigV2);
+  assert.notEqual(changedAdapter.haPriSigV2, original.haPriSigV2);
+  assert.notEqual(changedPublished.haPriSigV2, original.haPriSigV2);
+  assert.notEqual(changedRetrieved.haPriSigV2, original.haPriSigV2);
+});
+
+test("Core Ha-Pri v2 binds semantic fingerprint and handles absent fields explicitly", () => {
+  const original = calculateHaPriV2(BASE_HA_PRI_V2_INPUT);
+  const changedSemantic = calculateHaPriV2({
+    ...BASE_HA_PRI_V2_INPUT,
+    semanticFingerprint: "different-semantic-fingerprint",
+  });
+  const missingFields = calculateHaPriV2({
+    ...BASE_HA_PRI_V2_INPUT,
+    semanticFingerprint: null,
+    publishedAt: null,
+    retrievedAt: undefined,
+  });
+
+  assert.notEqual(changedSemantic.semanticFingerprintSha256, original.semanticFingerprintSha256);
+  assert.notEqual(changedSemantic.haPriSigV2, original.haPriSigV2);
+  assert.equal(missingFields.semanticFingerprintSha256, sha256Hex("null"));
+  assert.match(missingFields.signingPayload, /published_at=null/);
+  assert.match(missingFields.signingPayload, /retrieved_at=null/);
+});
+
+test("Core Ha-Pri v2 canonicalizes line endings and trailing whitespace", () => {
+  const crlf = "Alpha  \r\nBeta\t\rGamma";
+  const lf = "Alpha\nBeta\nGamma";
+
+  assert.equal(canonicalizeHaPriContent(crlf), lf);
+  assert.equal(
+    calculateHaPriV2({ ...BASE_HA_PRI_V2_INPUT, rawContent: crlf }).canonicalContentSha256,
+    calculateHaPriV2({ ...BASE_HA_PRI_V2_INPUT, rawContent: lf }).canonicalContentSha256
+  );
+});
+
+test("Core Ha-Pri v2 verification returns valid, invalid, and unknown", () => {
+  const calculated = calculateHaPriV2(BASE_HA_PRI_V2_INPUT);
+  const valid = verifyHaPriV2(BASE_HA_PRI_V2_INPUT, calculated.haPriSigV2);
+  const invalid = verifyHaPriV2(
+    { ...BASE_HA_PRI_V2_INPUT, rawContent: `${BASE_HA_PRI_V2_INPUT.rawContent}\nchanged` },
+    calculated.haPriSigV2
+  );
+  const unknownNull = verifyHaPriV2(BASE_HA_PRI_V2_INPUT, null);
+  const unknownBlank = verifyHaPriV2(BASE_HA_PRI_V2_INPUT, " ");
+
+  assert.equal(valid.status, "valid");
+  assert.equal(valid.expected, calculated.haPriSigV2);
+  assert.equal(valid.actual, calculated.haPriSigV2);
+  assert.deepEqual(valid.reasons, []);
+
+  assert.equal(invalid.status, "invalid");
+  assert.equal(invalid.actual, calculated.haPriSigV2);
+  assert.match(invalid.reasons.join(" "), /did not match/);
+
+  assert.equal(unknownNull.status, "unknown");
+  assert.equal(unknownNull.expected, null);
+  assert.equal(unknownNull.actual, null);
+  assert.match(unknownNull.reasons.join(" "), /missing/);
+
+  assert.equal(unknownBlank.status, "unknown");
+  assert.equal(unknownBlank.actual, " ");
+});
+
+test("Core Ha-Pri v2 public exports are available from src/core/index.ts", () => {
+  const result = calculateHaPriV2(BASE_HA_PRI_V2_INPUT);
+  const verified = verifyHaPriV2(BASE_HA_PRI_V2_INPUT, result.haPriSigV2);
+
+  assert.equal(typeof canonicalizeHaPriContent, "function");
+  assert.equal(typeof sha256Hex, "function");
+  assert.equal(typeof calculateHaPriV2, "function");
+  assert.equal(typeof verifyHaPriV2, "function");
+  assert.equal(verified.status, "valid");
 });
