@@ -1,0 +1,116 @@
+# FreshContext MCP Usage with Codex
+
+This note documents the verified Codex-compatible MCP setup for the local FreshContext repository.
+
+## What Codex can use
+
+Codex can launch FreshContext as a local MCP server over stdio.
+
+The verified local server entrypoint is:
+
+```powershell
+& 'C:\Program Files\nodejs\node.exe' 'C:\Users\Immanuel Gabriel\Downloads\freshcontext-mcp\dist\server.js'
+```
+
+The MCP server exposes 21 tools. The local smoke test verifies the package version, server version, expected tool count, and representative tool calls.
+
+No API key is required for the local stdio smoke path.
+
+## Local stdio setup
+
+Prerequisites:
+
+- Node.js 20 or newer
+- Repository dependencies installed with `npm install`
+- Built server output at `dist/server.js`
+
+From the repository root:
+
+```powershell
+cd 'C:\Users\Immanuel Gabriel\Downloads\freshcontext-mcp'
+npm install
+npm run build
+npm run smoke:stdio
+```
+
+For this machine, the Codex MCP command should use the same Node executable and built server path validated by the smoke test:
+
+```toml
+[mcp_servers.freshcontext]
+command = 'C:\Program Files\nodejs\node.exe'
+args = ['C:\Users\Immanuel Gabriel\Downloads\freshcontext-mcp\dist\server.js']
+```
+
+A more portable variant is also valid when `node` is available on Codex's PATH:
+
+```toml
+[mcp_servers.freshcontext]
+command = "node"
+args = ['C:\Users\Immanuel Gabriel\Downloads\freshcontext-mcp\dist\server.js']
+```
+
+Keep this configuration in the local Codex config file, not in the repository. Do not commit machine-local paths.
+
+## Remote /mcp setup
+
+The repository declares a remote Streamable HTTP MCP endpoint in `server.json` and the README:
+
+```text
+https://freshcontext-mcp.gimmanuel73.workers.dev/mcp
+```
+
+For clients that need a stdio bridge to a remote MCP endpoint, the README uses `mcp-remote`:
+
+```toml
+[mcp_servers.freshcontext_remote]
+command = "npx"
+args = ["-y", "mcp-remote", "https://freshcontext-mcp.gimmanuel73.workers.dev/mcp"]
+```
+
+This remote path was identified from repository metadata. The validation in this task verified local stdio only, not remote Codex compatibility, Worker availability, or Codex Cloud support.
+
+## Verification steps
+
+Run the local smoke test:
+
+```powershell
+cd 'C:\Users\Immanuel Gabriel\Downloads\freshcontext-mcp'
+npm run smoke:stdio
+```
+
+Expected result:
+
+```json
+{
+  "ok": true,
+  "package_version": "0.3.17",
+  "server_version": "0.3.17",
+  "tool_count": 21
+}
+```
+
+Run whitespace validation before committing docs:
+
+```powershell
+git diff --check
+```
+
+Expected result: no output and exit code 0.
+
+## Safety notes
+
+- Do not place secrets, API keys, registry tokens, npm tokens, GitHub tokens, or Cloudflare tokens in Codex MCP config.
+- Do not read, edit, print, or commit local token files such as `.env`, `.api-key.local.txt`, `.mcpregistry_*`, `.dev.vars`, or `.wrangler`.
+- Do not commit local Codex config or machine-specific paths.
+- Prefer the local stdio path for this compatibility check because it is verified by `npm run smoke:stdio`.
+- Do not claim Codex Cloud support unless it is separately tested and documented.
+
+## Troubleshooting
+
+If Codex cannot start the server:
+
+- Confirm `dist/server.js` exists. If not, run `npm run build`.
+- Confirm Node is installed with `node -v`. The package requires Node.js 20 or newer.
+- If `node` is not found by Codex, use the full executable path from `node -p "process.execPath"`.
+- Run `npm run smoke:stdio` from the repository root and confirm `tool_count` is 21.
+- If the remote setup fails, verify network access, `npx` availability, and the remote endpoint separately. Do not treat remote failure as evidence that local stdio is broken.
