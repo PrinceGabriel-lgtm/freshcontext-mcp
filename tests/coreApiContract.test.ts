@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   calculateContextUtility,
+  calculateHaPriV2,
   calculateFreshnessScore,
   explainSignal,
   formatForLLM,
@@ -20,6 +21,8 @@ import type {
   ExtractOptions,
   FreshContext,
   FreshSignal,
+  HaPriV2Input,
+  HaPriV2Result,
   RankedSignal,
   RankOptions,
 } from "../src/core/index.js";
@@ -86,5 +89,18 @@ test("public ranking and utility imports compile and remain callable", () => {
   const utility: ContextUtilityResult = calculateContextUtility(utilityInput);
 
   assert.equal(typeof utility.score, "number");
+
+  const haPriInput: HaPriV2Input = {
+    resultId: "sr_public_contract",
+    rawContent: "Public Core provenance contract content",
+    semanticFingerprint: "public-core-fingerprint",
+    adapter: "hackernews",
+    publishedAt: "2026-05-24T12:00:00.000Z",
+    retrievedAt: "2026-05-24T13:00:00.000Z",
+    engineVersion: "freshcontext-0.3.17",
+  };
+  const haPri: HaPriV2Result = calculateHaPriV2(haPriInput);
+
+  assert.match(haPri.haPriSigV2, /^[a-f0-9]{64}$/);
 });
 

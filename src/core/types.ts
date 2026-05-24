@@ -83,3 +83,38 @@ export interface ContextUtilityResult {
   status: ContextUtilityStatus;
   reasons: string[];
 }
+
+export interface HaPriV2Input {
+  resultId: string;
+  rawContent: string;
+  semanticFingerprint?: string | null;
+  adapter: string;
+  publishedAt?: string | null;
+  retrievedAt?: string | null;
+  engineVersion: string;
+}
+
+export interface HaPriV2Material {
+  version: "FRESHCONTEXT_HA_PRI_V2";
+  resultId: string;
+  canonicalContentSha256: string;
+  semanticFingerprintSha256: string;
+  adapter: string;
+  publishedAt: string;
+  retrievedAt: string;
+  engineVersion: string;
+  signingPayload: string;
+}
+
+export interface HaPriV2Result extends HaPriV2Material {
+  haPriSigV2: string;
+}
+
+export type HaPriVerificationStatus = "valid" | "invalid" | "unknown";
+
+export interface HaPriV2VerificationResult {
+  status: HaPriVerificationStatus;
+  expected: string | null;
+  actual: string | null;
+  reasons: string[];
+}
