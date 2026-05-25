@@ -10,7 +10,7 @@ Ha-Pri v2 is an additive provenance-hardening model for FreshContext Store/Ledge
 
 The goal is to keep Ha-Pri v1 readable while designing a stronger future signature that binds a row to canonical content, semantic identity, source metadata, timestamps, and engine version.
 
-Phase 3-B adds pure Core helper functions and deterministic tests for the v2 model. Production Store wiring remains future work. This document does not change the D1 schema, change Worker write paths, migrate old rows, add HMAC secrets, or alter production scoring.
+Phase 3-B adds pure Core helper functions and deterministic tests for the v2 model. Phase 3-C adds `examples/ha-pri-v2-example.ts`, a deterministic developer fixture showing `calculateHaPriV2` and `verifyHaPriV2` returning valid, invalid, and unknown verification states. Production Store wiring remains future work. This document does not change the D1 schema, change Worker write paths, migrate old rows, add HMAC secrets, or alter production scoring.
 
 ## Current Ha-Pri v1 Audit
 
