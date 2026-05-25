@@ -232,8 +232,8 @@ const PROVENANCE_SALT = "FRESHCONTEXT_DAR_V1";
 
 /**
  * Generate a SHA-256 audit signature for a signal.
- * This is the ha_pri_sig — the digital fingerprint proving the signal
- * was scored by this engine at this point in time.
+ * This is the ha_pri_sig: a provenance stamp / audit reference recording
+ * the v1 engine/version formula used when the row was scored.
  *
  * Uses Web Crypto API (available natively in Cloudflare Workers).
  */

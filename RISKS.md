@@ -81,12 +81,12 @@ If `targets` or `skills` columns contain malformed JSON, `safeParse` falls back 
 
 - **Mitigation if needed:** Skip insertion when `R_0 == 0`.
 
-### 11. `ha_pri_sig` is integrity, not authentication
+### 11. `ha_pri_sig` is a provenance stamp, not authentication
 
-`PROVENANCE_SALT = "FRESHCONTEXT_DAR_V1"` is hardcoded in a public repo. Anyone with the source can forge a valid `ha_pri_sig` for any `(resultId, contentHash)` pair. The signature proves the pair was hashed together at some point — it does not prove "scored by this engine".
+`PROVENANCE_SALT = "FRESHCONTEXT_DAR_V1"` is hardcoded in a public repo. Anyone with the source can compute a valid `ha_pri_sig` for any `(resultId, contentHash)` pair. The signature is a provenance stamp / audit reference for the v1 formula — it does not authenticate the row's source or provide hard tamper enforcement.
 
 - **Where:** intelligence.ts:195
-- **Why this matters:** METHODOLOGY.md describes the signature as proving provenance. That's accurate against accidental tampering, not against an adversary. If a customer ever needs cryptographic provenance, the salt would need to move to a secret binding (env var) and signatures would need to be reissued.
+- **Why this matters:** Ha-Pri v1 signs the current rolling `result_hash` and is not recomputed on read. If a customer ever needs authentication or row rejection, that belongs in the additive Ha-Pri v2 path with stronger content hashing and an explicit verification model.
 
 ### 12. Trailing-slash URLs do not collapse
 
