@@ -233,9 +233,11 @@ In Ha-Pri v1, this signature is a provenance stamp and audit reference for store
 
 Ha-Pri v1 serves three purposes:
 
-1. **Provenance reference** — the signature links the stored result ID, content hash, and DAR engine version.
-2. **Scoring trace** — every row in the `scrape_results` table carries a reference to the moment it was scored by the DAR engine.
-3. **Licensing audit** — when FreshContext data is provided to a third party under licence, the `ha_pri_sig` column provides an audit reference for what was delivered and when.
+1. **Provenance reference** — the signature binds the result ID, current rolling content hash, and engine/version marker so the stored signal can be audited against the v1 formula.
+2. **Scoring lineage** — the signature records the scoring/signature formula used when the row was written.
+3. **Licensing / audit reference** — when FreshContext data is provided to a third party under licence, the `ha_pri_sig` column gives a stable reference for what was stored and delivered.
+
+Ha-Pri v1 is not hard tamper enforcement. It is not recomputed on read, it signs the existing rolling result_hash (`result_hash`) rather than canonical content SHA-256, and it does not reject rows. Ha-Pri v2 is the planned/additive path for stronger verification.
 
 Future Ha-Pri v2 may add canonical content SHA-256, stronger canonicalization, and explicit verification/rejection on read. That hardening is separate from the current v1 provenance stamp.
 
@@ -248,7 +250,7 @@ The `scrape_results` table functions as a **Contextual Ledger** — not merely a
 This Store/Ledger methodology is not required for basic FreshContext-compatible envelope implementations. It is the methodology for systems that persist recurring signals and want auditability over time.
 
 Key properties of the ledger:
-- Every row is immutable once written (no UPDATE operations on scored rows)
+- Scored signal material is treated as immutable once written; consumption metadata such as `is_new` may be updated
 - Every row carries a `scraped_at` timestamp with second precision
 - Every row carries a `published_at` date extracted from content (where available)
 - The ledger accumulates continuously at 6-hour intervals regardless of active user sessions
@@ -350,7 +352,7 @@ For technical integrators, auditors, and future platform partners:
 
 3. **The Semantic Fingerprinting Method** — the three-field normalisation and SHA-256 fingerprinting approach for cross-adapter deduplication.
 
-4. **The Ha-Pri Audit Signature scheme** — the provenance binding method that makes the historical ledger tamper-evident.
+4. **The Ha-Pri Audit Signature scheme** — the provenance stamp and audit reference that binds stored row material to the current v1 formula; stronger tamper-evidence is the future additive v2 path.
 
 5. **The Store / Ledger design** — support for recurring watched queries, historical signal accumulation, D1-backed storage, and time-series auditability.
 
