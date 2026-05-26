@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Most RAG pipelines fail because of time, not embeddings — FreshContext</title>
-<meta name="description" content="A 5-document demonstration of why semantic-only retrieval gives 2026 systems 2022 answers — and what it costs to fix it.">
+<title>FreshContext illustrative freshness demo</title>
+<meta name="description" content="An illustrative FreshContext demo showing how freshness metadata changes ranking before context reaches an AI system.">
 <style>
   :root {
     --bg: #fafaf7;
@@ -296,13 +296,14 @@
 
 <div class="wrap">
 
-  <div class="byline">FreshContext · A live demonstration · v1.0</div>
+  <div class="byline">FreshContext · Illustrative static demo · v1.0</div>
 
   <h1>Most RAG pipelines fail because of time, not embeddings.</h1>
-  <p class="lede">Same model. Same retrieval set. Same query. Two completely different answers — because one of them remembered when its sources were written.</p>
+  <p class="lede">Same model. Same mock retrieval set. Same query. Two different answers, because one ranking path preserved source age and the other did not.</p>
+  <p>This demo uses synthetic documents and simplified envelopes to show how FreshContext treats signals. It does not certify the documents, determine truth, or provide current technical advice.</p>
 
   <h2>The query</h2>
-  <p>A developer in 2026 asks an AI agent for current best practices. Five documents are retrieved by semantic similarity:</p>
+  <p>A developer in an illustrative 2026 scenario asks an AI agent for current best practices. Five mock documents are retrieved by semantic similarity:</p>
 
   <div class="query-box">
     <div class="label">Query</div>
@@ -310,7 +311,7 @@
   </div>
 
   <h2>The retrieval set</h2>
-  <p>Each document scored on pure semantic similarity to the query. Top result is a 2022 blog post — confidently written, dense keyword match, authoritative source.</p>
+  <p>Each mock document scored on pure semantic similarity to the query. The top result is an older, confidently written example with a dense keyword match.</p>
 
   <div id="docs"></div>
 
@@ -347,7 +348,7 @@
   </div>
 
   <h2>The answer that changes</h2>
-  <p>Both answers come from the same model with the same query. The only difference is which three documents the model saw at the top of the context window:</p>
+  <p>Both illustrative answers use the same query. The only difference is which three documents appear at the top of the context window:</p>
 
   <div id="regen-note-anchor"></div>
 
@@ -371,9 +372,9 @@
 
   <h2>What this is, and what it isn't</h2>
 
-  <p><strong>This isn't a model problem.</strong> The same model produced both answers. Claude wasn't wrong in the first version — it faithfully summarized what was put in front of it.</p>
+  <p><strong>This isn't a model-certification claim.</strong> The demo shows how a model can faithfully summarize stale context when that is what appears first.</p>
 
-  <p><strong>This isn't an embedding problem.</strong> The cosine similarity scores were correct. The 2022 blog really is semantically dense and well-written.</p>
+  <p><strong>This isn't an embedding benchmark.</strong> The mock cosine scores are intentionally plausible so the freshness signal can be isolated.</p>
 
   <p><strong>This is a context-engineering problem.</strong> Retrieval ranks correctly along one axis (semantic similarity) and ignores the other axis that matters in production (temporal validity). FreshContext adds the missing axis.</p>
 

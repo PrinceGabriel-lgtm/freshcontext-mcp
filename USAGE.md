@@ -106,7 +106,7 @@ Use extract_govcontracts with url "Palantir"
 ```
 Use search_jobs with query "AI engineer" location "remote" max_age_days 7
 ```
-*Fresh job listings only. Every result has a freshness badge — never apply to a closed role again.*
+*Fresh job listings with freshness badges, so stale or closed roles are easier to spot before you act.*
 
 ```
 Use search_jobs with query "typescript developer" remote_only true
@@ -189,7 +189,7 @@ Use extract_scholar with url "https://scholar.google.com/scholar?q=AI+agent+grou
 2. Use extract_govcontracts with url "[target company]"
 3. Use extract_changelog with url "https://github.com/[target-company]/[repo]"
 ```
-*Fresh listings only + proof the company is growing + proof they're actively shipping.*
+*Fresh listings plus signals that the company is growing and actively shipping.*
 
 #### Track a competitor
 ```
@@ -233,7 +233,7 @@ Track portfolio companies, find signals before they're obvious, monitor competit
 ---
 
 ### Researchers & Academics
-Fresh papers from arXiv and Google Scholar, ranked by date. Never cite a paper without knowing exactly when it was published and retrieved.
+Fresh papers from arXiv and Google Scholar, ranked by date. Avoid citing a paper without checking when it was published and retrieved.
 
 **Key tools:** `extract_arxiv`, `extract_scholar`, `extract_hackernews`
 

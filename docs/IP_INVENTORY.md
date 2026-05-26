@@ -1,6 +1,6 @@
 # FreshContext IP Inventory
 
-This document is a practical diligence inventory for FreshContext acquisition, licensing, or IP assignment preparation. It is not legal or tax advice. It is intended to help organize what exists, what may transfer, what may be licensed, and what must be reviewed before buyer access.
+This document is a practical diligence inventory for FreshContext acquisition, licensing, or IP assignment preparation. It is not legal or tax advice. It is intended to help organize what exists, what may transfer, what may be licensed, and what must be reviewed before buyer access. Transaction structure, tax treatment, and IP assignment terms require professional legal/tax review.
 
 ## Assets included
 
