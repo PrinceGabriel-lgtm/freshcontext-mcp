@@ -296,6 +296,17 @@ If you're building something FreshContext-compatible, open an issue and we'll ad
 
 ---
 
+## Trust and security
+
+- [LICENSE](./LICENSE)
+- [SECURITY.md](./SECURITY.md)
+- [NOTICE.md](./NOTICE.md)
+- [TRADEMARKS.md](./TRADEMARKS.md)
+- [Dependency diligence notes](./docs/DEPENDENCY_DILIGENCE.md)
+- [Release integrity notes](./docs/RELEASE_INTEGRITY.md)
+
+---
+
 ## License
 
 MIT
