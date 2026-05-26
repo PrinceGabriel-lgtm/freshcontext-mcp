@@ -35,6 +35,17 @@ ROADMAP.md
 USAGE.md
 TIME_CHECK_README.md
 
+# Sale, diligence, and outreach planning docs are not npm package material
+docs/ACQUISITION_READINESS_CHECKLIST.md
+docs/BUYER_DEMO_SCRIPT.md
+docs/BUYER_SHARE_BUNDLE.md
+docs/FIRST_10_TARGETS.md
+docs/FRESHCONTEXT_MATH_SPINE_REVIEW.md
+docs/IP_INVENTORY.md
+docs/STRATEGIC_BRIEF.md
+docs/TARGET_LIST_AND_OUTREACH_PLAN.md
+docs/TRUST_ROADMAP.md
+
 # Repo-only smoke/demo/development helpers
 scripts/
 demo/

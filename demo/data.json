@@ -41,7 +41,7 @@
       "title": "Late Chunking and Contextual Retrieval",
       "published_at": "2025-09-30T00:00:00Z",
       "base_score": 86,
-      "content": "Late chunking with embedding-aware boundaries (bge-late-chunk, jina-late) outperforms both fixed-size and semantic chunking. Combine with contextual retrieval per Anthropic's research for state-of-the-art accuracy. The fixed-size 1000-token recommendation from earlier guides is now considered a baseline at best.",
+      "content": "Late chunking with embedding-aware boundaries (bge-late-chunk, jina-late) outperforms both fixed-size and semantic chunking in this illustrative source. Combine with contextual retrieval per Anthropic's research for stronger retrieval grounding. The fixed-size 1000-token recommendation from earlier guides is now considered a baseline at best.",
       "why_high_semantic_score": "Same authoritative source as #1, strong keyword match, more recent."
     },
     {
@@ -69,11 +69,11 @@
       ],
       "outro": "This approach is widely confirmed by both authoritative documentation and community consensus.",
       "verdict_class": "bad",
-      "verdict_text": "⚠ This is 2022 advice. ada-002 is no longer SOTA. Fixed-size chunking has been superseded."
+      "verdict_text": "Illustrative freshness boundary: the older advice is treated as stale in this mock retrieval set."
     },
     "fresh": {
       "context_label": "2026 X post · 2025 LangChain blog · 2024 arXiv paper",
-      "intro": "In 2026, the current state-of-the-art is <strong>late chunking with embedding-aware boundaries</strong>:",
+      "intro": "In this illustrative 2026 scenario, the fresher context points toward <strong>late chunking with embedding-aware boundaries</strong>:",
       "bullets": [
         "Use late-chunking models like <span class=\"inline-code\">bge-late-chunk</span> or <span class=\"inline-code\">jina-late</span>",
         "Combine with <strong>contextual retrieval</strong> (per Anthropic's research) for SOTA accuracy",
@@ -82,7 +82,7 @@
       ],
       "outro": "Common 2026 production failure: teams still applying 2022-era tutorial recommendations.",
       "verdict_class": "good",
-      "verdict_text": "✓ Current as of May 2026. Reflects 2025–2026 consensus while preserving the 2024 empirical context."
+      "verdict_text": "Illustrative: this mock set is ranked as fresher as of May 2026. Verify real recommendations independently."
     }
   }
 }
