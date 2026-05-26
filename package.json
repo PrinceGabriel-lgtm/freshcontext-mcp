@@ -55,6 +55,8 @@
     "typescript": "^5.4.0"
   },
   "overrides": {
-    "file-type": "21.3.4"
+    "file-type": "21.3.4",
+    "qs": "6.15.2",
+    "ws": "8.20.1"
   }
 }
