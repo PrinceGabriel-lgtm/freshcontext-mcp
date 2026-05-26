@@ -59,6 +59,17 @@ backup-*.sql
 *.sqlite
 *.db
 
+# Local logs and package artifacts
+logs/
+*.log
+npm-debug.log*
+*.tgz
+
+# Private data room material must never ship in npm packages
+FreshContext-Private-Data-Room/
+Private-Data-Room/
+private-data-room/
+
 # Misc
 *.bat
 .env*

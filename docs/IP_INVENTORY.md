@@ -245,7 +245,9 @@ Potential carve-outs to define before buyer diligence:
 - Claude/Codex session logs not needed for technical diligence
 - Ops Pulse, unless explicitly included
 - future ideas not implemented in the current repo
-- Ha-Pri v2 implementation rights, if reserved or separately priced
+- Ha-Pri v2 implementation rights, if reserved or handled separately in transaction documents
+
+Private buyer, outreach, and diligence materials are maintained outside the public repository.
 
 ## Third-party dependencies to review
 
