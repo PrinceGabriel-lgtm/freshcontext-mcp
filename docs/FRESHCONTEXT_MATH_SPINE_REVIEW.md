@@ -216,15 +216,11 @@ Failure honesty:
 
 This prevents failed upstream calls from being represented as high-confidence fresh content.
 
-Important review issue:
+Future timestamp guard:
 
-Core envelope scoring currently uses:
+Core envelope scoring tolerates small clock skew but does not reward meaningfully future-dated content with a maximum freshness score. If `content_date` is more than 5 minutes after `retrieved_at`, Core returns `freshness_score: null`; stamped envelopes also downgrade confidence to `low`.
 
-```text
-hours = max(0, retrieved - published)
-```
-
-This means meaningfully future-dated content can still score as maximally fresh in the simple envelope path. There is an existing skipped test documenting this future-date guard gap. Worker DAR has a stronger clock-skew rule; Core envelope scoring should probably receive the same future-date tolerance in a later guard extraction.
+Worker DAR keeps its separate half-life fallback for Store ranking continuity. The Core guard does not change Worker DAR, D1, or Store behavior.
 
 ## 6. Worker DAR Engine
 
@@ -753,9 +749,9 @@ Covered:
 - structured JSON envelope shape
 - text envelope shape
 
-Known gap:
+Covered:
 
-- future date tolerance in Core envelope scoring is documented by a skipped test.
+- future date tolerance in Core envelope scoring is covered by active tests.
 
 ### DAR
 
@@ -828,15 +824,11 @@ This is good. The math primitives are now real, but production wiring can be rev
 
 ### 17.1 Future Timestamp Handling
 
-Core envelope scoring still treats future timestamps as age `0` through `max(0, retrieved - published)`.
+Core envelope scoring now tolerates up to 5 minutes of clock skew and returns `freshness_score: null` for meaningfully future-dated content.
 
-Question:
+Status:
 
-Should Core envelope scoring adopt the same 5-minute clock skew tolerance and half-life fallback as Worker DAR?
-
-Recommendation:
-
-Yes, in a focused guard patch.
+Resolved for Core envelope scoring in Phase 3-D. Worker DAR remains intentionally unchanged and continues to use its Store-oriented half-life fallback for meaningfully future timestamps.
 
 ### 17.2 Lambda Table Duplication
 
@@ -943,7 +935,7 @@ Ask reviewers to answer:
 
 1. Is exponential decay the right base model for the current source classes?
 2. Are the lambda values plausible as default/reference half-lives?
-3. Should future-dated envelope content be handled more conservatively?
+3. Is the Core future-dated envelope policy conservative enough for public context metadata?
 4. Is the current `R_0` rule-based profile score acceptable as a first Store implementation?
 5. Should context-conditioned utility replace or augment the Worker `R_0` model later?
 6. Is `status = unknown` factor `0.5` too generous?
@@ -974,9 +966,9 @@ Recommended sequence:
    - Clarify Ha-Pri v1 comments as provenance stamp / audit reference.
    - Avoid proof-of-origin language unless HMAC or private signing is added.
 
-3. Fix Core future timestamp guard.
-   - Add tolerance.
-   - Align with methodology/spec.
+3. Fix Core future timestamp guard. Completed in Phase 3-D.
+   - Add 5-minute clock skew tolerance.
+   - Return no numeric Core freshness score for meaningfully future-dated content.
    - Activate skipped test.
 
 4. Decide crypto compatibility.

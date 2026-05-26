@@ -80,14 +80,19 @@ test("adapter-specific decay behavior is preserved", () => {
   assert.ok((github.freshness_score ?? 0) > (hn.freshness_score ?? 0));
 });
 
-test("future dates beyond tolerance are not treated as fresh", { skip: "Current MCP stamping clamps future dates to fresh; activate when Core guards are extracted." }, () => {
+test("future dates beyond tolerance are not treated as fresh", () => {
   const ctx = stamp({
     raw: "Future-dated result",
     content_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     freshness_confidence: "high",
   });
+  const text = formatForLLM(ctx);
 
-  assert.notEqual(ctx.freshness_score, 100);
+  assert.equal(ctx.freshness_score, null);
+  assert.equal(ctx.freshness_confidence, "low");
+  assert.match(text, /Score:\s*unknown/i);
+  assert.doesNotMatch(text, /Confidence:\s*high/i);
+  assert.doesNotMatch(text, /Score:\s*100\/100/i);
 });
 
 test("text envelope includes FreshContext fields", () => {
