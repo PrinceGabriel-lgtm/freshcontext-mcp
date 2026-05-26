@@ -1,0 +1,45 @@
+# FreshContext Release Integrity Notes
+
+This document describes release hardening practices for future FreshContext package and archive releases. It is a plan and checklist, not an implemented signing or SBOM system.
+
+## Before Publishing or Sharing a Package
+
+- Start from a clean working tree.
+- Confirm the package version intentionally matches the release plan.
+- Run `npm run build`.
+- Run `npm test`.
+- Run `npm run smoke:stdio`.
+- Run `npm run example:ha-pri-v2`.
+- Run `cd worker && npx tsc --noEmit`.
+- Run `npm audit --omit=dev`.
+- Run `npm audit`.
+- Run `npm pack --dry-run --json`.
+- Run a stale-claim scan across public docs and package-facing files.
+- Run a secret scan before sharing archives, diligence folders, or package artifacts.
+
+## Package Exclusion Checks
+
+Confirm release artifacts do not include:
+
+- `.env` files.
+- Tokens or local API key files.
+- MCP registry local credential files.
+- Cloudflare local state.
+- `backup.sql` or local database snapshots.
+- Private sale, buyer, target, outreach, or diligence documents.
+- Private data-room folders.
+- Local logs.
+- Old package tarballs.
+
+## Release Notes and Integrity Artifacts
+
+Future release hardening may include:
+
+- GitHub release notes for tagged releases.
+- Signed git tags, if signing is configured.
+- `SHA256SUMS` files for release artifacts.
+- SBOM generation for buyer or enterprise diligence.
+- npm provenance and signature review.
+- A documented token-rotation checklist for any maintainer or ownership transfer.
+
+Do not publish from a dirty working tree. Do not publish from an environment that exposes secrets in logs or command output.
