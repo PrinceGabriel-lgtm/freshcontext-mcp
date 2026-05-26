@@ -42,7 +42,17 @@ Thumbs.db
 CLAUDE.md
 HANDOFF.md
 ROADMAP.md
+docs/TRUST_ROADMAP.md
 TIME_CHECK_README.md
 SESSION_SAVE_*.md
 _archive/
 .claude/
+FreshContext-Private-Data-Room/
+Private-Data-Room/
+private-data-room/
+
+# Local logs and package artifacts
+logs/
+*.log
+npm-debug.log*
+*.tgz
