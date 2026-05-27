@@ -30,6 +30,52 @@ export interface EnvelopeFormatOptions {
 }
 
 export type SignalConfidence = "high" | "medium" | "low";
+export type SignalDateConfidence = SignalConfidence | "unknown";
+export type SignalContractVersion = "freshcontext.signal.v1";
+
+export type ContextUtilityStatus =
+  | "success"
+  | "partial"
+  | "stale"
+  | "failed"
+  | "unknown";
+
+export interface SignalNormalizeOptions {
+  defaultSourceType?: string;
+  now?: Date | string;
+}
+
+export interface FreshContextSignalInput {
+  id?: string;
+  source: string;
+  source_type?: string;
+  title?: string;
+  content?: string;
+  published_at?: string | null;
+  content_date?: string | null;
+  retrieved_at?: string | null;
+  semantic_score?: number;
+  date_confidence?: SignalDateConfidence;
+  freshness_confidence?: SignalConfidence;
+  status?: ContextUtilityStatus;
+  metadata?: Record<string, unknown>;
+}
+
+export interface FreshContextSignal {
+  contract_version: SignalContractVersion;
+  id?: string;
+  source: string;
+  source_type: string;
+  title?: string;
+  content?: string;
+  published_at: string | null;
+  retrieved_at: string;
+  semantic_score: number;
+  date_confidence: SignalDateConfidence;
+  status: ContextUtilityStatus;
+  metadata: Record<string, unknown>;
+  reasons: string[];
+}
 
 export interface FreshSignal {
   id?: string;
@@ -38,8 +84,12 @@ export interface FreshSignal {
   title?: string;
   content?: string;
   published_at?: string | null;
+  content_date?: string | null;
   retrieved_at?: string | null;
   semantic_score: number;
+  date_confidence?: SignalDateConfidence;
+  freshness_confidence?: SignalConfidence;
+  status?: ContextUtilityStatus;
   metadata?: Record<string, unknown>;
 }
 
@@ -56,13 +106,6 @@ export interface RankOptions {
   defaultSourceType?: string;
   now?: Date | string;
 }
-
-export type ContextUtilityStatus =
-  | "success"
-  | "partial"
-  | "stale"
-  | "failed"
-  | "unknown";
 
 export interface ContextUtilityInput {
   contextualRelevance: number;

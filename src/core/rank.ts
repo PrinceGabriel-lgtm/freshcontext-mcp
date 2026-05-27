@@ -42,8 +42,13 @@ function resolveSourceType(signal: FreshSignal, options: RankOptions): string {
   return signal.source_type ?? options.defaultSourceType ?? signal.source ?? "default";
 }
 
+function isFailedSignal(signal: FreshSignal): boolean {
+  return signal.status === "failed"
+    || (signal.content !== undefined && looksLikeFailedAdapterContent(signal.content));
+}
+
 function confidenceFor(signal: FreshSignal, semanticScore: number, freshnessScore: number | null): SignalConfidence {
-  if (signal.content !== undefined && looksLikeFailedAdapterContent(signal.content)) {
+  if (isFailedSignal(signal)) {
     return "low";
   }
   if (freshnessScore !== null && semanticScore >= 0.7) {
@@ -58,11 +63,13 @@ function confidenceFor(signal: FreshSignal, semanticScore: number, freshnessScor
 export function rankSignal(signal: FreshSignal, options: RankOptions = {}): RankedSignal {
   const weights = resolveWeights(options);
   const semantic_score = clampScore(signal.semantic_score);
-  const freshness_score = calculateFreshnessScore(
-    signal.published_at ?? null,
-    resolveRetrievedAt(signal, options),
-    resolveSourceType(signal, options)
-  );
+  const freshness_score = isFailedSignal(signal) || signal.date_confidence === "unknown"
+    ? null
+    : calculateFreshnessScore(
+      signal.published_at ?? signal.content_date ?? null,
+      resolveRetrievedAt(signal, options),
+      resolveSourceType(signal, options)
+    );
   const freshnessComponent = freshness_score === null ? 0 : clampScore(freshness_score / 100);
   const final_score = clampScore(
     semantic_score * weights.semantic + freshnessComponent * weights.freshness

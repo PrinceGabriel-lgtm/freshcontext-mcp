@@ -13,11 +13,15 @@ import {
   sha256Hex,
   calculateHaPriV2,
   verifyHaPriV2,
+  SIGNAL_CONTRACT_VERSION,
+  normalizeSignal,
 } from "../src/core/index.js";
 import type {
   AdapterResult,
   ContextUtilityResult,
   ExtractOptions,
+  FreshContextSignal,
+  FreshContextSignalInput,
   FreshContext,
   HaPriV2Input,
   HaPriV2Result,
@@ -76,6 +80,127 @@ test("Core scoreLabel preserves score bands", () => {
   assert.equal(scoreLabel(75), "reliable");
   assert.equal(scoreLabel(55), "verify before acting");
   assert.equal(scoreLabel(20), "use with caution");
+});
+
+test("Core normalizeSignal emits the Signal Contract v1 shape for normal signals", () => {
+  const signal: FreshContextSignal = normalizeSignal({
+    id: "sig_normal",
+    source: "https://example.com/normal",
+    source_type: "hackernews",
+    title: "Normal signal",
+    content: "FreshContext signal contract content",
+    published_at: "2026-05-24T10:00:00.000Z",
+    retrieved_at: "2026-05-24T11:00:00.000Z",
+    semantic_score: 0.82,
+    date_confidence: "high",
+    status: "success",
+    metadata: { topic: "core" },
+  });
+
+  assert.equal(signal.contract_version, SIGNAL_CONTRACT_VERSION);
+  assert.equal(signal.source_type, "hackernews");
+  assert.equal(signal.published_at, "2026-05-24T10:00:00.000Z");
+  assert.equal(signal.retrieved_at, "2026-05-24T11:00:00.000Z");
+  assert.equal(signal.semantic_score, 0.82);
+  assert.equal(signal.date_confidence, "high");
+  assert.equal(signal.status, "success");
+  assert.deepEqual(signal.metadata, { topic: "core" });
+  assert.deepEqual(signal.reasons, []);
+});
+
+test("Core normalizeSignal maps content_date alias to published_at", () => {
+  const signal = normalizeSignal({
+    source: "https://example.com/content-date",
+    source_type: "github",
+    content_date: "2026-05-24T10:00:00.000Z",
+    retrieved_at: "2026-05-24T11:00:00.000Z",
+    semantic_score: 0.7,
+    freshness_confidence: "medium",
+  });
+
+  assert.equal(signal.published_at, "2026-05-24T10:00:00.000Z");
+  assert.equal(signal.date_confidence, "medium");
+  assert.ok(signal.reasons.some((reason) => reason.includes("content_date alias")));
+});
+
+test("Core normalizeSignal clears missing, invalid, and meaningfully future dates", () => {
+  const retrievedAt = "2026-05-24T12:00:00.000Z";
+  const missing = normalizeSignal({
+    source: "https://example.com/missing-date",
+    source_type: "blog",
+    retrieved_at: retrievedAt,
+    semantic_score: 0.7,
+  });
+  const invalid = normalizeSignal({
+    source: "https://example.com/invalid-date",
+    source_type: "blog",
+    published_at: "not-a-date",
+    retrieved_at: retrievedAt,
+    semantic_score: 0.7,
+  });
+  const future = normalizeSignal({
+    source: "https://example.com/future-date",
+    source_type: "blog",
+    published_at: minutesFrom(retrievedAt, 6),
+    retrieved_at: retrievedAt,
+    semantic_score: 0.7,
+    date_confidence: "high",
+  });
+
+  assert.equal(missing.published_at, null);
+  assert.equal(missing.date_confidence, "unknown");
+  assert.equal(invalid.published_at, null);
+  assert.equal(invalid.date_confidence, "unknown");
+  assert.ok(invalid.reasons.some((reason) => reason.includes("invalid")));
+  assert.equal(future.published_at, null);
+  assert.equal(future.date_confidence, "unknown");
+  assert.ok(future.reasons.some((reason) => reason.includes("future-dated")));
+});
+
+test("Core normalizeSignal marks failed content and clamps semantic scores", () => {
+  const invalidScore = normalizeSignal({
+    source: "https://example.com/invalid-score",
+    source_type: "github",
+    published_at: "2026-05-24T10:00:00.000Z",
+    retrieved_at: "2026-05-24T11:00:00.000Z",
+  });
+  const oversizedScore = normalizeSignal({
+    source: "https://example.com/oversized-score",
+    source_type: "github",
+    published_at: "2026-05-24T10:00:00.000Z",
+    retrieved_at: "2026-05-24T11:00:00.000Z",
+    semantic_score: 2,
+  });
+  const failed = normalizeSignal({
+    source: "https://example.com/failed",
+    source_type: "github",
+    content: "[Error] upstream timeout",
+    published_at: "2026-05-24T10:00:00.000Z",
+    retrieved_at: "2026-05-24T11:00:00.000Z",
+    semantic_score: 0.9,
+  });
+
+  assert.equal(invalidScore.semantic_score, 0);
+  assert.ok(invalidScore.reasons.some((reason) => reason.includes("semantic_score")));
+  assert.equal(oversizedScore.semantic_score, 1);
+  assert.equal(failed.status, "failed");
+  assert.ok(failed.reasons.some((reason) => reason.includes("failed adapter output")));
+});
+
+test("Core normalizeSignal does not mutate caller-owned input", () => {
+  const input: FreshContextSignalInput = {
+    source: "https://example.com/no-mutation",
+    source_type: "hackernews",
+    published_at: "2026-05-24T10:00:00.000Z",
+    retrieved_at: "2026-05-24T11:00:00.000Z",
+    semantic_score: 0.8,
+    metadata: { nested: { value: true } },
+  };
+  const snapshot = JSON.stringify(input);
+
+  normalizeSignal(input);
+
+  assert.equal(JSON.stringify(input), snapshot);
 });
 
 test("Core failure guard detects empty, security, timeout, and error-like output", () => {

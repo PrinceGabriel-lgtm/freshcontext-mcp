@@ -55,6 +55,34 @@ test("missing date still ranks with lower confidence and missing-date reason", (
   assert.ok(ranked.final_score < 0.8);
 });
 
+test("failed Core signals do not receive numeric freshness or high confidence", () => {
+  const explicitFailed = rankSignal({
+    id: "explicit-failed",
+    source: "https://example.com/explicit-failed",
+    source_type: "hackernews",
+    published_at: "2026-05-13T09:00:00.000Z",
+    retrieved_at: now,
+    semantic_score: 0.95,
+    content: "Fresh-looking content from a failed upstream call",
+    status: "failed",
+  }, options);
+  const failedContent = rankSignal({
+    id: "failed-content",
+    source: "https://example.com/failed-content",
+    source_type: "hackernews",
+    published_at: "2026-05-13T09:00:00.000Z",
+    retrieved_at: now,
+    semantic_score: 0.95,
+    content: "[Error] upstream timeout",
+  }, options);
+
+  assert.equal(explicitFailed.freshness_score, null);
+  assert.equal(explicitFailed.confidence, "low");
+  assert.ok(explicitFailed.final_score < 0.95);
+  assert.equal(failedContent.freshness_score, null);
+  assert.equal(failedContent.confidence, "low");
+});
+
 test("final_score and clampScore stay in the normalized 0..1 range", () => {
   assert.equal(clampScore(-1), 0);
   assert.equal(clampScore(2), 1);
