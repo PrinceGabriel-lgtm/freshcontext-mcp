@@ -26,6 +26,22 @@ export const LAMBDA: Record<string, number> = {
   default:           0.001,
 };
 
+export const FUTURE_CLOCK_SKEW_TOLERANCE_MS = 5 * 60 * 1000;
+
+export function isMeaningfullyFutureDate(
+  content_date: string | null,
+  retrieved_at: string
+): boolean {
+  if (!content_date) return false;
+
+  const published = new Date(content_date).getTime();
+  const retrieved = new Date(retrieved_at).getTime();
+
+  if (isNaN(published) || isNaN(retrieved)) return false;
+
+  return published - retrieved > FUTURE_CLOCK_SKEW_TOLERANCE_MS;
+}
+
 export function calculateFreshnessScore(
   content_date: string | null,
   retrieved_at: string,
@@ -37,6 +53,7 @@ export function calculateFreshnessScore(
   const retrieved = new Date(retrieved_at).getTime();
 
   if (isNaN(published) || isNaN(retrieved)) return null;
+  if (published - retrieved > FUTURE_CLOCK_SKEW_TOLERANCE_MS) return null;
 
   const hoursSinceRetrieved = Math.max(0, (retrieved - published) / (1000 * 60 * 60));
   const lambda = LAMBDA[adapter] ?? LAMBDA.default;

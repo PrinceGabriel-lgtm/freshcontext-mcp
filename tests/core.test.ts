@@ -27,6 +27,10 @@ function hoursAgo(hours: number): string {
   return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 }
 
+function minutesFrom(iso: string, minutes: number): string {
+  return new Date(new Date(iso).getTime() + minutes * 60 * 1000).toISOString();
+}
+
 const BASE_HA_PRI_V2_INPUT: HaPriV2Input = {
   resultId: "sr_test_123",
   rawContent: "Show HN: FreshContext\nhttps://example.com/freshcontext\nPublished: 2026-05-24",
@@ -54,6 +58,16 @@ test("Core calculateFreshnessScore handles valid, missing, and invalid dates", (
   assert.ok(score !== null && score >= 0 && score <= 100);
   assert.equal(calculateFreshnessScore(null, retrievedAt, "hackernews"), null);
   assert.equal(calculateFreshnessScore("not-a-date", retrievedAt, "hackernews"), null);
+});
+
+test("Core calculateFreshnessScore tolerates clock skew but rejects future timestamps", () => {
+  const retrievedAt = "2026-05-24T12:00:00.000Z";
+  const withinClockSkew = minutesFrom(retrievedAt, 5);
+  const beyondClockSkew = minutesFrom(retrievedAt, 6);
+
+  assert.equal(calculateFreshnessScore(withinClockSkew, retrievedAt, "hackernews"), 100);
+  assert.equal(calculateFreshnessScore(beyondClockSkew, retrievedAt, "hackernews"), null);
+  assert.equal(calculateFreshnessScore(minutesFrom(retrievedAt, 24 * 60), retrievedAt, "hackernews"), null);
 });
 
 test("Core scoreLabel preserves score bands", () => {

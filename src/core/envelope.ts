@@ -1,5 +1,5 @@
 import type { FreshContext, AdapterResult, ExtractOptions, EnvelopeFormatOptions } from "./types.js";
-import { calculateFreshnessScore, scoreLabel } from "./decay.js";
+import { calculateFreshnessScore, isMeaningfullyFutureDate, scoreLabel } from "./decay.js";
 import { looksLikeFailedAdapterContent } from "./guards.js";
 
 export function stampFreshness(
@@ -10,7 +10,8 @@ export function stampFreshness(
   const retrieved_at = new Date().toISOString();
   const failedContent = looksLikeFailedAdapterContent(result.raw);
   const content_date = failedContent ? null : result.content_date;
-  const freshness_confidence = failedContent ? "low" : result.freshness_confidence;
+  const futureDated = !failedContent && isMeaningfullyFutureDate(content_date, retrieved_at);
+  const freshness_confidence = failedContent || futureDated ? "low" : result.freshness_confidence;
   const freshness_score = calculateFreshnessScore(
     content_date,
     retrieved_at,
