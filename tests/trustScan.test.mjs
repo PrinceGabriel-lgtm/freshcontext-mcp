@@ -68,8 +68,9 @@ test("redacts secret-shaped values from JSON output", async () => {
     assert.equal(result.stdout.includes(rawSecret), false);
 
     const report = JSON.parse(result.stdout);
-    assert.equal(report.findings[0].match, "sk-[REDACTED]");
-    assert.equal(report.findings[0].effectiveSeverity, "fail");
+    const finding = report.findings.find((item) => item.ruleId === "secret-openai-key-shape");
+    assert.equal(finding.match, "sk-[REDACTED]");
+    assert.equal(finding.effectiveSeverity, "fail");
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }
@@ -145,7 +146,7 @@ test("env entries in .gitignore are not treated as fail-level secret leaks", asy
     const report = JSON.parse(result.stdout);
     assert.equal(report.findings.length > 0, true);
     assert.equal(report.findings.some((finding) => finding.effectiveSeverity === "fail"), false);
-    assert.equal(report.findings.every((finding) => finding.fileCategory === "config"), true);
+    assert.equal(report.findings.some((finding) => finding.ruleId === "secret-dotenv-reference" && finding.fileCategory === "config"), true);
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }
@@ -172,19 +173,88 @@ test("--show-allowed controls text details while JSON keeps allowed findings", a
     const json = runScanner(fixture, ["--path", ".", "--json"]);
     assert.equal(json.status, 0, json.stderr);
     const report = JSON.parse(json.stdout);
-    assert.equal(report.findings.length, 1);
-    assert.equal(report.findings[0].allowed, true);
-    assert.equal(report.findings[0].allowReason, "Fixture assertion.");
+    const finding = report.findings.find((item) => item.ruleId === "stale-20-tools");
+    assert.equal(finding.allowed, true);
+    assert.equal(finding.allowReason, "Fixture assertion.");
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }
 });
 
-async function createFixture({ rules = baseRules, allowlist = { allow: [] } } = {}) {
+test("--repo-map --json includes repo map and file classification", async () => {
+  const fixture = await createFixture({ withPackageJson: true });
+  try {
+    await writeFile(path.join(fixture, "README.md"), "# Fixture\n", "utf8");
+    await writeFile(path.join(fixture, "LICENSE"), "MIT\n", "utf8");
+    await writeFile(path.join(fixture, "SECURITY.md"), "Report security issues privately.\n", "utf8");
+    await mkdir(path.join(fixture, "docs"), { recursive: true });
+    await writeFile(path.join(fixture, "docs", "GUIDE.md"), "Guide\n", "utf8");
+    await mkdir(path.join(fixture, "_archive"), { recursive: true });
+    await writeFile(path.join(fixture, "_archive", "SESSION_NOTE.md"), "Old note\n", "utf8");
+    await mkdir(path.join(fixture, "src"), { recursive: true });
+    await writeFile(path.join(fixture, "src", "index.ts"), "export {};\n", "utf8");
+    await mkdir(path.join(fixture, "tests"), { recursive: true });
+    await writeFile(path.join(fixture, "tests", "unit.test.mjs"), "import 'node:test';\n", "utf8");
+    await writeFile(path.join(fixture, "backup.sql"), "-- backup\n", "utf8");
+
+    const result = runScanner(fixture, ["--path", ".", "--repo-map", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.repoMap.packageManager, "npm");
+    assert.equal(report.repoMap.hasPackageJson, true);
+    assert.equal(report.repoMap.hasReadme, true);
+    assert.equal(report.repoMap.hasLicense, true);
+    assert.equal(report.repoMap.hasSecurityPolicy, true);
+    assert.equal(report.repoMap.publicDocs.includes("README.md"), true);
+    assert.equal(report.repoMap.publicDocs.includes("docs/GUIDE.md"), true);
+    assert.equal(report.repoMap.privateOrArchiveDocs.includes("_archive/SESSION_NOTE.md"), true);
+    assert.equal(report.repoMap.sourceFiles.includes("src/index.ts"), true);
+    assert.equal(report.repoMap.testFiles.includes("tests/unit.test.mjs"), true);
+    assert.equal(report.repoMap.packageBoundaryFiles.includes("backup.sql"), true);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("repo-map project warnings are warn-level and fail gate still uses effective severity", async () => {
+  const fixture = await createFixture({ withPackageJson: true });
+  try {
+    await writeFile(path.join(fixture, "README.md"), "# Fixture\n", "utf8");
+    await writeFile(path.join(fixture, "backup.sql"), "-- backup\n", "utf8");
+
+    const result = runScanner(fixture, ["--path", ".", "--fail-on", "fail", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    const report = JSON.parse(result.stdout);
+    const repoFinding = report.findings.find((item) => item.ruleId === "repo-map-package-boundary-files-present");
+    assert.equal(repoFinding.category, "repo_map");
+    assert.equal(repoFinding.effectiveSeverity, "warn");
+    assert.equal(report.summary.highestSeverity, "warn");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+async function createFixture({ rules = baseRules, allowlist = { allow: [] }, withPackageJson = false } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "trust-scan-"));
   await mkdir(path.join(root, "config"), { recursive: true });
   await writeFile(path.join(root, "config", "trust-scan-rules.json"), JSON.stringify(rules, null, 2), "utf8");
   await writeFile(path.join(root, "config", "trust-scan-allowlist.json"), JSON.stringify(allowlist, null, 2), "utf8");
+  if (withPackageJson) {
+    await writeFile(
+      path.join(root, "package.json"),
+      JSON.stringify({
+        name: "trust-scan-fixture",
+        scripts: {
+          "trust:scan": "node scripts/trust-scan.mjs",
+          "trust:scan:json": "node scripts/trust-scan.mjs --json",
+          "trust:scan:markdown": "node scripts/trust-scan.mjs --markdown"
+        }
+      }, null, 2),
+      "utf8"
+    );
+  }
   return root;
 }
 
