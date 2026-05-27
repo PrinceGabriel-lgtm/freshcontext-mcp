@@ -1,0 +1,427 @@
+{
+  "rules": [
+    {
+      "id": "stale-version-0-3-16",
+      "category": "stale_claim",
+      "severity": "fail",
+      "pattern": "\\bv0\\.3\\.16\\b",
+      "flags": "i",
+      "message": "Stale public version claim found.",
+      "recommendation": "Update the version claim to the current package version or remove it."
+    },
+    {
+      "id": "stale-20-tools",
+      "category": "stale_claim",
+      "severity": "fail",
+      "pattern": "\\b20\\s+tools\\b",
+      "flags": "i",
+      "message": "Stale public tool-count claim found.",
+      "recommendation": "Update the tool count to match the current implementation or avoid hard-coded counts."
+    },
+    {
+      "id": "stale-11-tools",
+      "category": "stale_claim",
+      "severity": "fail",
+      "pattern": "\\b11\\s+tools\\b",
+      "flags": "i",
+      "message": "Stale public tool-count claim found.",
+      "recommendation": "Update the tool count to match the current implementation or avoid hard-coded counts."
+    },
+    {
+      "id": "stale-yahoo",
+      "category": "stale_claim",
+      "severity": "warn",
+      "pattern": "\\bYahoo\\b",
+      "flags": "i",
+      "message": "FreshContext currently uses Stooq, not Yahoo, except in negative tests or history.",
+      "recommendation": "Remove or clarify Yahoo references unless they are regression history or negative tests."
+    },
+    {
+      "id": "stale-claude-only",
+      "category": "stale_claim",
+      "severity": "warn",
+      "pattern": "\\bClaude-only\\b",
+      "flags": "i",
+      "message": "Claude-only positioning can overstate client boundaries.",
+      "recommendation": "Use MCP/client-neutral wording unless this is intentional historical context."
+    },
+    {
+      "id": "overclaim-ha-pri-v2-deployed",
+      "category": "implementation_overclaim",
+      "severity": "fail",
+      "pattern": "\\bHa-Pri\\s+v2\\s+deployed\\b",
+      "flags": "i",
+      "message": "Ha-Pri v2 deployment claim may overstate implementation status.",
+      "recommendation": "Describe implemented behavior precisely and avoid deployed claims until release evidence exists."
+    },
+    {
+      "id": "overclaim-worker-verifies-ha-pri-v2",
+      "category": "implementation_overclaim",
+      "severity": "fail",
+      "pattern": "\\bWorker\\s+verifies\\s+Ha-Pri\\s+v2\\b",
+      "flags": "i",
+      "message": "Worker verification claim may overstate implementation status.",
+      "recommendation": "Limit wording to the checks actually implemented and tested."
+    },
+    {
+      "id": "overclaim-d1-migration-complete",
+      "category": "implementation_overclaim",
+      "severity": "fail",
+      "pattern": "\\bD1\\s+migration\\s+complete\\b",
+      "flags": "i",
+      "message": "D1 migration completion claim may overstate implementation status.",
+      "recommendation": "Use migration-in-progress wording unless production migration evidence exists."
+    },
+    {
+      "id": "overclaim-production-store-migration-complete",
+      "category": "implementation_overclaim",
+      "severity": "fail",
+      "pattern": "\\bproduction\\s+Store\\s+migration\\s+complete\\b",
+      "flags": "i",
+      "message": "Production Store migration completion claim may overstate implementation status.",
+      "recommendation": "Use precise environment and status wording for Store migration work."
+    },
+    {
+      "id": "overclaim-hmac-implemented",
+      "category": "implementation_overclaim",
+      "severity": "fail",
+      "pattern": "\\bHMAC\\s+implemented\\b",
+      "flags": "i",
+      "message": "HMAC implementation claim may overstate security behavior.",
+      "recommendation": "Name the exact HMAC coverage and verification status, or soften the claim."
+    },
+    {
+      "id": "overclaim-core-fully-independent",
+      "category": "implementation_overclaim",
+      "severity": "fail",
+      "pattern": "\\bCore\\s+fully\\s+independent\\b",
+      "flags": "i",
+      "message": "Core independence claim may overstate package boundaries.",
+      "recommendation": "Describe the current dependency boundary and remaining coupling precisely."
+    },
+    {
+      "id": "security-tamper-proof",
+      "category": "security_legal_overclaim",
+      "severity": "fail",
+      "pattern": "\\btamper-proof\\b",
+      "flags": "i",
+      "message": "Absolute tamper-proof security wording found.",
+      "recommendation": "Use bounded language such as tamper-evident only when the implementation supports it."
+    },
+    {
+      "id": "security-guaranteed-truth",
+      "category": "security_legal_overclaim",
+      "severity": "fail",
+      "pattern": "\\bguaranteed\\s+truth\\b",
+      "flags": "i",
+      "message": "Guaranteed truth claim found.",
+      "recommendation": "Replace with evidence, provenance, or freshness language that reflects actual guarantees."
+    },
+    {
+      "id": "legal-legally-compliant",
+      "category": "security_legal_overclaim",
+      "severity": "fail",
+      "pattern": "\\blegally\\s+compliant\\b",
+      "flags": "i",
+      "message": "Broad legal compliance claim found.",
+      "recommendation": "Avoid legal compliance claims unless they are reviewed and scoped to a jurisdiction/control set."
+    },
+    {
+      "id": "legal-hipaa-compliant",
+      "category": "security_legal_overclaim",
+      "severity": "fail",
+      "pattern": "\\bHIPAA\\s+compliant\\b",
+      "flags": "i",
+      "message": "HIPAA compliance claim found.",
+      "recommendation": "Remove unless backed by a reviewed compliance program and customer-facing evidence."
+    },
+    {
+      "id": "legal-gdpr-compliant",
+      "category": "security_legal_overclaim",
+      "severity": "fail",
+      "pattern": "\\bGDPR\\s+compliant\\b",
+      "flags": "i",
+      "message": "GDPR compliance claim found.",
+      "recommendation": "Use scoped privacy wording rather than blanket GDPR compliance claims unless reviewed."
+    },
+    {
+      "id": "security-soc2-certified",
+      "category": "security_legal_overclaim",
+      "severity": "fail",
+      "pattern": "\\bSOC\\s*2\\s+certified\\b",
+      "flags": "i",
+      "message": "SOC 2 certification claim found.",
+      "recommendation": "Remove unless there is a current SOC 2 report and approved public wording."
+    },
+    {
+      "id": "security-certified",
+      "category": "security_legal_overclaim",
+      "severity": "warn",
+      "pattern": "\\bcertified\\b",
+      "flags": "i",
+      "message": "Certification wording found.",
+      "recommendation": "Name the certification and evidence, or avoid certification language."
+    },
+    {
+      "id": "security-enterprise-grade",
+      "category": "security_legal_overclaim",
+      "severity": "warn",
+      "pattern": "\\benterprise-grade\\b",
+      "flags": "i",
+      "message": "Enterprise-grade claim found.",
+      "recommendation": "Replace broad marketing language with specific capabilities or controls."
+    },
+    {
+      "id": "security-zero-risk",
+      "category": "security_legal_overclaim",
+      "severity": "fail",
+      "pattern": "\\bzero-risk\\b",
+      "flags": "i",
+      "message": "Zero-risk claim found.",
+      "recommendation": "Avoid absolute risk claims; describe risk reduction and limits instead."
+    },
+    {
+      "id": "secret-openai-key-shape",
+      "category": "secret_shape",
+      "severity": "fail",
+      "pattern": "\\bsk-[A-Za-z0-9_-]{8,}\\b",
+      "flags": "",
+      "redact": true,
+      "message": "OpenAI key-shaped string found.",
+      "recommendation": "Remove secrets from the repo and rotate the credential if it was real."
+    },
+    {
+      "id": "secret-github-pat-shape",
+      "category": "secret_shape",
+      "severity": "fail",
+      "pattern": "\\bghp_[A-Za-z0-9_]{8,}\\b",
+      "flags": "",
+      "redact": true,
+      "message": "GitHub token-shaped string found.",
+      "recommendation": "Remove secrets from the repo and rotate the credential if it was real."
+    },
+    {
+      "id": "secret-npm-token-shape",
+      "category": "secret_shape",
+      "severity": "fail",
+      "pattern": "\\bnpm_[A-Za-z0-9_]{8,}\\b",
+      "flags": "",
+      "redact": true,
+      "message": "npm token-shaped string found.",
+      "recommendation": "Remove secrets from the repo and rotate the credential if it was real."
+    },
+    {
+      "id": "secret-bearer-token-shape",
+      "category": "secret_shape",
+      "severity": "fail",
+      "pattern": "\\bBearer\\s+[A-Za-z0-9._~+/=:-]{8,}",
+      "flags": "i",
+      "redact": true,
+      "message": "Bearer token-shaped string found.",
+      "recommendation": "Remove secrets from the repo and rotate the credential if it was real."
+    },
+    {
+      "id": "secret-cloudflare-token-env",
+      "category": "secret_shape",
+      "severity": "fail",
+      "pattern": "\\bCLOUDFLARE_API_TOKEN\\s*=\\s*[^\\s\"']+",
+      "flags": "",
+      "redact": true,
+      "message": "Cloudflare API token environment assignment found.",
+      "recommendation": "Move real credentials out of files and keep examples placeholder-only."
+    },
+    {
+      "id": "secret-openai-key-env",
+      "category": "secret_shape",
+      "severity": "fail",
+      "pattern": "\\bOPENAI_API_KEY\\s*=\\s*[^\\s\"']+",
+      "flags": "",
+      "redact": true,
+      "message": "OpenAI API key environment assignment found.",
+      "recommendation": "Move real credentials out of files and keep examples placeholder-only."
+    },
+    {
+      "id": "secret-github-token-env",
+      "category": "secret_shape",
+      "severity": "fail",
+      "pattern": "\\bGITHUB_TOKEN\\s*=\\s*[^\\s\"']+",
+      "flags": "",
+      "redact": true,
+      "message": "GitHub token environment assignment found.",
+      "recommendation": "Move real credentials out of files and keep examples placeholder-only."
+    },
+    {
+      "id": "secret-npm-token-env",
+      "category": "secret_shape",
+      "severity": "fail",
+      "pattern": "\\bNPM_TOKEN\\s*=\\s*[^\\s\"']+",
+      "flags": "",
+      "redact": true,
+      "message": "npm token environment assignment found.",
+      "recommendation": "Move real credentials out of files and keep examples placeholder-only."
+    },
+    {
+      "id": "secret-private-key-reference",
+      "category": "secret_shape",
+      "severity": "fail",
+      "pattern": "\\bprivate_key\\b",
+      "flags": "i",
+      "redact": true,
+      "message": "Private key reference found.",
+      "recommendation": "Ensure no private key material is committed and keep examples clearly placeholder-only."
+    },
+    {
+      "id": "secret-dotenv-reference",
+      "category": "secret_shape",
+      "severity": "warn",
+      "pattern": "(^|[^A-Za-z0-9_-])\\.env(?![A-Za-z0-9_-])",
+      "flags": "i",
+      "scopes": ["content", "path"],
+      "redact": true,
+      "message": "Environment-file reference found.",
+      "recommendation": "Confirm the file is only an example or ignored local configuration."
+    },
+    {
+      "id": "private-buyer-target",
+      "category": "private_doc_leakage",
+      "severity": "warn",
+      "pattern": "\\bbuyer\\s+target\\b",
+      "flags": "i",
+      "message": "Private buyer-target language found.",
+      "recommendation": "Keep buyer targeting language out of public and package surfaces."
+    },
+    {
+      "id": "private-outreach-plan",
+      "category": "private_doc_leakage",
+      "severity": "warn",
+      "pattern": "\\boutreach\\s+plan\\b",
+      "flags": "i",
+      "message": "Private outreach-plan language found.",
+      "recommendation": "Keep outreach planning language out of public and package surfaces."
+    },
+    {
+      "id": "private-valuation",
+      "category": "private_doc_leakage",
+      "severity": "warn",
+      "pattern": "\\bvaluation\\b",
+      "flags": "i",
+      "message": "Private valuation language found.",
+      "recommendation": "Keep valuation language out of public and package surfaces."
+    },
+    {
+      "id": "private-acquisition-checklist",
+      "category": "private_doc_leakage",
+      "severity": "warn",
+      "pattern": "\\bacquisition\\s+checklist\\b",
+      "flags": "i",
+      "message": "Private acquisition checklist language found.",
+      "recommendation": "Keep acquisition checklist language out of public and package surfaces."
+    },
+    {
+      "id": "private-data-room",
+      "category": "private_doc_leakage",
+      "severity": "warn",
+      "pattern": "\\bprivate\\s+data\\s+room\\b",
+      "flags": "i",
+      "message": "Private data-room language found.",
+      "recommendation": "Keep private data-room references out of public and package surfaces."
+    },
+    {
+      "id": "private-pricing-strategy",
+      "category": "private_doc_leakage",
+      "severity": "warn",
+      "pattern": "\\bpricing\\s+strategy\\b",
+      "flags": "i",
+      "message": "Private pricing-strategy language found.",
+      "recommendation": "Keep pricing strategy language out of public and package surfaces."
+    },
+    {
+      "id": "private-sale-strategy",
+      "category": "private_doc_leakage",
+      "severity": "warn",
+      "pattern": "\\bsale\\s+strategy\\b",
+      "flags": "i",
+      "message": "Private sale-strategy language found.",
+      "recommendation": "Keep sale strategy language out of public and package surfaces."
+    },
+    {
+      "id": "private-negotiation",
+      "category": "private_doc_leakage",
+      "severity": "warn",
+      "pattern": "\\bnegotiation\\b",
+      "flags": "i",
+      "message": "Private negotiation language found.",
+      "recommendation": "Keep negotiation language out of public and package surfaces."
+    },
+    {
+      "id": "package-tgz-artifact",
+      "category": "package_boundary",
+      "severity": "fail",
+      "pattern": "\\.tgz\\b",
+      "flags": "i",
+      "scopes": ["path"],
+      "message": "Package artifact reference or file found.",
+      "recommendation": "Keep generated package tarballs out of source and npm package output."
+    },
+    {
+      "id": "package-backup-sql",
+      "category": "package_boundary",
+      "severity": "fail",
+      "pattern": "\\bbackup\\.sql\\b",
+      "flags": "i",
+      "scopes": ["content", "path"],
+      "message": "Database backup reference or file found.",
+      "recommendation": "Keep database backups out of source and npm package output."
+    },
+    {
+      "id": "package-dotenv-boundary",
+      "category": "package_boundary",
+      "severity": "fail",
+      "pattern": "(^|[^A-Za-z0-9_-])\\.env(?![A-Za-z0-9_-])",
+      "flags": "i",
+      "scopes": ["content", "path"],
+      "message": "Environment-file package boundary risk found.",
+      "recommendation": "Ensure environment files are ignored locally and excluded from package output."
+    },
+    {
+      "id": "package-api-key-boundary",
+      "category": "package_boundary",
+      "severity": "fail",
+      "pattern": "\\bapi[-_ ]key\\b",
+      "flags": "i",
+      "scopes": ["content", "path"],
+      "message": "API-key package boundary risk found.",
+      "recommendation": "Keep API key files and wording out of package surfaces unless clearly placeholder-only."
+    },
+    {
+      "id": "package-registry-token-boundary",
+      "category": "package_boundary",
+      "severity": "fail",
+      "pattern": "\\bregistry[-_ ]+token\\b",
+      "flags": "i",
+      "scopes": ["content", "path"],
+      "message": "Registry-token package boundary risk found.",
+      "recommendation": "Keep registry tokens out of source and package surfaces."
+    },
+    {
+      "id": "package-private-data-room-boundary",
+      "category": "package_boundary",
+      "severity": "fail",
+      "pattern": "\\bprivate\\s+data\\s+room\\b",
+      "flags": "i",
+      "scopes": ["content", "path"],
+      "message": "Private data-room package boundary risk found.",
+      "recommendation": "Keep private data-room material outside source and npm package output."
+    },
+    {
+      "id": "package-buyer-docs-boundary",
+      "category": "package_boundary",
+      "severity": "warn",
+      "pattern": "\\bbuyer\\s+docs\\b",
+      "flags": "i",
+      "scopes": ["content", "path"],
+      "message": "Buyer-docs package boundary risk found.",
+      "recommendation": "Keep buyer docs out of public and package surfaces."
+    }
+  ]
+}
