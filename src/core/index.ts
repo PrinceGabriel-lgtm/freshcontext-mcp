@@ -4,6 +4,7 @@ export { stampFreshness, toStructuredJSON, formatForLLM } from "./envelope.js";
 export { explainSignal } from "./explain.js";
 export { rankSignals, rankSignal, clampScore } from "./rank.js";
 export { calculateContextUtility } from "./utility.js";
+export { SIGNAL_CONTRACT_VERSION, normalizeSignal } from "./signal.js";
 export {
   canonicalizeHaPriContent,
   sha256Hex,
@@ -16,6 +17,11 @@ export type {
   AdapterResult,
   EnvelopeFormatOptions,
   SignalConfidence,
+  SignalDateConfidence,
+  SignalContractVersion,
+  SignalNormalizeOptions,
+  FreshContextSignalInput,
+  FreshContextSignal,
   FreshSignal,
   RankedSignal,
   RankOptions,

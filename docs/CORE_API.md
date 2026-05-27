@@ -44,6 +44,24 @@ import {
 
 These types describe the stable envelope and adapter result contract.
 
+## Signal Contract v1
+
+Signal Contract v1 is the additive Core shape for a retrieved signal before it is ranked, wrapped, stored, or passed to an agent workflow.
+
+Public exports:
+
+- `SIGNAL_CONTRACT_VERSION`
+- `normalizeSignal(input, options?)`
+- `FreshContextSignalInput`
+- `FreshContextSignal`
+- `SignalDateConfidence`
+- `SignalContractVersion`
+- `SignalNormalizeOptions`
+
+`published_at` is the canonical signal timestamp. `content_date` is accepted as an adapter/envelope compatibility alias. Normalization clears invalid or meaningfully future-dated timestamps, marks failed/error-looking content as `status: "failed"`, clamps `semantic_score` into `0..1`, and records normalization reasons.
+
+See [Signal Contract v1](./SIGNAL_CONTRACT.md).
+
 ## Public Ranking Primitives
 
 The ranking primitives are public, but consumers should treat their score scales carefully:

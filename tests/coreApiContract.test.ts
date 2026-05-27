@@ -7,9 +7,11 @@ import {
   explainSignal,
   formatForLLM,
   looksLikeFailedAdapterContent,
+  normalizeSignal,
   rankSignal,
   rankSignals,
   scoreLabel,
+  SIGNAL_CONTRACT_VERSION,
   stampFreshness,
   toStructuredJSON,
 } from "../src/core/index.js";
@@ -19,6 +21,8 @@ import type {
   ContextUtilityResult,
   EnvelopeFormatOptions,
   ExtractOptions,
+  FreshContextSignal,
+  FreshContextSignalInput,
   FreshContext,
   FreshSignal,
   HaPriV2Input,
@@ -56,6 +60,25 @@ test("public Core API imports compile and callable functions remain available", 
   assert.equal(typeof scoreLabel(freshnessScore), "string");
   assert.equal(looksLikeFailedAdapterContent(result.raw), false);
   assert.equal(looksLikeFailedAdapterContent("[Error] upstream timeout"), true);
+});
+
+test("public signal contract imports compile and normalize signals", () => {
+  const input: FreshContextSignalInput = {
+    source: "https://example.com/signal-contract",
+    source_type: "hackernews",
+    content_date: "2026-05-24T12:00:00.000Z",
+    retrieved_at: "2026-05-24T13:00:00.000Z",
+    semantic_score: 0.9,
+    freshness_confidence: "high",
+  };
+
+  const signal: FreshContextSignal = normalizeSignal(input);
+
+  assert.equal(SIGNAL_CONTRACT_VERSION, "freshcontext.signal.v1");
+  assert.equal(signal.contract_version, SIGNAL_CONTRACT_VERSION);
+  assert.equal(signal.published_at, input.content_date);
+  assert.equal(signal.date_confidence, "high");
+  assert.equal(signal.status, "success");
 });
 
 test("public ranking and utility imports compile and remain callable", () => {
