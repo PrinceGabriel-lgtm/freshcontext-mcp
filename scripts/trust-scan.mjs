@@ -146,8 +146,9 @@ async function main() {
     await scanSelectedPath(absolutePath, scanState);
   }
 
-  const report = generateReport(scanState);
-  writeReport(report, args.output, { showAllowed: args.showAllowed });
+  finalizeRepoMap(scanState);
+  const report = generateReport(scanState, { includeRepoMap: args.repoMap });
+  writeReport(report, args.output, { showAllowed: args.showAllowed, showRepoMap: args.repoMap });
 
   if (shouldFail(report.summary, args.failOn)) {
     process.exitCode = 1;
@@ -161,6 +162,7 @@ function parseArgs(argv) {
     failOn: null,
     help: false,
     packageGate: false,
+    repoMap: false,
     showAllowed: false
   };
 
@@ -184,6 +186,11 @@ function parseArgs(argv) {
 
     if (arg === "--package-gate") {
       result.packageGate = true;
+      continue;
+    }
+
+    if (arg === "--repo-map") {
+      result.repoMap = true;
       continue;
     }
 
@@ -261,6 +268,7 @@ Options:
   --json              Print JSON output.
   --markdown          Print Markdown output.
   --fail-on <level>   Exit nonzero for unallowlisted findings at warn or fail severity.
+  --repo-map          Include repo map summary in text/Markdown and full repo map in JSON.
   --show-allowed      Show full allowlisted finding details in text and Markdown output.
   --package-gate      Phase 3 placeholder. Prints a message and exits 0.
   -h, --help          Show this help.
@@ -369,7 +377,8 @@ async function loadPackageMetadata(rootDir) {
     return {
       name: typeof parsed.name === "string" ? parsed.name : null,
       version: typeof parsed.version === "string" ? parsed.version : null,
-      private: parsed.private === true
+      private: parsed.private === true,
+      scripts: parsed.scripts && typeof parsed.scripts === "object" && !Array.isArray(parsed.scripts) ? parsed.scripts : {}
     };
   } catch (error) {
     if (error.code === "ENOENT") {
@@ -436,6 +445,8 @@ function createScanState({ cwd, rules, allowlist, packageMetadata }) {
     rules,
     allowlist,
     packageMetadata,
+    repoMap: createRepoMap(packageMetadata),
+    repoMapSeenPaths: new Set(),
     seenFiles: new Set(),
     findings: [],
     stats: {
@@ -445,6 +456,29 @@ function createScanState({ cwd, rules, allowlist, packageMetadata }) {
       visitedDirectories: 0,
       scanErrors: 0
     }
+  };
+}
+
+function createRepoMap(packageMetadata) {
+  return {
+    root: ".",
+    packageManager: "unknown",
+    hasPackageJson: false,
+    hasReadme: false,
+    hasLicense: false,
+    hasSecurityPolicy: false,
+    publicDocs: [],
+    privateOrArchiveDocs: [],
+    sourceFiles: [],
+    testFiles: [],
+    configFiles: [],
+    packageBoundaryFiles: [],
+    generatedOrIgnoredFiles: [],
+    unknownFiles: [],
+    stats: {
+      totalMappedFiles: 0
+    },
+    packageMetadata
   };
 }
 
@@ -499,6 +533,7 @@ async function walkFiles(directoryPath, state) {
     if (entry.isDirectory()) {
       if (DEFAULT_SKIP_DIRS.has(entry.name)) {
         state.stats.skippedDirectories += 1;
+        recordRepoMapPath(displayPath(entryPath, state.cwd), "generated_or_ignored", state);
         continue;
       }
       await walkFiles(entryPath, state);
@@ -520,6 +555,7 @@ async function scanFile(filePath, state) {
 
   const relativePath = displayPath(filePath, state.cwd);
   const fileCategory = classifyFileCategory(relativePath);
+  recordRepoMapPath(relativePath, fileCategory, state);
   scanPathName(relativePath, fileCategory, state);
 
   if (SCANNER_INTERNAL_FILES.has(relativePath)) {
@@ -603,7 +639,11 @@ function classifyFileCategory(relativePath) {
   const basename = path.posix.basename(lowerPath);
   const ext = path.posix.extname(lowerPath);
 
-  if (isGeneratedOrIgnoredPath(lowerPath, basename)) {
+  if (isPackageBoundaryPath(lowerPath, basename)) {
+    return "package_boundary";
+  }
+
+  if (isGeneratedOrIgnoredPath(lowerPath)) {
     return "generated_or_ignored";
   }
 
@@ -630,20 +670,16 @@ function classifyFileCategory(relativePath) {
   return "unknown";
 }
 
-function isGeneratedOrIgnoredPath(lowerPath, basename) {
+function isPackageBoundaryPath(lowerPath, basename) {
+  return basename === "backup.sql" || (basename.startsWith("backup-") && basename.endsWith(".sql")) || basename.endsWith(".tgz");
+}
+
+function isGeneratedOrIgnoredPath(lowerPath) {
   if (lowerPath.startsWith("dist/") || lowerPath.startsWith("build/") || lowerPath.startsWith("coverage/") || lowerPath.startsWith(".wrangler/")) {
     return true;
   }
 
-  if (basename === ".api-key.local.txt" || basename === "backup.sql" || basename.endsWith(".local.txt") || basename.endsWith(".tgz")) {
-    return true;
-  }
-
-  if (basename.startsWith(".mcpregistry_") || (basename.startsWith("backup-") && basename.endsWith(".sql"))) {
-    return true;
-  }
-
-  return false;
+  return lowerPath === ".api-key.local.txt" || lowerPath.endsWith(".local.txt") || path.posix.basename(lowerPath).startsWith(".mcpregistry_");
 }
 
 function isPrivateOrArchivePath(lowerPath, basename) {
@@ -672,6 +708,149 @@ function isConfigPath(lowerPath, basename, ext) {
   }
 
   return basename === "wrangler.toml" || basename === "wrangler.jsonc" || ext === ".lock";
+}
+
+function recordRepoMapPath(relativePath, fileCategory, state) {
+  const normalized = normalizePath(relativePath);
+  if (state.repoMapSeenPaths.has(normalized)) {
+    return;
+  }
+  state.repoMapSeenPaths.add(normalized);
+
+  const target = repoMapArrayForCategory(fileCategory);
+  if (target) {
+    state.repoMap[target].push(normalized);
+  }
+
+  state.repoMap.stats.totalMappedFiles += 1;
+}
+
+function repoMapArrayForCategory(fileCategory) {
+  return {
+    public_doc: "publicDocs",
+    private_or_archive_doc: "privateOrArchiveDocs",
+    source: "sourceFiles",
+    test: "testFiles",
+    config: "configFiles",
+    package_boundary: "packageBoundaryFiles",
+    generated_or_ignored: "generatedOrIgnoredFiles",
+    unknown: "unknownFiles"
+  }[fileCategory];
+}
+
+function finalizeRepoMap(state) {
+  const repoMap = state.repoMap;
+  for (const key of [
+    "publicDocs",
+    "privateOrArchiveDocs",
+    "sourceFiles",
+    "testFiles",
+    "configFiles",
+    "packageBoundaryFiles",
+    "generatedOrIgnoredFiles",
+    "unknownFiles"
+  ]) {
+    repoMap[key].sort((a, b) => a.localeCompare(b));
+  }
+
+  repoMap.hasPackageJson = repoMap.configFiles.includes("package.json");
+  repoMap.hasReadme = hasCaseInsensitivePath(state.repoMapSeenPaths, "README.md");
+  repoMap.hasLicense = hasCaseInsensitivePath(state.repoMapSeenPaths, "LICENSE");
+  repoMap.hasSecurityPolicy = hasCaseInsensitivePath(state.repoMapSeenPaths, "SECURITY.md");
+  repoMap.packageManager = detectPackageManager(state.repoMapSeenPaths, repoMap.hasPackageJson);
+
+  addRepoMapFindings(state);
+}
+
+function hasCaseInsensitivePath(paths, targetPath) {
+  const target = normalizePath(targetPath).toLowerCase();
+  for (const repoPath of paths) {
+    if (repoPath.toLowerCase() === target) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function detectPackageManager(paths, hasPackageJson) {
+  if (hasCaseInsensitivePath(paths, "pnpm-lock.yaml")) {
+    return "pnpm";
+  }
+  if (hasCaseInsensitivePath(paths, "yarn.lock")) {
+    return "yarn";
+  }
+  if (hasCaseInsensitivePath(paths, "package-lock.json") || hasPackageJson) {
+    return "npm";
+  }
+  return "unknown";
+}
+
+function addRepoMapFindings(state) {
+  const repoMap = state.repoMap;
+
+  if (!repoMap.hasReadme) {
+    state.findings.push(createRepoMapFinding({
+      ruleId: "repo-map-missing-readme",
+      severity: "warn",
+      message: "Repository is missing README.md.",
+      recommendation: "Add a README.md or confirm this path is not a package/release root."
+    }));
+  }
+
+  if (!repoMap.hasLicense) {
+    state.findings.push(createRepoMapFinding({
+      ruleId: "repo-map-missing-license",
+      severity: "warn",
+      message: "Repository is missing a root LICENSE file.",
+      recommendation: "Add a root LICENSE file or document why this package has no license file."
+    }));
+  }
+
+  if (!repoMap.hasSecurityPolicy) {
+    state.findings.push(createRepoMapFinding({
+      ruleId: "repo-map-missing-security-policy",
+      severity: "info",
+      message: "Repository is missing SECURITY.md.",
+      recommendation: "Add SECURITY.md when public vulnerability reporting instructions are needed."
+    }));
+  }
+
+  const missingTrustScripts = expectedTrustScripts().filter((scriptName) => !Object.hasOwn(state.packageMetadata?.scripts ?? {}, scriptName));
+  if (repoMap.hasPackageJson && missingTrustScripts.length > 0) {
+    state.findings.push(createRepoMapFinding({
+      ruleId: "repo-map-missing-trust-scripts",
+      severity: "warn",
+      message: `package.json is missing expected trust scanner scripts: ${missingTrustScripts.join(", ")}.`,
+      recommendation: "Add the expected trust scanner npm scripts so the gate is easy to run."
+    }));
+  }
+
+  const suspiciousPublicDocs = repoMap.publicDocs.filter((repoPath) => hasPrivateArchivePathHint(repoPath));
+  if (suspiciousPublicDocs.length > 0) {
+    state.findings.push(createRepoMapFinding({
+      ruleId: "repo-map-suspicious-public-doc-path",
+      severity: "warn",
+      message: `Public docs include paths with private/archive naming: ${suspiciousPublicDocs.slice(0, 5).join(", ")}.`,
+      recommendation: "Move private/archive docs out of public docs or tune classification if these are intentional."
+    }));
+  }
+
+  if (repoMap.packageBoundaryFiles.length > 0) {
+    state.findings.push(createRepoMapFinding({
+      ruleId: "repo-map-package-boundary-files-present",
+      severity: "warn",
+      message: `Package-boundary risk files are present: ${repoMap.packageBoundaryFiles.slice(0, 5).join(", ")}.`,
+      recommendation: "Review these files before publishing and verify package output excludes private or generated artifacts."
+    }));
+  }
+}
+
+function expectedTrustScripts() {
+  return ["trust:scan", "trust:scan:json", "trust:scan:markdown"];
+}
+
+function hasPrivateArchivePathHint(repoPath) {
+  return /(^|\/|[-_.])(private|archive|session|buyer|sale|handoff|data-room)(\/|[-_.]|$)/iu.test(repoPath);
 }
 
 function scanPathName(relativePath, fileCategory, state) {
@@ -772,13 +951,6 @@ function resolveEffectiveSeverity(rule, fileCategory) {
       return {
         effectiveSeverity: "info",
         severityReason: "Downgraded because the package-boundary match is in configuration or ignore metadata."
-      };
-    }
-
-    if (fileCategory === "package_boundary") {
-      return {
-        effectiveSeverity: "fail",
-        severityReason: "Package-boundary output is fail-level when Phase 3 package gate supplies this category."
       };
     }
 
@@ -924,16 +1096,39 @@ function createSyntheticFinding({ ruleId, severity, path: findingPath, fileCateg
   };
 }
 
-function generateReport(state) {
+function createRepoMapFinding({ ruleId, severity, message, recommendation }) {
+  return {
+    ruleId,
+    category: "repo_map",
+    severity,
+    effectiveSeverity: severity,
+    severityReason: "Repo-map project-level finding severity retained for Phase 2A.",
+    fileCategory: "repo_map",
+    path: ".",
+    line: 0,
+    match: "",
+    message,
+    recommendation,
+    allowed: false,
+    allowReason: undefined
+  };
+}
+
+function generateReport(state, options = {}) {
   const sortedFindings = sortFindings(state.findings);
   const summary = generateSummaryStats(sortedFindings, state.stats);
-
-  return {
+  const report = {
     tool: TOOL_NAME,
     package: state.packageMetadata,
     summary,
     findings: sortedFindings
   };
+
+  if (options.includeRepoMap) {
+    report.repoMap = state.repoMap;
+  }
+
+  return report;
 }
 
 function generateSummaryStats(findings, stats) {
@@ -1052,6 +1247,11 @@ function formatHuman(report, options = {}) {
     ""
   ];
 
+  if (options.showRepoMap && report.repoMap) {
+    lines.push(...formatHumanRepoMap(report.repoMap));
+    lines.push("");
+  }
+
   lines.push(...formatHumanGroup("Findings by effective severity", report.summary.findingsByEffectiveSeverity));
   lines.push("");
   lines.push(...formatHumanGroup("Findings by category", report.summary.findingsByCategory));
@@ -1098,7 +1298,15 @@ function formatMarkdown(report, options = {}) {
     "## Summary",
     "",
     ...formatSummaryLines(report.summary).map((line) => `- ${line}`),
-    "",
+    ""
+  ];
+
+  if (options.showRepoMap && report.repoMap) {
+    lines.push(...formatMarkdownRepoMap(report.repoMap));
+    lines.push("");
+  }
+
+  lines.push(
     "## Findings by Effective Severity",
     "",
     ...formatMarkdownGroup(report.summary.findingsByEffectiveSeverity),
@@ -1125,7 +1333,7 @@ function formatMarkdown(report, options = {}) {
     "",
     "## Findings",
     ""
-  ];
+  );
 
   if (visibleFindings.length === 0) {
     lines.push(report.findings.length === 0 ? "No findings." : "No unallowlisted findings. Use `--show-allowed` to display allowlisted details.");
@@ -1161,6 +1369,45 @@ function formatSummaryLines(summary) {
     `Unallowed findings: ${summary.unallowedFindings}`,
     `Highest severity: ${summary.highestSeverity}`,
     `Downgraded findings: ${summary.downgradedFindings}`
+  ];
+}
+
+function formatHumanRepoMap(repoMap) {
+  return [
+    "Repo map:",
+    `  Package manager: ${repoMap.packageManager}`,
+    `  Has package.json: ${repoMap.hasPackageJson}`,
+    `  Has README: ${repoMap.hasReadme}`,
+    `  Has LICENSE: ${repoMap.hasLicense}`,
+    `  Has SECURITY.md: ${repoMap.hasSecurityPolicy}`,
+    `  Public docs: ${repoMap.publicDocs.length}`,
+    `  Private/archive docs: ${repoMap.privateOrArchiveDocs.length}`,
+    `  Source files: ${repoMap.sourceFiles.length}`,
+    `  Test files: ${repoMap.testFiles.length}`,
+    `  Config files: ${repoMap.configFiles.length}`,
+    `  Package-boundary risk files: ${repoMap.packageBoundaryFiles.length}`,
+    `  Generated/ignored files: ${repoMap.generatedOrIgnoredFiles.length}`,
+    `  Unknown files: ${repoMap.unknownFiles.length}`
+  ];
+}
+
+function formatMarkdownRepoMap(repoMap) {
+  return [
+    "## Repo Map",
+    "",
+    `- Package manager: ${repoMap.packageManager}`,
+    `- Has package.json: ${repoMap.hasPackageJson}`,
+    `- Has README: ${repoMap.hasReadme}`,
+    `- Has LICENSE: ${repoMap.hasLicense}`,
+    `- Has SECURITY.md: ${repoMap.hasSecurityPolicy}`,
+    `- Public docs: ${repoMap.publicDocs.length}`,
+    `- Private/archive docs: ${repoMap.privateOrArchiveDocs.length}`,
+    `- Source files: ${repoMap.sourceFiles.length}`,
+    `- Test files: ${repoMap.testFiles.length}`,
+    `- Config files: ${repoMap.configFiles.length}`,
+    `- Package-boundary risk files: ${repoMap.packageBoundaryFiles.length}`,
+    `- Generated/ignored files: ${repoMap.generatedOrIgnoredFiles.length}`,
+    `- Unknown files: ${repoMap.unknownFiles.length}`
   ];
 }
 
