@@ -38,7 +38,10 @@
     "inspect": "npx @modelcontextprotocol/inspector tsx src/server.ts",
     "example:ha-pri-v2": "tsx examples/ha-pri-v2-example.ts",
     "smoke:stdio": "node scripts/smoke-stdio.mjs",
-    "test": "tsx --test tests/freshnessStamp.test.ts tests/hackernews.test.ts tests/core.test.ts tests/rank.test.ts tests/workerEnvelope.test.ts tests/workerCoreEnvelopeParity.test.ts tests/coreEnvelopeOptions.test.ts tests/mathSpine.test.ts tests/coreApiContract.test.ts"
+    "trust:scan": "node scripts/trust-scan.mjs",
+    "trust:scan:json": "node scripts/trust-scan.mjs --json",
+    "trust:scan:markdown": "node scripts/trust-scan.mjs --markdown",
+    "test": "tsx --test tests/freshnessStamp.test.ts tests/hackernews.test.ts tests/core.test.ts tests/rank.test.ts tests/workerEnvelope.test.ts tests/workerCoreEnvelopeParity.test.ts tests/coreEnvelopeOptions.test.ts tests/mathSpine.test.ts tests/coreApiContract.test.ts tests/trustScan.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
