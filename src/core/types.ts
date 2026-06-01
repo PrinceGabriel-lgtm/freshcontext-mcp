@@ -161,3 +161,34 @@ export interface HaPriV2VerificationResult {
   actual: string | null;
   reasons: string[];
 }
+
+export interface CoreSignalProvenanceOptions {
+  resultId?: string;
+  semanticFingerprint?: string | null;
+  engineVersion?: string;
+}
+
+export interface CoreSignalEnvelopeResult {
+  context: FreshContext;
+  text: string;
+  structured: object;
+}
+
+export interface CoreSignalEvaluationOptions extends SignalNormalizeOptions, RankOptions {
+  includeEnvelope?: boolean;
+  envelopeMaxLength?: number;
+  envelopeFormat?: EnvelopeFormatOptions;
+  includeProvenance?: boolean;
+  provenance?: CoreSignalProvenanceOptions;
+}
+
+export interface CoreSignalEvaluationResult {
+  signal: FreshContextSignal;
+  freshness_score: number | null;
+  utility: ContextUtilityResult;
+  ranked: RankedSignal;
+  explanation: string;
+  envelope?: CoreSignalEnvelopeResult;
+  provenance?: HaPriV2Result;
+  reasons: string[];
+}

@@ -5,6 +5,8 @@ import {
   calculateHaPriV2,
   calculateFreshnessScore,
   explainSignal,
+  evaluateSignal,
+  evaluateSignals,
   formatForLLM,
   looksLikeFailedAdapterContent,
   normalizeSignal,
@@ -19,6 +21,8 @@ import type {
   AdapterResult,
   ContextUtilityInput,
   ContextUtilityResult,
+  CoreSignalEvaluationOptions,
+  CoreSignalEvaluationResult,
   EnvelopeFormatOptions,
   ExtractOptions,
   FreshContextSignal,
@@ -125,5 +129,37 @@ test("public ranking and utility imports compile and remain callable", () => {
   const haPri: HaPriV2Result = calculateHaPriV2(haPriInput);
 
   assert.match(haPri.haPriSigV2, /^[a-f0-9]{64}$/);
+});
+
+test("public Core evaluation pipeline imports compile and remain callable", () => {
+  const options: CoreSignalEvaluationOptions = {
+    now: "2026-05-24T13:00:00.000Z",
+    includeEnvelope: true,
+  };
+  const evaluation: CoreSignalEvaluationResult = evaluateSignal({
+    source: "https://example.com/evaluate",
+    source_type: "hackernews",
+    content: "Public Core evaluation contract content",
+    published_at: "2026-05-24T12:00:00.000Z",
+    retrieved_at: "2026-05-24T13:00:00.000Z",
+    semantic_score: 0.8,
+    date_confidence: "high",
+  }, options);
+  const evaluations: CoreSignalEvaluationResult[] = evaluateSignals([
+    {
+      source: "https://example.com/evaluate",
+      source_type: "hackernews",
+      content: "Public Core evaluation contract content",
+      published_at: "2026-05-24T12:00:00.000Z",
+      retrieved_at: "2026-05-24T13:00:00.000Z",
+      semantic_score: 0.8,
+      date_confidence: "high",
+    },
+  ], options);
+
+  assert.equal(typeof evaluation.explanation, "string");
+  assert.equal(typeof evaluation.utility.score, "number");
+  assert.ok(evaluation.envelope);
+  assert.equal(evaluations.length, 1);
 });
 

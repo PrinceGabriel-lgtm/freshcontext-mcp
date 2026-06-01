@@ -1,6 +1,6 @@
 # FreshContext Core API
 
-FreshContext Core is the reusable engine layer in the current integrated MCP/Core package. It owns envelope creation, freshness scoring, failure honesty, rank/explain primitives, and the experimental context-utility primitive.
+FreshContext Core is the reusable engine layer in the current integrated MCP/Core package. It owns signal normalization, envelope creation, freshness scoring, failure honesty, rank/explain primitives, the context-utility primitive, and pure provenance helpers.
 
 MCP, Worker HTTP, future REST, and future CLI/SDK surfaces should use Core as the contract center instead of redefining freshness or envelope behavior per host.
 
@@ -33,6 +33,25 @@ import {
 ### Guards
 
 - `looksLikeFailedAdapterContent(raw)` detects empty, security, timeout, and error-like adapter output so failed content is not stamped as fresh high-confidence context.
+
+## Core Evaluation Pipeline
+
+The Core evaluation pipeline is the pure orchestration layer over the existing primitives.
+
+Public exports:
+
+- `evaluateSignal(input, options?)`
+- `evaluateSignals(inputs, options?)`
+- `CoreSignalEvaluationOptions`
+- `CoreSignalEvaluationResult`
+- `CoreSignalEnvelopeResult`
+- `CoreSignalProvenanceOptions`
+
+`evaluateSignal` normalizes a signal, applies timestamp/failure guards, computes `freshness_score`, computes context-conditioned utility, ranks/explains the signal, optionally creates a FreshContext envelope, and optionally prepares Ha-Pri v2 provenance material.
+
+It does not fetch, cache, write D1, inspect Worker bindings, know MCP tool schemas, deploy, or publish. Hosts decide whether to store, cache, transmit, or expose the returned result.
+
+`evaluateSignals` evaluates each input and returns evaluations sorted by existing `rankSignal` final score, preserving input order when scores tie. Context utility is returned as a sidecar and does not replace `final_score`.
 
 ### Stable Types
 
@@ -92,7 +111,21 @@ Experimental exports:
 - `ContextUtilityInput`
 - `ContextUtilityResult`
 
-These are part of Math Spine Phase 1. Treat them as experimental until a later math integration pass decides how they should affect production ranking or external APIs.
+These are pure Core math. They are now connected inside `evaluateSignal` as sidecar utility output, but they are not production-wired into MCP ranking, Worker feeds, Store scoring, or runtime behavior.
+
+## Provenance Helpers
+
+Ha-Pri v2 is available as pure Core helper functionality:
+
+- `canonicalizeHaPriContent`
+- `sha256Hex`
+- `calculateHaPriV2`
+- `verifyHaPriV2`
+- `HaPriV2Input`
+- `HaPriV2Result`
+- `HaPriV2VerificationResult`
+
+`evaluateSignal` can optionally prepare Ha-Pri v2 material when `includeProvenance` is set and required input material is present. Core does not persist provenance, add D1 columns, verify rows on read, reject rows, or replace Worker Ha-Pri v1 behavior.
 
 ## Internal, Policy, and Compatibility Exports
 
@@ -116,7 +149,6 @@ Core does not own:
 - Cache metadata injection
 - D1, feed, or cron behavior
 - Store/feed scoring and provenance persistence
-- Ha-Pri v2
 - Hosted dashboard, API, deployment, or runtime concerns
 
 Hosts may wrap Core outputs with their own transport, cache, session, rate-limit, or persistence metadata, but they should not fork the Core envelope and freshness contract without an explicit compatibility reason.
