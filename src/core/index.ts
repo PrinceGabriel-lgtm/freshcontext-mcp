@@ -5,6 +5,7 @@ export { explainSignal } from "./explain.js";
 export { rankSignals, rankSignal, clampScore } from "./rank.js";
 export { calculateContextUtility } from "./utility.js";
 export { SIGNAL_CONTRACT_VERSION, normalizeSignal } from "./signal.js";
+export { evaluateSignal, evaluateSignals } from "./pipeline.js";
 export {
   canonicalizeHaPriContent,
   sha256Hex,
@@ -33,4 +34,8 @@ export type {
   HaPriV2Result,
   HaPriVerificationStatus,
   HaPriV2VerificationResult,
+  CoreSignalProvenanceOptions,
+  CoreSignalEnvelopeResult,
+  CoreSignalEvaluationOptions,
+  CoreSignalEvaluationResult,
 } from "./types.js";
