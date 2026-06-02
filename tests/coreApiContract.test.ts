@@ -9,6 +9,8 @@ import {
   evaluateSignal,
   evaluateSignals,
   formatForLLM,
+  interpretEvaluation,
+  interpretEvaluations,
   listSourceProfiles,
   looksLikeFailedAdapterContent,
   normalizeSignal,
@@ -23,6 +25,8 @@ import type {
   AdapterResult,
   ContextUtilityInput,
   ContextUtilityResult,
+  ContextDecisionOptions,
+  ContextDecisionResult,
   CoreSignalEvaluationOptions,
   CoreSignalEvaluationResult,
   EnvelopeFormatOptions,
@@ -175,4 +179,28 @@ test("public source profile imports compile and remain callable", () => {
   assert.ok(profile);
   assert.equal(profile.profile_id, profileId);
   assert.ok(profiles.length >= 10);
+});
+
+test("public decision helper imports compile and remain callable", () => {
+  const evaluation: CoreSignalEvaluationResult = evaluateSignal({
+    source: "https://example.com/decision",
+    source_type: "arxiv",
+    content: "Public Core decision helper contract content",
+    published_at: "2026-05-24T12:00:00.000Z",
+    retrieved_at: "2026-05-24T13:00:00.000Z",
+    semantic_score: 0.9,
+    date_confidence: "high",
+  }, {
+    now: "2026-05-24T13:00:00.000Z",
+  });
+  const options: ContextDecisionOptions = {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+  };
+  const decision: ContextDecisionResult = interpretEvaluation(evaluation, options);
+  const decisions: ContextDecisionResult[] = interpretEvaluations([evaluation], options);
+
+  assert.equal(typeof decision.decision, "string");
+  assert.equal(typeof decision.meaning, "string");
+  assert.equal(decisions.length, 1);
 });

@@ -101,6 +101,46 @@ Public exports:
 
 They reframe the 21 MCP tools as reference adapters and source-profile examples instead of the product identity. They do not implement `retrieve(...)`, Operator mode, adapter selection, crawling, local file search, or any host/runtime behavior.
 
+## Decision Helper
+
+The decision helper translates a Core evaluation result into user-facing action meaning.
+
+Public exports:
+
+- `interpretEvaluation(evaluation, options?)`
+- `interpretEvaluations(evaluations, options?)`
+- `ContextDecision`
+- `IntentProfileId`
+- `ContextDecisionOptions`
+- `ContextDecisionResult`
+
+Supported decisions:
+
+- `use_first`
+- `cite_as_primary`
+- `cite_as_supporting`
+- `use_as_background`
+- `needs_verification`
+- `needs_refresh`
+- `watch_only`
+- `exclude`
+
+Supported intent profiles:
+
+- `citation_check`
+- `student_research`
+- `developer_adoption`
+- `job_search`
+- `market_watch`
+- `business_due_diligence`
+- `medical_literature_triage`
+
+The helper consumes existing `CoreSignalEvaluationResult` fields plus optional Source Profile metadata. It does not change `evaluateSignal`, `evaluateSignals`, `rankSignal`, ranking order, freshness math, utility math, envelopes, provenance, or host behavior.
+
+FreshContext decisions judge citation readiness, context usefulness, freshness, traceability, and uncertainty. They do not certify truth or provide legal, medical, tax, employment, academic, or investment advice.
+
+Demo output will be updated separately so presentation stays separate from Core decision logic.
+
 ## Public Ranking Primitives
 
 The ranking primitives are public, but consumers should treat their score scales carefully:
