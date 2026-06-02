@@ -171,6 +171,34 @@ test("evaluateSignals sorts by ranked score and preserves stable tie ordering", 
   assert.equal(ranked[3].signal.id, "first");
 });
 
+test("evaluateSignals sorting follows ranked final_score, not utility sidecar score", () => {
+  const highRankLowUtility = baseInput({
+    id: "high-rank-low-utility",
+    source: "https://example.com/high-rank-low-utility",
+    semantic_score: 0.95,
+    status: "stale",
+  });
+  const lowerRankHighUtility = baseInput({
+    id: "lower-rank-high-utility",
+    source: "https://example.com/lower-rank-high-utility",
+    semantic_score: 0.7,
+    status: "success",
+  });
+
+  const evaluated = evaluateSignals([lowerRankHighUtility, highRankLowUtility], { now: NOW });
+  const highRank = evaluated.find((item) => item.signal.id === "high-rank-low-utility");
+  const lowerRank = evaluated.find((item) => item.signal.id === "lower-rank-high-utility");
+
+  assert.ok(highRank);
+  assert.ok(lowerRank);
+  assert.ok(highRank.ranked.final_score > lowerRank.ranked.final_score);
+  assert.ok(highRank.utility.score < lowerRank.utility.score);
+  assert.equal(evaluated[0].signal.id, "high-rank-low-utility");
+  assert.equal(evaluated[1].signal.id, "lower-rank-high-utility");
+  assert.equal(typeof highRank.utility.score, "number");
+  assert.equal(typeof lowerRank.utility.score, "number");
+});
+
 test("evaluateSignal does not mutate caller-owned inputs", () => {
   const input = baseInput({ metadata: { nested: { value: 1 } } });
   const before = JSON.stringify(input);
