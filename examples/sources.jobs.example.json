@@ -1,0 +1,42 @@
+{
+  "profile": "jobs_opportunities",
+  "intent": "job_search",
+  "signals": [
+    {
+      "title": "Fresh remote AI context engineer role",
+      "content": "Sample listing for a remote AI context engineer role focused on retrieval quality, agent workflows, and TypeScript tooling. Application window is open this week.",
+      "source": "https://jobs.example.com/freshcontext-ai-context-engineer",
+      "source_type": "jobs",
+      "published_at": "2026-05-23T09:00:00.000Z",
+      "retrieved_at": "2026-05-24T13:00:00.000Z",
+      "semantic_score": 0.93
+    },
+    {
+      "title": "Older platform engineer opening with agent tooling overlap",
+      "content": "Sample listing for a platform engineer role mentioning agent tooling and internal knowledge systems, but the posting is several months old.",
+      "source": "https://jobs.example.com/older-platform-agent-tooling-role",
+      "source_type": "jobs",
+      "published_at": "2026-01-10T12:00:00.000Z",
+      "retrieved_at": "2026-05-24T13:00:00.000Z",
+      "semantic_score": 0.78
+    },
+    {
+      "title": "Relevant ML research assistant listing with missing date",
+      "content": "Sample listing for an ML research assistant role that looks relevant, but the source does not expose a posting date.",
+      "source": "https://jobs.example.com/ml-research-assistant-no-date",
+      "source_type": "jobs",
+      "published_at": null,
+      "retrieved_at": "2026-05-24T13:00:00.000Z",
+      "semantic_score": 0.7
+    },
+    {
+      "title": "Blocked job board result",
+      "content": "[ERROR] job board blocked request while loading listing details",
+      "source": "https://jobs.example.com/blocked-listing",
+      "source_type": "jobs",
+      "published_at": "2026-05-22T10:00:00.000Z",
+      "retrieved_at": "2026-05-24T13:00:00.000Z",
+      "semantic_score": 0.3
+    }
+  ]
+}

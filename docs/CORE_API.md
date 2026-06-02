@@ -59,6 +59,7 @@ Local demo:
 
 ```bash
 npm run demo:evaluate:file -- examples/sources.academic.example.json
+npm run demo:evaluate:file -- examples/sources.jobs.example.json
 ```
 
 The demo reads caller-provided JSON with `profile`, `intent`, and `signals`, then returns decision-first output. It does not fetch URLs, crawl, read folders, deploy REST, or implement Operator mode.
