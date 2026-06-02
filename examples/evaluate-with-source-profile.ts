@@ -1,8 +1,10 @@
 import {
   evaluateSignals,
   getSourceProfile,
+  interpretEvaluations,
 } from "../src/core/index.js";
 import type {
+  ContextDecisionResult,
   CoreSignalEvaluationResult,
   FreshContextSignalInput,
 } from "../src/core/index.js";
@@ -77,17 +79,29 @@ function score(value: number): string {
   return value.toFixed(3);
 }
 
-function printResult(result: CoreSignalEvaluationResult, index: number): void {
+function printResult(
+  result: CoreSignalEvaluationResult,
+  decision: ContextDecisionResult,
+  index: number
+): void {
   console.log(`${index + 1}. ${result.signal.title ?? "Untitled source"}`);
-  console.log(`   Source: ${result.signal.source}`);
+  console.log(`   Decision: ${decision.label}`);
+  console.log(`   Meaning: ${decision.meaning}`);
+  console.log(`   Action: ${decision.action}`);
+
+  if (decision.warnings.length > 0) {
+    console.log(`   Warnings: ${decision.warnings.join("; ")}`);
+  }
+
   console.log(`   Freshness: ${pct(result.freshness_score)}`);
-  console.log(`   Final score: ${score(result.ranked.final_score)}`);
+  console.log(`   Rank score: ${score(result.ranked.final_score)}`);
   console.log(`   Utility: ${score(result.utility.score)}`);
   console.log(`   Confidence: ${result.ranked.confidence}`);
+  console.log(`   Source: ${result.signal.source}`);
   console.log(`   Why: ${result.explanation}`);
 
   if (result.reasons.length > 0) {
-    console.log(`   Warnings: ${result.reasons.join("; ")}`);
+    console.log(`   Signals: ${result.reasons.join("; ")}`);
   }
   console.log("");
 }
@@ -96,9 +110,13 @@ const evaluated = evaluateSignals(candidates, {
   now: NOW,
   defaultSourceType: profile.source_types[0],
 });
+const decisions = interpretEvaluations(evaluated, {
+  sourceProfile: profile,
+  intentProfile: "citation_check",
+});
 
 console.log("FreshContext local evaluate demo");
-console.log("Raw candidate context goes in; FreshContext ranks what deserves to reach the model first.");
+console.log("Raw candidate context goes in; FreshContext decides what should be cited, verified, refreshed, or excluded.");
 console.log("");
 console.log(`Profile: ${profile.profile_id}`);
 console.log(`Purpose: ${profile.purpose}`);
@@ -107,7 +125,7 @@ console.log(`Date policy: ${profile.date_policy}`);
 console.log(`Failure policy: ${profile.failure_policy}`);
 console.log(`Half-life: ${profile.half_life_hours} hours`);
 console.log("");
-console.log("Ranked context:");
+console.log("Decision-ready context:");
 console.log("");
 
-evaluated.forEach(printResult);
+evaluated.forEach((result, index) => printResult(result, decisions[index], index));
