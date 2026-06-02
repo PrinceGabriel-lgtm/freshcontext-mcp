@@ -53,6 +53,8 @@ It does not fetch, cache, write D1, inspect Worker bindings, know MCP tool schem
 
 `evaluateSignals` evaluates each input and returns evaluations sorted by existing `rankSignal` final score, preserving input order when scores tie. Context utility is returned as a sidecar and does not replace `final_score`.
 
+Context utility is returned as sidecar output in the current pipeline; it does not replace or modify the default `rankSignal` / `evaluateSignals` ordering. A future pass may add an explicit utility-weighted ranking mode.
+
 ### Stable Types
 
 - `FreshContext`
