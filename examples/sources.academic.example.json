@@ -1,0 +1,42 @@
+{
+  "profile": "academic_research",
+  "intent": "citation_check",
+  "signals": [
+    {
+      "title": "Fresh benchmark for temporal retrieval in agent systems",
+      "content": "A recent paper about temporal retrieval evaluation for agent context systems.",
+      "source": "https://arxiv.org/abs/2605.12345",
+      "source_type": "arxiv",
+      "published_at": "2026-05-20T09:00:00.000Z",
+      "retrieved_at": "2026-05-24T13:00:00.000Z",
+      "semantic_score": 0.94
+    },
+    {
+      "title": "Foundational study on information aging and relevance",
+      "content": "Older but highly relevant research about how information value changes over time.",
+      "source": "https://scholar.example.edu/foundational-context-aging",
+      "source_type": "google_scholar",
+      "published_at": "2022-03-15T00:00:00.000Z",
+      "retrieved_at": "2026-05-24T13:00:00.000Z",
+      "semantic_score": 0.88
+    },
+    {
+      "title": "Useful context notes with missing publication date",
+      "content": "Relevant notes, but the publication date is missing and should be treated cautiously.",
+      "source": "https://research.example.org/context-notes",
+      "source_type": "google_scholar",
+      "published_at": null,
+      "retrieved_at": "2026-05-24T13:00:00.000Z",
+      "semantic_score": 0.62
+    },
+    {
+      "title": "Blocked source that should not look fresh",
+      "content": "[ERROR] upstream timeout while retrieving paper metadata",
+      "source": "https://research.example.org/blocked-paper",
+      "source_type": "arxiv",
+      "published_at": "2026-05-21T09:00:00.000Z",
+      "retrieved_at": "2026-05-24T13:00:00.000Z",
+      "semantic_score": 0.2
+    }
+  ]
+}

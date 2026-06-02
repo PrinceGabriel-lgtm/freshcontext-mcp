@@ -38,6 +38,7 @@
     "inspect": "npx @modelcontextprotocol/inspector tsx src/server.ts",
     "example:ha-pri-v2": "tsx examples/ha-pri-v2-example.ts",
     "demo:evaluate": "tsx examples/evaluate-with-source-profile.ts",
+    "demo:evaluate:file": "tsx examples/evaluate-file.ts examples/sources.academic.example.json",
     "smoke:stdio": "node scripts/smoke-stdio.mjs",
     "trust:scan": "node scripts/trust-scan.mjs",
     "trust:scan:json": "node scripts/trust-scan.mjs --json",
