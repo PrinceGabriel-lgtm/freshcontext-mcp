@@ -41,7 +41,7 @@
     "trust:scan": "node scripts/trust-scan.mjs",
     "trust:scan:json": "node scripts/trust-scan.mjs --json",
     "trust:scan:markdown": "node scripts/trust-scan.mjs --markdown",
-    "test": "tsx --test tests/freshnessStamp.test.ts tests/hackernews.test.ts tests/core.test.ts tests/rank.test.ts tests/workerEnvelope.test.ts tests/workerCoreEnvelopeParity.test.ts tests/coreEnvelopeOptions.test.ts tests/mathSpine.test.ts tests/coreApiContract.test.ts tests/corePipeline.test.ts tests/restHandler.test.ts tests/trustScan.test.mjs"
+    "test": "tsx --test tests/freshnessStamp.test.ts tests/hackernews.test.ts tests/core.test.ts tests/rank.test.ts tests/workerEnvelope.test.ts tests/workerCoreEnvelopeParity.test.ts tests/coreEnvelopeOptions.test.ts tests/mathSpine.test.ts tests/coreApiContract.test.ts tests/corePipeline.test.ts tests/restHandler.test.ts tests/sourceProfiles.test.ts tests/trustScan.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

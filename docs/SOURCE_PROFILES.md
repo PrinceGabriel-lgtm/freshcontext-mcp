@@ -1,6 +1,6 @@
 # FreshContext Source Profiles
 
-Status: design only
+Status: early Core metadata
 
 FreshContext is a context gateway for agents and humans before reasoning. It turns raw candidate context into freshness-ranked, explained, provenance-aware context.
 
@@ -59,7 +59,7 @@ adapter output
   -> host response
 ```
 
-They are design policy descriptors, not exported TypeScript in this pass:
+As of Pass 8-J, Core exports built-in profile presets and a small metadata contract shaped like:
 
 ```ts
 type SourceProfile = {
@@ -76,6 +76,15 @@ type SourceProfile = {
 ```
 
 The existing Core `LAMBDA` table is the current decay-policy reference. Source Profiles make that policy understandable and product-facing without changing Core behavior.
+
+Pass 8-J adds:
+
+- `BUILT_IN_SOURCE_PROFILES`
+- `getSourceProfile(profileId)`
+- `listSourceProfiles()`
+- public Source Profile types
+
+It does not add `retrieve(...)`, Operator mode, adapter selection, local file search, crawling, Worker integration, MCP runtime changes, or REST handler changes.
 
 ## Profile Groups
 

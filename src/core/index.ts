@@ -6,6 +6,7 @@ export { rankSignals, rankSignal, clampScore } from "./rank.js";
 export { calculateContextUtility } from "./utility.js";
 export { SIGNAL_CONTRACT_VERSION, normalizeSignal } from "./signal.js";
 export { evaluateSignal, evaluateSignals } from "./pipeline.js";
+export { BUILT_IN_SOURCE_PROFILES, getSourceProfile, listSourceProfiles } from "./sourceProfiles.js";
 export {
   canonicalizeHaPriContent,
   sha256Hex,
@@ -20,6 +21,12 @@ export type {
   SignalConfidence,
   SignalDateConfidence,
   SignalContractVersion,
+  SourceAuthorityHint,
+  SourceDatePolicy,
+  SourceFailurePolicy,
+  SourceProfile,
+  SourceProfileId,
+  SourceSurface,
   SignalNormalizeOptions,
   FreshContextSignalInput,
   FreshContextSignal,

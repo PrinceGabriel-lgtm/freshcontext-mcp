@@ -83,6 +83,24 @@ Public exports:
 
 See [Signal Contract v1](./SIGNAL_CONTRACT.md).
 
+## Source Profiles
+
+Source Profiles are early public Core metadata for describing how classes of information age, fail, rank, and explain.
+
+Public exports:
+
+- `BUILT_IN_SOURCE_PROFILES`
+- `getSourceProfile(profileId)`
+- `listSourceProfiles()`
+- `SourceProfile`
+- `SourceProfileId`
+- `SourceAuthorityHint`
+- `SourceDatePolicy`
+- `SourceFailurePolicy`
+- `SourceSurface`
+
+They reframe the 21 MCP tools as reference adapters and source-profile examples instead of the product identity. They do not implement `retrieve(...)`, Operator mode, adapter selection, crawling, local file search, or any host/runtime behavior.
+
 ## Public Ranking Primitives
 
 The ranking primitives are public, but consumers should treat their score scales carefully:
