@@ -232,6 +232,13 @@ To pass a different file:
 npm run demo:evaluate:file -- path/to/sources.json
 ```
 
+Included examples:
+
+```bash
+npm run demo:evaluate:file -- examples/sources.academic.example.json
+npm run demo:evaluate:file -- examples/sources.jobs.example.json
+```
+
 Minimal shape:
 
 ```json

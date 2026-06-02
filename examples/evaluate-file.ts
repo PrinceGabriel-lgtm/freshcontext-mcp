@@ -134,7 +134,7 @@ function printResult(
 }
 
 async function main(): Promise<void> {
-  const filePath = process.argv[2];
+  const filePath = process.argv.slice(2).pop();
   if (!filePath) {
     fail("provide a JSON file path, for example: npm run demo:evaluate:file");
   }
