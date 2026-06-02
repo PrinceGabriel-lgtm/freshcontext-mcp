@@ -55,6 +55,14 @@ It does not fetch, cache, write D1, inspect Worker bindings, know MCP tool schem
 
 Context utility is returned as sidecar output in the current pipeline; it does not replace or modify the default `rankSignal` / `evaluateSignals` ordering. A future pass may add an explicit utility-weighted ranking mode.
 
+Local demo:
+
+```bash
+npm run demo:evaluate:file -- examples/sources.academic.example.json
+```
+
+The demo reads caller-provided JSON with `profile`, `intent`, and `signals`, then returns decision-first output. It does not fetch URLs, crawl, read folders, deploy REST, or implement Operator mode.
+
 ### Stable Types
 
 - `FreshContext`

@@ -218,6 +218,42 @@ touch ~/Library/Application\ Support/Claude/claude_desktop_config.json
 
 ## Usage examples
 
+### Bring your own source list
+
+FreshContext can evaluate candidate context you provide as a local JSON file:
+
+```bash
+npm run demo:evaluate:file
+```
+
+To pass a different file:
+
+```bash
+npm run demo:evaluate:file -- path/to/sources.json
+```
+
+Minimal shape:
+
+```json
+{
+  "profile": "academic_research",
+  "intent": "citation_check",
+  "signals": [
+    {
+      "title": "...",
+      "content": "...",
+      "source": "...",
+      "source_type": "arxiv",
+      "published_at": "...",
+      "retrieved_at": "...",
+      "semantic_score": 0.92
+    }
+  ]
+}
+```
+
+This local demo does not fetch URLs, crawl, or read folders. It evaluates candidate context you provide and returns decision-first output: Decision, Meaning, Action, Warnings, and supporting metrics.
+
 **Should I build this idea?**
 ```
 Use extract_idea_landscape with idea "procurement intelligence saas"
