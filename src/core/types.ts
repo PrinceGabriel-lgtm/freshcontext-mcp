@@ -32,6 +32,21 @@ export interface EnvelopeFormatOptions {
 export type SignalConfidence = "high" | "medium" | "low";
 export type SignalDateConfidence = SignalConfidence | "unknown";
 export type SignalContractVersion = "freshcontext.signal.v1";
+export type SourceAuthorityHint = "high" | "medium" | "low";
+export type SourceDatePolicy = "strict" | "balanced" | "lenient";
+export type SourceFailurePolicy = "exclude" | "downgrade" | "warn";
+export type SourceSurface = "mcp" | "rest" | "sdk" | "cli" | "operator";
+export type SourceProfileId =
+  | "official_docs"
+  | "code_activity"
+  | "social_pulse"
+  | "academic_research"
+  | "market_finance"
+  | "jobs_opportunities"
+  | "government_regulatory"
+  | "company_intel"
+  | "composite_landscape"
+  | "local_custom";
 
 export type ContextUtilityStatus =
   | "success"
@@ -43,6 +58,18 @@ export type ContextUtilityStatus =
 export interface SignalNormalizeOptions {
   defaultSourceType?: string;
   now?: Date | string;
+}
+
+export interface SourceProfile {
+  profile_id: SourceProfileId;
+  source_types: string[];
+  purpose: string;
+  default_decay_lambda: number;
+  half_life_hours: number;
+  authority_hint: SourceAuthorityHint;
+  date_policy: SourceDatePolicy;
+  failure_policy: SourceFailurePolicy;
+  recommended_surfaces: SourceSurface[];
 }
 
 export interface FreshContextSignalInput {

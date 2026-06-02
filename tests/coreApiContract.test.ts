@@ -4,10 +4,12 @@ import {
   calculateContextUtility,
   calculateHaPriV2,
   calculateFreshnessScore,
+  getSourceProfile,
   explainSignal,
   evaluateSignal,
   evaluateSignals,
   formatForLLM,
+  listSourceProfiles,
   looksLikeFailedAdapterContent,
   normalizeSignal,
   rankSignal,
@@ -33,6 +35,8 @@ import type {
   HaPriV2Result,
   RankedSignal,
   RankOptions,
+  SourceProfile,
+  SourceProfileId,
 } from "../src/core/index.js";
 
 test("public Core API imports compile and callable functions remain available", () => {
@@ -163,3 +167,12 @@ test("public Core evaluation pipeline imports compile and remain callable", () =
   assert.equal(evaluations.length, 1);
 });
 
+test("public source profile imports compile and remain callable", () => {
+  const profileId: SourceProfileId = "official_docs";
+  const profile: SourceProfile | undefined = getSourceProfile(profileId);
+  const profiles: SourceProfile[] = listSourceProfiles();
+
+  assert.ok(profile);
+  assert.equal(profile.profile_id, profileId);
+  assert.ok(profiles.length >= 10);
+});
