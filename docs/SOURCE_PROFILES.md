@@ -86,6 +86,14 @@ Pass 8-J adds:
 
 It does not add `retrieve(...)`, Operator mode, adapter selection, local file search, crawling, Worker integration, MCP runtime changes, or REST handler changes.
 
+## Adapter Registry Metadata
+
+As of Pass 8-S, the 21 MCP tools are also represented as adapter metadata. The registry maps each current tool name to a future adapter identity, Source Profile, output mode, runtime kind, and migration risk.
+
+This registry is metadata-only. It does not change MCP behavior, adapter implementation behavior, Worker behavior, REST behavior, Core evaluation behavior, or runtime transport. It exists to make future extraction deliberate instead of ad hoc.
+
+The likely first extraction target remains `extract_arxiv`, because it is a low-risk official API style adapter mapped to `academic_research`.
+
 ## Profile Groups
 
 ### Official / Canonical Documentation
