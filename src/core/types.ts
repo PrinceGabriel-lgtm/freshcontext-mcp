@@ -48,6 +48,25 @@ export type SourceProfileId =
   | "composite_landscape"
   | "local_custom";
 
+export type ContextDecision =
+  | "use_first"
+  | "cite_as_primary"
+  | "cite_as_supporting"
+  | "use_as_background"
+  | "needs_verification"
+  | "needs_refresh"
+  | "watch_only"
+  | "exclude";
+
+export type IntentProfileId =
+  | "citation_check"
+  | "student_research"
+  | "developer_adoption"
+  | "job_search"
+  | "market_watch"
+  | "business_due_diligence"
+  | "medical_literature_triage";
+
 export type ContextUtilityStatus =
   | "success"
   | "partial"
@@ -70,6 +89,20 @@ export interface SourceProfile {
   date_policy: SourceDatePolicy;
   failure_policy: SourceFailurePolicy;
   recommended_surfaces: SourceSurface[];
+}
+
+export interface ContextDecisionOptions {
+  sourceProfile?: SourceProfile | SourceProfileId;
+  intentProfile?: IntentProfileId;
+}
+
+export interface ContextDecisionResult {
+  decision: ContextDecision;
+  label: string;
+  meaning: string;
+  action: string;
+  reasons: string[];
+  warnings: string[];
 }
 
 export interface FreshContextSignalInput {
