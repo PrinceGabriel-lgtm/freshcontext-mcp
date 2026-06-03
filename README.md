@@ -218,6 +218,8 @@ touch ~/Library/Application\ Support/Claude/claude_desktop_config.json
 
 ## Usage examples
 
+The `npm run demo:*` commands below are source-checkout workflows for contributors and evaluators using a cloned repository. The published npm package is the MCP server/runtime package and does not include repo-only source examples or tests.
+
 ### Bring your own source list
 
 FreshContext can evaluate candidate context you provide as a local JSON file:

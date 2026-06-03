@@ -21,11 +21,11 @@ This document describes release hardening practices for future FreshContext pack
 
 Confirm release artifacts do not include:
 
-- `.env` files.
-- Tokens or local API key files.
+- Local environment files.
+- Tokens or local credential files.
 - MCP registry local credential files.
 - Cloudflare local state.
-- `backup.sql` or local database snapshots.
+- Local database snapshots or SQL dumps.
 - Private sale, buyer, target, outreach, or diligence documents.
 - Private data-room folders.
 - Local logs.
