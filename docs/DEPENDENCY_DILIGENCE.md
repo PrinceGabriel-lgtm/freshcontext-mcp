@@ -4,12 +4,12 @@ This document records dependency and license diligence notes from the Trust L4/L
 
 ## Current Audit Status
 
-As of Trust L5:
+As of Pass 8-AB:
 
 - `npm audit --omit=dev`: clean.
 - `npm audit`: clean.
-- The previous moderate `qs` and `ws` advisories were resolved with narrow transitive overrides.
-- No direct dependency version changes were required.
+- The published MCP npm package excludes the Apify Actor entrypoint and does not install Apify/Crawlee in normal consumer installs.
+- The previous moderate `qs` and `ws` advisories were resolved with narrow transitive overrides in the source checkout.
 - No package version change was made.
 
 ## Resolved Advisories
@@ -23,8 +23,14 @@ As of Trust L5:
 `ws`
 
 - Previous severity: moderate.
-- Path: `apify -> ws`.
-- Resolution: pinned through npm `overrides` to `ws@8.20.1`.
+- Historical source-checkout path: `apify -> ws`.
+- Resolution: pinned through npm `overrides` to `ws@8.20.1` for source-checkout Apify Actor workflows.
+
+`file-type`
+
+- Previous severity: moderate in fresh consumer installs.
+- Historical consumer path: `apify -> @crawlee/utils -> file-type`.
+- Resolution: Apify/Crawlee were removed from the normal published MCP package dependency surface. Apify remains a source-checkout / separate-actor concern.
 
 ## License Inventory Notes
 
@@ -35,9 +41,9 @@ No GPL, AGPL, LGPL, MPL, EPL, CDDL, or similar copyleft licenses were reported i
 `map-stream@0.1.0`
 
 - Scanner result: `UNKNOWN`.
-- Path observed during L4: transitive through `apify` / Crawlee-related dependencies.
+- Path observed during L4: transitive through source-checkout `apify` / Crawlee-related dependencies.
 - Diligence note: package metadata appears incomplete, but the installed package includes an MIT-style license file.
-- Action: keep as a diligence note and recheck before external diligence or distribution.
+- Action: keep as a source-checkout / actor-packaging diligence note and recheck before external diligence or Apify Actor distribution.
 
 `caniuse-lite`
 

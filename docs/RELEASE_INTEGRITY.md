@@ -18,6 +18,8 @@ This document describes release hardening practices for future FreshContext pack
   - Confirm `npm start` works from the installed package.
   - Confirm the `freshcontext-mcp` binary works from the installed package.
   - Confirm repo-only scripts print a source-checkout notice instead of failing when examples, tests, or scripts are intentionally excluded.
+  - Confirm `dist/server.js` is present and `dist/apify.js` is absent from the MCP npm package.
+  - Confirm fresh consumer `npm audit --omit=dev` is clean.
 - Run a stale-claim scan across public docs and package-facing files.
 - Run a secret scan before sharing archives, diligence folders, or package artifacts.
 
