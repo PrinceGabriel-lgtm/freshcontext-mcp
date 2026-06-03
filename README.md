@@ -220,6 +220,8 @@ touch ~/Library/Application\ Support/Claude/claude_desktop_config.json
 
 The `npm run demo:*` commands below are source-checkout workflows for contributors and evaluators using a cloned repository. The published npm package is the MCP server/runtime package and does not include repo-only source examples or tests.
 
+From an installed npm package, the supported runtime entrypoints are `npm start` and the `freshcontext-mcp` binary. Repo-only scripts such as tests, demos, smoke checks, and trust scans print a source-checkout notice when their source files are not present.
+
 ### Bring your own source list
 
 FreshContext can evaluate candidate context you provide as a local JSON file:
