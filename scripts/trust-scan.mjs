@@ -112,6 +112,26 @@ const SEVERITY_RANK = {
   fail: 2
 };
 
+const FRESHCONTEXT_MCP_PACKAGE_NAME = "freshcontext-mcp";
+const FRESHCONTEXT_MCP_EXPECTED_TOOL_COUNT = 21;
+
+const CLAIM_SURFACE_CONFIG_FILES = new Set([
+  "package.json",
+  "server.json"
+]);
+
+const STALE_TOOL_COUNT_CLAIM_PATTERN = /\b(?:20|11)\s+(?:MCP\s+)?tools\b/giu;
+const YAHOO_CLAIM_PATTERN = /\byahoo\b/giu;
+
+const HA_PRI_BOUNDARY_PATTERNS = [
+  /\bHa-Pri v2 deployed\b/iu,
+  /\bWorker verifies Ha-Pri v2\b/iu,
+  /\bWorker enforces Ha-Pri v2\b/iu,
+  /\bD1 migration complete\b/iu,
+  /\bproduction Store migration complete\b/iu,
+  /\bHMAC implemented\b/iu
+];
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
@@ -145,11 +165,23 @@ async function main() {
       await runPackageGate(scanState);
     }
     finalizeRepoMap(scanState);
+    if (args.claimCheck) {
+      await runClaimChecks(scanState);
+    }
     projectStates.push(scanState);
   }
 
-  const report = generateReport(projectStates, { includePackageGate: args.packageGate, includeRepoMap: args.repoMap });
-  writeReport(report, args.output, { showAllowed: args.showAllowed, showPackageGate: args.packageGate, showRepoMap: args.repoMap });
+  const report = generateReport(projectStates, {
+    includeClaimCheck: args.claimCheck,
+    includePackageGate: args.packageGate,
+    includeRepoMap: args.repoMap
+  });
+  writeReport(report, args.output, {
+    showAllowed: args.showAllowed,
+    showClaimCheck: args.claimCheck,
+    showPackageGate: args.packageGate,
+    showRepoMap: args.repoMap
+  });
 
   if (shouldFail(report.summary, args.failOn)) {
     process.exitCode = 1;
@@ -162,6 +194,7 @@ function parseArgs(argv) {
     output: "human",
     failOn: null,
     help: false,
+    claimCheck: false,
     packageGate: false,
     repoMap: false,
     showAllowed: false
@@ -187,6 +220,11 @@ function parseArgs(argv) {
 
     if (arg === "--package-gate") {
       result.packageGate = true;
+      continue;
+    }
+
+    if (arg === "--claim-check") {
+      result.claimCheck = true;
       continue;
     }
 
@@ -272,6 +310,7 @@ Options:
   --repo-map          Include repo map summary in text/Markdown and full repo map in JSON.
   --show-allowed      Show full allowlisted finding details in text and Markdown output.
   --package-gate      Run npm pack dry-run package-boundary inspection.
+  --claim-check       Run deterministic local public-claim consistency checks.
   -h, --help          Show this help.
 
 Defaults:
@@ -480,6 +519,7 @@ function createScanState({ cwd, baseCwd, projectName, projectRoot, selectedPath,
     rules,
     allowlist,
     packageMetadata,
+    claimCheck: null,
     packageGate: null,
     repoMap: createRepoMap(packageMetadata),
     repoMapSeenPaths: new Set(),
@@ -1172,6 +1212,33 @@ function createPackageGateFinding({ ruleId, severity, path: findingPath = ".", m
   };
 }
 
+function createClaimCheckFinding({
+  ruleId,
+  severity,
+  path: findingPath = ".",
+  line = 0,
+  match = "",
+  fileCategory,
+  message,
+  recommendation
+}) {
+  return {
+    ruleId,
+    category: "claim_check",
+    severity,
+    effectiveSeverity: severity,
+    severityReason: "Claim-check finding severity retained for deterministic local claim consistency.",
+    fileCategory: fileCategory ?? (findingPath === "." ? "claim_check" : classifyFileCategory(findingPath)),
+    path: findingPath,
+    line,
+    match,
+    message,
+    recommendation,
+    allowed: false,
+    allowReason: undefined
+  };
+}
+
 function generateReport(states, options = {}) {
   const projectStates = Array.isArray(states) ? states : [states];
   const projects = projectStates.map((state) => generateProjectReport(state, options));
@@ -1190,6 +1257,10 @@ function generateReport(states, options = {}) {
 
   if (options.includePackageGate) {
     report.packageGates = projects.map((project) => project.packageGate).filter(Boolean);
+  }
+
+  if (options.includeClaimCheck) {
+    report.claimChecks = projects.map((project) => project.claimCheck).filter(Boolean);
   }
 
   if (options.includeRepoMap && projects.length === 1) {
@@ -1217,6 +1288,10 @@ function generateProjectReport(state, options = {}) {
 
   if (options.includePackageGate) {
     project.packageGate = state.packageGate;
+  }
+
+  if (options.includeClaimCheck) {
+    project.claimCheck = state.claimCheck;
   }
 
   return project;
@@ -1381,6 +1456,11 @@ function formatHuman(report, options = {}) {
     lines.push("");
   }
 
+  if (options.showClaimCheck && report.claimChecks?.length > 0) {
+    lines.push(...formatHumanClaimChecks(report.claimChecks));
+    lines.push("");
+  }
+
   if (showProjectBreakdown) {
     lines.push(...formatHumanProjects(report.projects, options));
     lines.push("");
@@ -1446,6 +1526,11 @@ function formatMarkdown(report, options = {}) {
 
   if (options.showPackageGate && report.packageGates?.length > 0) {
     lines.push(...formatMarkdownPackageGates(report.packageGates));
+    lines.push("");
+  }
+
+  if (options.showClaimCheck && report.claimChecks?.length > 0) {
+    lines.push(...formatMarkdownClaimChecks(report.claimChecks));
     lines.push("");
   }
 
@@ -1555,6 +1640,10 @@ function formatHumanProjects(projects, options = {}) {
     if (options.showPackageGate && project.packageGate) {
       lines.push(`  package gate: ${formatInlinePackageGate(project.packageGate)}`);
     }
+
+    if (options.showClaimCheck && project.claimCheck) {
+      lines.push(`  claim check: ${formatInlineClaimCheck(project.claimCheck)}`);
+    }
   }
 
   return lines;
@@ -1585,6 +1674,10 @@ function formatMarkdownProjects(projects, options = {}) {
 
     if (options.showPackageGate && project.packageGate) {
       lines.push(`- Package gate: ${formatInlinePackageGate(project.packageGate)}`);
+    }
+
+    if (options.showClaimCheck && project.claimCheck) {
+      lines.push(`- Claim check: ${formatInlineClaimCheck(project.claimCheck)}`);
     }
 
     lines.push("");
@@ -1671,6 +1764,52 @@ function formatInlinePackageGate(packageGate) {
 function packageGateSeverityCountMap(packageGate) {
   const counts = { fail: 0, warn: 0, info: 0 };
   for (const finding of packageGate.findings ?? []) {
+    counts[finding.effectiveSeverity] = (counts[finding.effectiveSeverity] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function formatHumanClaimChecks(claimChecks) {
+  const lines = ["Claim Checks:"];
+
+  for (const claimCheck of claimChecks) {
+    const severity = claimCheckSeverityCountMap(claimCheck);
+    lines.push("");
+    lines.push(`${claimCheck.project}`);
+    lines.push(`  package: ${claimCheck.packageName ?? "(none)"}${claimCheck.packageVersion ? `@${claimCheck.packageVersion}` : ""}`);
+    lines.push(`  root: ${claimCheck.root}`);
+    lines.push(`  expected tool count: ${claimCheck.expectedToolCount ?? "(not configured)"}`);
+    lines.push(`  fail: ${severity.fail} warn: ${severity.warn} info: ${severity.info}`);
+  }
+
+  return lines;
+}
+
+function formatMarkdownClaimChecks(claimChecks) {
+  const lines = ["## Claim Checks", ""];
+
+  for (const claimCheck of claimChecks) {
+    const severity = claimCheckSeverityCountMap(claimCheck);
+    lines.push(`### ${claimCheck.project}`);
+    lines.push("");
+    lines.push(`- Package: ${claimCheck.packageName ?? "(none)"}${claimCheck.packageVersion ? `@${claimCheck.packageVersion}` : ""}`);
+    lines.push(`- Root: \`${claimCheck.root}\``);
+    lines.push(`- Expected tool count: ${claimCheck.expectedToolCount ?? "(not configured)"}`);
+    lines.push(`- Effective severity: fail ${severity.fail}, warn ${severity.warn}, info ${severity.info}`);
+    lines.push("");
+  }
+
+  return lines;
+}
+
+function formatInlineClaimCheck(claimCheck) {
+  const severity = claimCheckSeverityCountMap(claimCheck);
+  return `expected tools ${claimCheck.expectedToolCount ?? "(not configured)"}, fail ${severity.fail}, warn ${severity.warn}, info ${severity.info}`;
+}
+
+function claimCheckSeverityCountMap(claimCheck) {
+  const counts = { fail: 0, warn: 0, info: 0 };
+  for (const finding of claimCheck.findings ?? []) {
     counts[finding.effectiveSeverity] = (counts[finding.effectiveSeverity] ?? 0) + 1;
   }
   return counts;
@@ -1768,6 +1907,327 @@ function displayPath(filePath, cwd) {
   }
 
   return normalizePath(relative);
+}
+
+async function runClaimChecks(state) {
+  const claimCheck = createClaimCheckResult(state);
+  state.claimCheck = claimCheck;
+
+  if (!state.packageMetadata) {
+    addClaimCheckFinding(state, claimCheck, {
+      ruleId: "claim-check-no-package-json",
+      severity: "info",
+      message: "Selected path has no package.json, so package-level claim checks were skipped.",
+      recommendation: "Run claim checks from a package root when release-claim validation is needed."
+    });
+    return claimCheck;
+  }
+
+  await checkVersionConsistency(state, claimCheck);
+  const claimSurfaces = await loadClaimSurfaces(state, claimCheck);
+  checkToolCountClaims(state, claimCheck, claimSurfaces);
+  checkFinanceAdapterClaims(state, claimCheck, claimSurfaces);
+  checkHaPriBoundaryClaims(state, claimCheck, claimSurfaces);
+  return claimCheck;
+}
+
+function createClaimCheckResult(state) {
+  return {
+    project: state.projectName,
+    root: normalizePath(path.resolve(state.projectRoot)),
+    packageName: state.packageMetadata?.name ?? null,
+    packageVersion: state.packageMetadata?.version ?? null,
+    expectedToolCount: expectedToolCountForProject(state),
+    findings: []
+  };
+}
+
+function expectedToolCountForProject(state) {
+  return state.packageMetadata?.name === FRESHCONTEXT_MCP_PACKAGE_NAME ? FRESHCONTEXT_MCP_EXPECTED_TOOL_COUNT : null;
+}
+
+async function checkVersionConsistency(state, claimCheck) {
+  const packageVersion = state.packageMetadata?.version;
+  const serverJsonResult = await readJsonIfExists(path.join(state.projectRoot, "server.json"));
+
+  if (!serverJsonResult.exists) {
+    addClaimCheckFinding(state, claimCheck, {
+      ruleId: "claim-check-version-server-json-missing",
+      severity: "info",
+      message: "server.json is missing, so package/server version consistency was not checked.",
+      recommendation: "Add server.json when MCP registry metadata should be checked against package.json."
+    });
+    return;
+  }
+
+  if (serverJsonResult.error) {
+    addClaimCheckFinding(state, claimCheck, {
+      ruleId: "claim-check-version-server-json-unreadable",
+      severity: "warn",
+      path: "server.json",
+      fileCategory: "config",
+      message: `Unable to parse server.json: ${serverJsonResult.error}`,
+      recommendation: "Fix server.json so deterministic package/server version checks can run."
+    });
+    return;
+  }
+
+  const serverVersion = typeof serverJsonResult.parsed?.version === "string" ? serverJsonResult.parsed.version : null;
+  if (!packageVersion || !serverVersion) {
+    addClaimCheckFinding(state, claimCheck, {
+      ruleId: "claim-check-version-missing",
+      severity: "warn",
+      path: "server.json",
+      fileCategory: "config",
+      message: "package.json or server.json is missing a version string.",
+      recommendation: "Keep package.json version and server.json version explicit and aligned."
+    });
+    return;
+  }
+
+  if (packageVersion !== serverVersion) {
+    addClaimCheckFinding(state, claimCheck, {
+      ruleId: "claim-check-version-mismatch",
+      severity: "fail",
+      path: "server.json",
+      fileCategory: "config",
+      match: `${packageVersion} != ${serverVersion}`,
+      message: `package.json version ${packageVersion} does not match server.json version ${serverVersion}.`,
+      recommendation: "Align server.json with package.json before release or registry submission."
+    });
+    return;
+  }
+
+  addClaimCheckFinding(state, claimCheck, {
+    ruleId: "claim-check-version-match",
+    severity: "info",
+    path: "server.json",
+    fileCategory: "config",
+    match: packageVersion,
+    message: `package.json and server.json versions match at ${packageVersion}.`,
+    recommendation: "No action needed for package/server version consistency."
+  });
+}
+
+async function loadClaimSurfaces(state, claimCheck) {
+  const surfacePaths = new Set(state.repoMap.publicDocs);
+
+  for (const configPath of CLAIM_SURFACE_CONFIG_FILES) {
+    if (hasCaseInsensitivePath(state.repoMapSeenPaths, configPath)) {
+      surfacePaths.add(configPath);
+    }
+  }
+
+  const surfaces = [];
+  for (const repoPath of uniqueSorted([...surfacePaths])) {
+    const absolutePath = path.resolve(state.projectRoot, repoPath);
+    let content;
+    try {
+      content = await fs.readFile(absolutePath, "utf8");
+    } catch (error) {
+      addClaimCheckFinding(state, claimCheck, {
+        ruleId: "claim-check-surface-unreadable",
+        severity: "warn",
+        path: repoPath,
+        fileCategory: classifyFileCategory(repoPath),
+        message: `Unable to read claim surface: ${error.message}`,
+        recommendation: "Inspect the claim surface manually or fix file permissions."
+      });
+      continue;
+    }
+
+    surfaces.push({
+      path: repoPath,
+      fileCategory: classifyFileCategory(repoPath),
+      lines: content.split(/\r?\n/u)
+    });
+  }
+
+  return surfaces;
+}
+
+function checkToolCountClaims(state, claimCheck, claimSurfaces) {
+  const expectedToolCount = claimCheck.expectedToolCount;
+  if (expectedToolCount === null) {
+    addClaimCheckFinding(state, claimCheck, {
+      ruleId: "claim-check-tool-count-not-configured",
+      severity: "info",
+      message: "No deterministic expected tool count is configured for this package.",
+      recommendation: "Add a project-specific expected count only when local evidence can verify it."
+    });
+    return;
+  }
+
+  let failures = 0;
+  for (const surface of claimSurfaces) {
+    for (const { lineNumber, lineText, matchText } of findLineMatches(surface.lines, STALE_TOOL_COUNT_CLAIM_PATTERN)) {
+      if (isHistoricalOrRegressionLine(lineText)) {
+        continue;
+      }
+
+      failures += 1;
+      addClaimCheckFinding(state, claimCheck, {
+        ruleId: "claim-check-tool-count-stale-current",
+        severity: "fail",
+        path: surface.path,
+        line: lineNumber,
+        fileCategory: surface.fileCategory,
+        match: matchText,
+        message: `Current public/package claim says ${matchText}, but the expected FreshContext MCP tool count is ${expectedToolCount}.`,
+        recommendation: `Update the claim to ${expectedToolCount} tools or remove the hard-coded count.`
+      });
+    }
+  }
+
+  if (failures === 0) {
+    addClaimCheckFinding(state, claimCheck, {
+      ruleId: "claim-check-tool-count-current",
+      severity: "info",
+      message: `No stale current 20/11 tool-count claims were found in public/package claim surfaces. Expected count is ${expectedToolCount}.`,
+      recommendation: "Keep public tool-count claims aligned with smoke/static evidence."
+    });
+  }
+}
+
+function checkFinanceAdapterClaims(state, claimCheck, claimSurfaces) {
+  let failures = 0;
+
+  for (const surface of claimSurfaces) {
+    for (const { lineNumber, lineText, matchText } of findLineMatches(surface.lines, YAHOO_CLAIM_PATTERN)) {
+      if (isHistoricalOrRegressionLine(lineText) || isNegatedYahooLine(lineText)) {
+        continue;
+      }
+
+      failures += 1;
+      addClaimCheckFinding(state, claimCheck, {
+        ruleId: "claim-check-finance-yahoo-current",
+        severity: "fail",
+        path: surface.path,
+        line: lineNumber,
+        fileCategory: surface.fileCategory,
+        match: matchText,
+        message: "Public/package claim surface references Yahoo without historical, regression, negative-test, or explicit non-current context.",
+        recommendation: "Use current Stooq-backed wording or mark the Yahoo reference as historical/regression context."
+      });
+    }
+  }
+
+  if (failures === 0) {
+    addClaimCheckFinding(state, claimCheck, {
+      ruleId: "claim-check-finance-adapter-current",
+      severity: "info",
+      message: "No current Yahoo-backed finance adapter claims were found in public/package claim surfaces.",
+      recommendation: "Keep finance-source wording aligned with the current implementation boundary."
+    });
+  }
+}
+
+function checkHaPriBoundaryClaims(state, claimCheck, claimSurfaces) {
+  let failures = 0;
+
+  for (const surface of claimSurfaces) {
+    for (let index = 0; index < surface.lines.length; index += 1) {
+      const lineText = surface.lines[index];
+      if (isFutureOrNotYetImplementationLine(lineText)) {
+        continue;
+      }
+
+      for (const pattern of HA_PRI_BOUNDARY_PATTERNS) {
+        pattern.lastIndex = 0;
+        const match = pattern.exec(lineText);
+        if (!match) {
+          continue;
+        }
+
+        failures += 1;
+        addClaimCheckFinding(state, claimCheck, {
+          ruleId: "claim-check-ha-pri-v2-overclaim",
+          severity: "fail",
+          path: surface.path,
+          line: index + 1,
+          fileCategory: surface.fileCategory,
+          match: match[0],
+          message: `Public/package claim surface contains a deployed/enforced Ha-Pri v2 boundary claim: ${match[0]}.`,
+          recommendation: "Use scoped design/provenance wording unless Worker/runtime enforcement is locally implemented and verified."
+        });
+      }
+    }
+  }
+
+  if (failures === 0) {
+    addClaimCheckFinding(state, claimCheck, {
+      ruleId: "claim-check-ha-pri-v2-boundary-current",
+      severity: "info",
+      message: "No current public/package Ha-Pri v2 deployed/enforced boundary overclaims were found.",
+      recommendation: "Keep Ha-Pri v2 wording scoped to design/provenance unless enforcement is implemented."
+    });
+  }
+}
+
+function findLineMatches(lines, pattern) {
+  const matches = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    pattern.lastIndex = 0;
+    let match;
+    while ((match = pattern.exec(lines[index])) !== null) {
+      matches.push({
+        lineNumber: index + 1,
+        lineText: lines[index],
+        matchText: match[0]
+      });
+
+      if (match[0] === "") {
+        pattern.lastIndex += 1;
+      }
+    }
+  }
+  return matches;
+}
+
+function isHistoricalOrRegressionLine(lineText) {
+  const lower = lineText.toLowerCase();
+  return /\b(historical|history|regression|negative test|negative-test|legacy|old|previous|previously|formerly|archived|archive|past|stale|no longer|used to)\b/iu.test(lower);
+}
+
+function isNegatedYahooLine(lineText) {
+  const lower = lineText.toLowerCase();
+  return /\bnot\s+yahoo\b/iu.test(lower) || /\bnot\s+(?:use|using|backed by|backed)\s+yahoo\b/iu.test(lower) || lower.includes("except in negative");
+}
+
+function isFutureOrNotYetImplementationLine(lineText) {
+  const lower = lineText.toLowerCase();
+  return /\b(not yet|not currently|not deployed|not implemented|not complete|pending|planned|future|roadmap|proposal|design|target|todo|prototype|should|would|will|do not claim)\b/iu.test(lower);
+}
+
+async function readJsonIfExists(filePath) {
+  try {
+    const raw = await fs.readFile(filePath, "utf8");
+    return {
+      exists: true,
+      parsed: JSON.parse(raw),
+      error: null
+    };
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return {
+        exists: false,
+        parsed: null,
+        error: null
+      };
+    }
+
+    return {
+      exists: true,
+      parsed: null,
+      error: error.message
+    };
+  }
+}
+
+function addClaimCheckFinding(state, claimCheck, finding) {
+  const claimFinding = createClaimCheckFinding(finding);
+  claimCheck.findings.push(claimFinding);
+  state.findings.push(claimFinding);
 }
 
 async function runPackageGate(state) {

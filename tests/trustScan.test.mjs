@@ -16,6 +16,10 @@ const openAiKeyEnvName = ["OPENAI", "API", "KEY"].join("_");
 const githubTokenEnvName = ["GITHUB", "TOKEN"].join("_");
 const npmTokenEnvName = ["NPM", "TOKEN"].join("_");
 
+const emptyRules = {
+  rules: []
+};
+
 const baseRules = {
   rules: [
     {
@@ -437,6 +441,153 @@ test("package gate reports no-package paths without placeholder text", async () 
   }
 });
 
+test("claim check reports matching package and server versions", async () => {
+  const fixture = await createFixture({ rules: emptyRules });
+  try {
+    await writeFreshContextPackageJson(fixture, "1.2.3");
+    await writeServerJson(fixture, "1.2.3");
+    await writeFile(path.join(fixture, "README.md"), "FreshContext ships 21 tools.\n", "utf8");
+
+    const result = runScanner(fixture, ["--claim-check", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.claimChecks.length, 1);
+    assert.equal(report.projects[0].claimCheck.packageName, "freshcontext-mcp");
+    assert.equal(report.projects[0].claimCheck.expectedToolCount, 21);
+    assert.equal(report.findings.some((finding) => finding.ruleId === "claim-check-version-match" && finding.effectiveSeverity === "info"), true);
+    assert.equal(report.findings.some((finding) => finding.category === "claim_check"), true);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("claim check fails mismatched package and server versions", async () => {
+  const fixture = await createFixture({ rules: emptyRules });
+  try {
+    await writeFreshContextPackageJson(fixture, "1.2.3");
+    await writeServerJson(fixture, "1.2.4");
+    await writeFile(path.join(fixture, "README.md"), "FreshContext ships 21 tools.\n", "utf8");
+
+    const result = runScanner(fixture, ["--claim-check", "--fail-on", "fail", "--json"]);
+    assert.equal(result.status, 1);
+
+    const report = JSON.parse(result.stdout);
+    const finding = report.findings.find((item) => item.ruleId === "claim-check-version-mismatch");
+    assert.equal(finding.effectiveSeverity, "fail");
+    assert.equal(finding.match, "1.2.3 != 1.2.4");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("claim check fails stale current tool-count claims in public docs", async () => {
+  const fixture = await createFixture({ rules: emptyRules });
+  try {
+    await writeFreshContextPackageJson(fixture, "1.0.0");
+    await writeFile(path.join(fixture, "README.md"), "FreshContext currently ships 20 tools for live retrieval.\n", "utf8");
+
+    const result = runScanner(fixture, ["--claim-check", "--fail-on", "fail", "--json"]);
+    assert.equal(result.status, 1);
+
+    const report = JSON.parse(result.stdout);
+    const finding = report.findings.find((item) => item.ruleId === "claim-check-tool-count-stale-current");
+    assert.equal(finding.effectiveSeverity, "fail");
+    assert.equal(finding.path, "README.md");
+    assert.equal(finding.match, "20 tools");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("claim check does not fail historical stale tool-count context", async () => {
+  const fixture = await createFixture({ rules: emptyRules });
+  try {
+    await writeFreshContextPackageJson(fixture, "1.0.0");
+    await writeFile(path.join(fixture, "README.md"), "Historical regression note: FreshContext previously had 20 tools.\n", "utf8");
+
+    const result = runScanner(fixture, ["--claim-check", "--fail-on", "fail", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.findings.some((finding) => finding.ruleId === "claim-check-tool-count-stale-current"), false);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("claim check fails current Yahoo finance adapter wording", async () => {
+  const fixture = await createFixture({ rules: emptyRules });
+  try {
+    await writeFreshContextPackageJson(fixture, "1.0.0");
+    await writeFile(path.join(fixture, "README.md"), "The current finance adapter uses Yahoo for market data.\n", "utf8");
+
+    const result = runScanner(fixture, ["--claim-check", "--fail-on", "fail", "--json"]);
+    assert.equal(result.status, 1);
+
+    const report = JSON.parse(result.stdout);
+    const finding = report.findings.find((item) => item.ruleId === "claim-check-finance-yahoo-current");
+    assert.equal(finding.effectiveSeverity, "fail");
+    assert.equal(finding.match, "Yahoo");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("claim check allows historical Yahoo regression wording", async () => {
+  const fixture = await createFixture({ rules: emptyRules });
+  try {
+    await writeFreshContextPackageJson(fixture, "1.0.0");
+    await writeFile(path.join(fixture, "README.md"), "Historical Yahoo regression reference only; current finance behavior uses Stooq.\n", "utf8");
+
+    const result = runScanner(fixture, ["--claim-check", "--fail-on", "fail", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.findings.some((finding) => finding.ruleId === "claim-check-finance-yahoo-current"), false);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("claim check fails current Ha-Pri v2 deployed or Worker verification claims", async () => {
+  const fixture = await createFixture({ rules: emptyRules });
+  try {
+    await writeFreshContextPackageJson(fixture, "1.0.0");
+    await writeFile(path.join(fixture, "README.md"), "Ha-Pri v2 deployed in Worker. Worker verifies Ha-Pri v2 on reads.\n", "utf8");
+
+    const result = runScanner(fixture, ["--claim-check", "--fail-on", "fail", "--json"]);
+    assert.equal(result.status, 1);
+
+    const report = JSON.parse(result.stdout);
+    const findings = report.findings.filter((item) => item.ruleId === "claim-check-ha-pri-v2-overclaim");
+    assert.equal(findings.length, 2);
+    assert.equal(findings.every((finding) => finding.effectiveSeverity === "fail"), true);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("claim check allows future or not-yet Ha-Pri v2 wording", async () => {
+  const fixture = await createFixture({ rules: emptyRules });
+  try {
+    await writeFreshContextPackageJson(fixture, "1.0.0");
+    await writeFile(
+      path.join(fixture, "README.md"),
+      "Roadmap: Ha-Pri v2 deployed is not yet implemented. Worker verifies Ha-Pri v2 is planned future wording.\n",
+      "utf8"
+    );
+
+    const result = runScanner(fixture, ["--claim-check", "--fail-on", "fail", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.findings.some((finding) => finding.ruleId === "claim-check-ha-pri-v2-overclaim"), false);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 async function createFixture({ rules = baseRules, allowlist = { allow: [] }, withPackageJson = false } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "trust-scan-"));
   await mkdir(path.join(root, "config"), { recursive: true });
@@ -461,6 +612,22 @@ async function createFixture({ rules = baseRules, allowlist = { allow: [] }, wit
 
 async function writePackageJson(root, packageJson) {
   await writeFile(path.join(root, "package.json"), JSON.stringify(packageJson, null, 2), "utf8");
+}
+
+async function writeFreshContextPackageJson(root, version) {
+  await writePackageJson(root, {
+    name: "freshcontext-mcp",
+    version,
+    scripts: {
+      "trust:scan": "node scripts/trust-scan.mjs",
+      "trust:scan:json": "node scripts/trust-scan.mjs --json",
+      "trust:scan:markdown": "node scripts/trust-scan.mjs --markdown"
+    }
+  });
+}
+
+async function writeServerJson(root, version) {
+  await writeFile(path.join(root, "server.json"), JSON.stringify({ version }, null, 2), "utf8");
 }
 
 function runScanner(cwd, args) {
