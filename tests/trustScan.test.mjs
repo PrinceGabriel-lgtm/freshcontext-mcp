@@ -11,6 +11,10 @@ const scannerPath = path.join(repoRoot, "scripts", "trust-scan.mjs");
 const staleToolCountClaim = ["20", "tools"].join(" ");
 const dotEnvName = [".", "env"].join("");
 const dotEnvPattern = "(^|[^A-Za-z0-9_-])\\." + "env(?![A-Za-z0-9_-])";
+const cloudflareTokenEnvName = ["CLOUDFLARE", "API", "TOKEN"].join("_");
+const openAiKeyEnvName = ["OPENAI", "API", "KEY"].join("_");
+const githubTokenEnvName = ["GITHUB", "TOKEN"].join("_");
+const npmTokenEnvName = ["NPM", "TOKEN"].join("_");
 
 const baseRules = {
   rules: [
@@ -304,6 +308,135 @@ test("multi-project Markdown and fail gate remain grouped and redacted", async (
   }
 });
 
+test("package gate reports normalized package-boundary failures", async () => {
+  const fixture = await createFixture();
+  try {
+    const rawSecret = ["sk", "packageGateSecret12345"].join("-");
+    await writePackageJson(fixture, {
+      name: "package-gate-fixture",
+      version: "1.2.3",
+      files: ["README.md", "LICENSE", "backup.sql", "_archive/HANDOFF.md"]
+    });
+    await writeFile(path.join(fixture, "README.md"), `Fixture ${rawSecret}\n`, "utf8");
+    await writeFile(path.join(fixture, "LICENSE"), "MIT\n", "utf8");
+    await writeFile(path.join(fixture, "backup.sql"), "-- backup\n", "utf8");
+    await mkdir(path.join(fixture, "_archive"), { recursive: true });
+    await writeFile(path.join(fixture, "_archive", "HANDOFF.md"), "Historical handoff\n", "utf8");
+
+    const result = runScanner(fixture, ["--package-gate", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.includes("Package gate is planned for Phase 3"), false);
+    assert.equal(result.stdout.includes(rawSecret), false);
+
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.packageGates.length, 1);
+    assert.equal(report.packageGates[0].packageName, "package-gate-fixture");
+    assert.equal(report.packageGates[0].packageVersion, "1.2.3");
+    assert.equal(report.packageGates[0].packageFiles.includes("backup.sql"), true);
+    assert.equal(report.packageGates[0].packageFiles.some((filePath) => filePath.startsWith("package/")), false);
+    assert.equal(report.packageGates[0].findings.some((finding) => finding.ruleId === "package-gate-dangerous-file" && finding.path === "backup.sql" && finding.effectiveSeverity === "fail"), true);
+    assert.equal(report.packageGates[0].findings.some((finding) => finding.ruleId === "package-gate-review-file" && finding.path === "_archive/HANDOFF.md" && finding.effectiveSeverity === "warn"), true);
+
+    const gated = runScanner(fixture, ["--package-gate", "--fail-on", "fail", "--json"]);
+    assert.equal(gated.status, 1);
+    assert.equal(gated.stdout.includes(rawSecret), false);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("package gate keeps real env files fail-level", async () => {
+  const fixture = await createFixture();
+  try {
+    await writePackageJson(fixture, {
+      name: "package-gate-env-fixture",
+      version: "1.0.0",
+      files: ["README.md", "LICENSE", ".env", ".env.local"]
+    });
+    await writeFile(path.join(fixture, "README.md"), "Fixture\n", "utf8");
+    await writeFile(path.join(fixture, "LICENSE"), "MIT\n", "utf8");
+    await writeFile(path.join(fixture, ".env"), `${openAiKeyEnvName}=\n`, "utf8");
+    await writeFile(path.join(fixture, ".env.local"), `${githubTokenEnvName}=\n`, "utf8");
+
+    const result = runScanner(fixture, ["--package-gate", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.packageGates[0].findings.some((finding) => finding.ruleId === "package-gate-dangerous-file" && finding.path === ".env" && finding.effectiveSeverity === "fail"), true);
+    assert.equal(report.packageGates[0].findings.some((finding) => finding.ruleId === "package-gate-dangerous-file" && finding.path === ".env.local" && finding.effectiveSeverity === "fail"), true);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("package gate treats placeholder env templates as non-fail", async () => {
+  const fixture = await createFixture();
+  try {
+    await writePackageJson(fixture, {
+      name: "package-gate-template-fixture",
+      version: "1.0.0",
+      files: ["README.md", "LICENSE", ".env.example"]
+    });
+    await writeFile(path.join(fixture, "README.md"), "Fixture\n", "utf8");
+    await writeFile(path.join(fixture, "LICENSE"), "MIT\n", "utf8");
+    await writeFile(
+      path.join(fixture, ".env.example"),
+      `${cloudflareTokenEnvName}=\n${openAiKeyEnvName}=replace-me\n${githubTokenEnvName}=<your-token>\n${npmTokenEnvName}=your-token-here\n`,
+      "utf8"
+    );
+
+    const result = runScanner(fixture, ["--package-gate", "--fail-on", "fail", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.packageGates[0].findings.some((finding) => finding.ruleId === "package-gate-env-template" && finding.path === ".env.example" && finding.effectiveSeverity === "info"), true);
+    assert.equal(report.packageGates[0].findings.some((finding) => finding.ruleId === "package-gate-env-template-secret"), false);
+    assert.equal(report.summary.findingsByEffectiveSeverity.find((entry) => entry.name === "fail").count, 0);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("package gate fails env templates that contain secret-shaped values", async () => {
+  const fixture = await createFixture();
+  try {
+    const rawSecret = ["sk", "envTemplateSecret12345"].join("-");
+    await writePackageJson(fixture, {
+      name: "package-gate-template-secret-fixture",
+      version: "1.0.0",
+      files: ["README.md", "LICENSE", ".env.example"]
+    });
+    await writeFile(path.join(fixture, "README.md"), "Fixture\n", "utf8");
+    await writeFile(path.join(fixture, "LICENSE"), "MIT\n", "utf8");
+    await writeFile(path.join(fixture, ".env.example"), `${openAiKeyEnvName}=${rawSecret}\n`, "utf8");
+
+    const result = runScanner(fixture, ["--package-gate", "--fail-on", "fail", "--json"]);
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout.includes(rawSecret), false);
+
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.packageGates[0].findings.some((finding) => finding.ruleId === "package-gate-env-template-secret" && finding.path === ".env.example" && finding.effectiveSeverity === "fail"), true);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("package gate reports no-package paths without placeholder text", async () => {
+  const fixture = await createFixture();
+  try {
+    const result = runScanner(fixture, ["--package-gate", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.includes("Package gate is planned for Phase 3"), false);
+
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.packageGates.length, 1);
+    assert.equal(report.packageGates[0].packageName, null);
+    assert.equal(report.packageGates[0].findings.some((finding) => finding.ruleId === "package-gate-no-package-json" && finding.effectiveSeverity === "info"), true);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 async function createFixture({ rules = baseRules, allowlist = { allow: [] }, withPackageJson = false } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "trust-scan-"));
   await mkdir(path.join(root, "config"), { recursive: true });
@@ -324,6 +457,10 @@ async function createFixture({ rules = baseRules, allowlist = { allow: [] }, wit
     );
   }
   return root;
+}
+
+async function writePackageJson(root, packageJson) {
+  await writeFile(path.join(root, "package.json"), JSON.stringify(packageJson, null, 2), "utf8");
 }
 
 function runScanner(cwd, args) {

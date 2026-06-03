@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { promises as fs } from "node:fs";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 
@@ -119,11 +120,6 @@ async function main() {
     return;
   }
 
-  if (args.packageGate) {
-    await runPackageGate();
-    return;
-  }
-
   const cwd = process.cwd();
   const rulesPath = path.join(cwd, "config", "trust-scan-rules.json");
   const allowlistPath = path.join(cwd, "config", "trust-scan-allowlist.json");
@@ -145,12 +141,15 @@ async function main() {
       allowlist
     });
     await scanSelectedPath(absolutePath, scanState);
+    if (args.packageGate) {
+      await runPackageGate(scanState);
+    }
     finalizeRepoMap(scanState);
     projectStates.push(scanState);
   }
 
-  const report = generateReport(projectStates, { includeRepoMap: args.repoMap });
-  writeReport(report, args.output, { showAllowed: args.showAllowed, showRepoMap: args.repoMap });
+  const report = generateReport(projectStates, { includePackageGate: args.packageGate, includeRepoMap: args.repoMap });
+  writeReport(report, args.output, { showAllowed: args.showAllowed, showPackageGate: args.packageGate, showRepoMap: args.repoMap });
 
   if (shouldFail(report.summary, args.failOn)) {
     process.exitCode = 1;
@@ -272,7 +271,7 @@ Options:
   --fail-on <level>   Exit nonzero for unallowlisted findings at warn or fail severity.
   --repo-map          Include repo map summary in text/Markdown and full repo map in JSON.
   --show-allowed      Show full allowlisted finding details in text and Markdown output.
-  --package-gate      Phase 3 placeholder. Prints a message and exits 0.
+  --package-gate      Run npm pack dry-run package-boundary inspection.
   -h, --help          Show this help.
 
 Defaults:
@@ -380,6 +379,7 @@ async function loadPackageMetadata(rootDir) {
       name: typeof parsed.name === "string" ? parsed.name : null,
       version: typeof parsed.version === "string" ? parsed.version : null,
       private: parsed.private === true,
+      files: Array.isArray(parsed.files) ? parsed.files.filter((entry) => typeof entry === "string") : [],
       scripts: parsed.scripts && typeof parsed.scripts === "object" && !Array.isArray(parsed.scripts) ? parsed.scripts : {}
     };
   } catch (error) {
@@ -480,6 +480,7 @@ function createScanState({ cwd, baseCwd, projectName, projectRoot, selectedPath,
     rules,
     allowlist,
     packageMetadata,
+    packageGate: null,
     repoMap: createRepoMap(packageMetadata),
     repoMapSeenPaths: new Set(),
     seenFiles: new Set(),
@@ -949,6 +950,10 @@ function findMatches(rule, text) {
 }
 
 function addFinding({ state, rule, relativePath, fileCategory, line, matchText }) {
+  if (shouldSkipEnvTemplatePlaceholder(rule, relativePath, matchText)) {
+    return;
+  }
+
   const allow = findAllowlistEntry(state.allowlist, rule.id, relativePath);
   const severityAdjustment = resolveEffectiveSeverity(rule, fileCategory);
 
@@ -1149,6 +1154,24 @@ function createRepoMapFinding({ ruleId, severity, message, recommendation }) {
   };
 }
 
+function createPackageGateFinding({ ruleId, severity, path: findingPath = ".", message, recommendation }) {
+  return {
+    ruleId,
+    category: "package_gate",
+    severity,
+    effectiveSeverity: severity,
+    severityReason: "Package-gate finding severity retained for npm package boundary analysis.",
+    fileCategory: "package_boundary",
+    path: findingPath,
+    line: 0,
+    match: "",
+    message,
+    recommendation,
+    allowed: false,
+    allowReason: undefined
+  };
+}
+
 function generateReport(states, options = {}) {
   const projectStates = Array.isArray(states) ? states : [states];
   const projects = projectStates.map((state) => generateProjectReport(state, options));
@@ -1164,6 +1187,10 @@ function generateReport(states, options = {}) {
     projects,
     findings: sortedFindings
   };
+
+  if (options.includePackageGate) {
+    report.packageGates = projects.map((project) => project.packageGate).filter(Boolean);
+  }
 
   if (options.includeRepoMap && projects.length === 1) {
     report.repoMap = projects[0].repoMap;
@@ -1186,6 +1213,10 @@ function generateProjectReport(state, options = {}) {
 
   if (options.includeRepoMap) {
     project.repoMap = state.repoMap;
+  }
+
+  if (options.includePackageGate) {
+    project.packageGate = state.packageGate;
   }
 
   return project;
@@ -1345,6 +1376,11 @@ function formatHuman(report, options = {}) {
     lines.push("");
   }
 
+  if (options.showPackageGate && report.packageGates?.length > 0) {
+    lines.push(...formatHumanPackageGates(report.packageGates));
+    lines.push("");
+  }
+
   if (showProjectBreakdown) {
     lines.push(...formatHumanProjects(report.projects, options));
     lines.push("");
@@ -1405,6 +1441,11 @@ function formatMarkdown(report, options = {}) {
 
   if (options.showRepoMap && report.repoMap) {
     lines.push(...formatMarkdownRepoMap(report.repoMap));
+    lines.push("");
+  }
+
+  if (options.showPackageGate && report.packageGates?.length > 0) {
+    lines.push(...formatMarkdownPackageGates(report.packageGates));
     lines.push("");
   }
 
@@ -1510,6 +1551,10 @@ function formatHumanProjects(projects, options = {}) {
     if (options.showRepoMap && project.repoMap) {
       lines.push(`  repo map: ${formatInlineRepoMap(project.repoMap)}`);
     }
+
+    if (options.showPackageGate && project.packageGate) {
+      lines.push(`  package gate: ${formatInlinePackageGate(project.packageGate)}`);
+    }
   }
 
   return lines;
@@ -1536,6 +1581,10 @@ function formatMarkdownProjects(projects, options = {}) {
 
     if (options.showRepoMap && project.repoMap) {
       lines.push(`- Repo map: ${formatInlineRepoMap(project.repoMap)}`);
+    }
+
+    if (options.showPackageGate && project.packageGate) {
+      lines.push(`- Package gate: ${formatInlinePackageGate(project.packageGate)}`);
     }
 
     lines.push("");
@@ -1572,6 +1621,59 @@ function formatInlineRepoMap(repoMap) {
     `package-boundary ${repoMap.packageBoundaryFiles.length}`,
     `unknown ${repoMap.unknownFiles.length}`
   ].join(", ");
+}
+
+function formatHumanPackageGates(packageGates) {
+  const lines = ["Package Gate:"];
+
+  for (const packageGate of packageGates) {
+    const severity = packageGateSeverityCountMap(packageGate);
+    lines.push("");
+    lines.push(`${packageGate.project}`);
+    lines.push(`  package: ${packageGate.packageName ?? "(none)"}${packageGate.packageVersion ? `@${packageGate.packageVersion}` : ""}`);
+    lines.push(`  root: ${packageGate.root}`);
+    lines.push(`  files: ${packageGate.packageFileCount}`);
+    lines.push(`  fail: ${severity.fail} warn: ${severity.warn} info: ${severity.info}`);
+    if (packageGate.usedJsonFallback) {
+      lines.push("  npm pack parser: text fallback");
+    }
+  }
+
+  return lines;
+}
+
+function formatMarkdownPackageGates(packageGates) {
+  const lines = ["## Package Gate", ""];
+
+  for (const packageGate of packageGates) {
+    const severity = packageGateSeverityCountMap(packageGate);
+    lines.push(`### ${packageGate.project}`);
+    lines.push("");
+    lines.push(`- Package: ${packageGate.packageName ?? "(none)"}${packageGate.packageVersion ? `@${packageGate.packageVersion}` : ""}`);
+    lines.push(`- Root: \`${packageGate.root}\``);
+    lines.push(`- Package files: ${packageGate.packageFileCount}`);
+    lines.push(`- Effective severity: fail ${severity.fail}, warn ${severity.warn}, info ${severity.info}`);
+    if (packageGate.usedJsonFallback) {
+      lines.push("- npm pack parser: text fallback");
+    }
+    lines.push("");
+  }
+
+  return lines;
+}
+
+function formatInlinePackageGate(packageGate) {
+  const severity = packageGateSeverityCountMap(packageGate);
+  const packageLabel = `${packageGate.packageName ?? "(none)"}${packageGate.packageVersion ? `@${packageGate.packageVersion}` : ""}`;
+  return `${packageLabel}, files ${packageGate.packageFileCount}, fail ${severity.fail}, warn ${severity.warn}, info ${severity.info}`;
+}
+
+function packageGateSeverityCountMap(packageGate) {
+  const counts = { fail: 0, warn: 0, info: 0 };
+  for (const finding of packageGate.findings ?? []) {
+    counts[finding.effectiveSeverity] = (counts[finding.effectiveSeverity] ?? 0) + 1;
+  }
+  return counts;
 }
 
 function formatHumanRepoMap(repoMap) {
@@ -1668,9 +1770,513 @@ function displayPath(filePath, cwd) {
   return normalizePath(relative);
 }
 
-async function runPackageGate() {
-  // TODO Phase 3: implement npm pack --dry-run package boundary analysis here.
-  console.log("Package gate is planned for Phase 3 and is not implemented yet.");
+async function runPackageGate(state) {
+  const packageGate = createPackageGateResult(state);
+  state.packageGate = packageGate;
+
+  if (!state.packageMetadata) {
+    addPackageGateFinding(state, packageGate, {
+      ruleId: "package-gate-no-package-json",
+      severity: "info",
+      message: "Selected path has no package.json, so npm package output was not inspected.",
+      recommendation: "Run package gate from a package root when package-boundary validation is needed."
+    });
+    return packageGate;
+  }
+
+  const packResult = await runNpmPackDryRun(state.projectRoot);
+  packageGate.usedJsonFallback = packResult.usedJsonFallback;
+  packageGate.npmPackExitCode = packResult.exitCode;
+
+  if (packResult.usedJsonFallback) {
+    addPackageGateFinding(state, packageGate, {
+      ruleId: "package-gate-json-fallback-used",
+      severity: "info",
+      message: "npm pack JSON output was unavailable, so package files were parsed from text output.",
+      recommendation: "Upgrade npm if JSON package dry-run output is required for stricter automation."
+    });
+  }
+
+  if (packResult.error) {
+    addPackageGateFinding(state, packageGate, {
+      ruleId: "package-gate-npm-pack-failed",
+      severity: "fail",
+      message: `npm pack dry-run failed: ${packResult.error}`,
+      recommendation: "Run npm pack --dry-run locally and fix package metadata or file-list issues before publishing."
+    });
+    return packageGate;
+  }
+
+  packageGate.packageFiles = packResult.packageFiles;
+  packageGate.packageFileCount = packResult.packageFiles.length;
+  await analyzePackageFiles(state, packageGate);
+  return packageGate;
+}
+
+function createPackageGateResult(state) {
+  return {
+    project: state.projectName,
+    root: normalizePath(path.resolve(state.projectRoot)),
+    packageName: state.packageMetadata?.name ?? null,
+    packageVersion: state.packageMetadata?.version ?? null,
+    packageFiles: [],
+    packageFileCount: 0,
+    usedJsonFallback: false,
+    npmPackExitCode: null,
+    findings: []
+  };
+}
+
+async function runNpmPackDryRun(cwd) {
+  const jsonInvocation = npmInvocation(["pack", "--dry-run", "--json", "--ignore-scripts"]);
+  const jsonResult = await runCommand(jsonInvocation.command, jsonInvocation.args, cwd);
+  if (jsonResult.exitCode === 0) {
+    const parsedFiles = parseNpmPackJson(jsonResult.stdout);
+    if (parsedFiles) {
+      return {
+        exitCode: jsonResult.exitCode,
+        packageFiles: parsedFiles,
+        usedJsonFallback: false
+      };
+    }
+  }
+
+  const textInvocation = npmInvocation(["pack", "--dry-run", "--ignore-scripts"]);
+  const textResult = await runCommand(textInvocation.command, textInvocation.args, cwd);
+  if (textResult.exitCode === 0) {
+    return {
+      exitCode: textResult.exitCode,
+      packageFiles: parseNpmPackText(textResult.stdout, textResult.stderr),
+      usedJsonFallback: true
+    };
+  }
+
+  return {
+    exitCode: textResult.exitCode,
+    packageFiles: [],
+    usedJsonFallback: jsonResult.exitCode === 0,
+    error: summarizeCommandFailure(textResult)
+  };
+}
+
+function runCommand(command, args, cwd) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd,
+      shell: false,
+      windowsHide: true
+    });
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+
+    child.on("error", (error) => {
+      resolve({
+        exitCode: 127,
+        stdout,
+        stderr,
+        error: error.message
+      });
+    });
+
+    child.on("close", (exitCode) => {
+      resolve({
+        exitCode,
+        stdout,
+        stderr
+      });
+    });
+  });
+}
+
+function shouldSkipEnvTemplatePlaceholder(rule, relativePath, matchText) {
+  if (!isSecretEnvAssignmentRule(rule) || !isEnvTemplatePackagePath(normalizePath(relativePath).toLowerCase())) {
+    return false;
+  }
+
+  const assignment = matchText.match(/^[A-Z_]+\s*=\s*(.*)$/u);
+  return Boolean(assignment) && !isNonPlaceholderSecretValue(assignment[1]);
+}
+
+function isSecretEnvAssignmentRule(rule) {
+  return rule.id === "secret-cloudflare-token-env" || rule.id === "secret-openai-key-env" || rule.id === "secret-github-token-env" || rule.id === "secret-npm-token-env";
+}
+
+function npmInvocation(args) {
+  if (process.platform !== "win32") {
+    return { command: "npm", args };
+  }
+
+  return {
+    command: process.execPath,
+    args: [path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js"), ...args]
+  };
+}
+
+function parseNpmPackJson(stdout) {
+  try {
+    const parsed = JSON.parse(stdout);
+    const packs = Array.isArray(parsed) ? parsed : [parsed];
+    const files = packs.flatMap((pack) => Array.isArray(pack?.files) ? pack.files : []);
+    const normalizedFiles = files
+      .map((file) => normalizePackageFilePath(typeof file === "string" ? file : file?.path))
+      .filter(Boolean);
+    return uniqueSorted(normalizedFiles);
+  } catch {
+    return null;
+  }
+}
+
+function parseNpmPackText(stdout, stderr) {
+  const files = [];
+  for (const line of `${stdout}\n${stderr}`.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.endsWith(".tgz")) {
+      continue;
+    }
+
+    const noticeMatch = trimmed.match(/^npm notice\s+(?:[0-9.]+\s*[kmg]?B\s+)?(.+)$/iu);
+    if (!noticeMatch) {
+      continue;
+    }
+
+    const candidate = normalizePackageFilePath(noticeMatch[1]);
+    if (candidate && candidate !== "package") {
+      files.push(candidate);
+    }
+  }
+
+  return uniqueSorted(files);
+}
+
+function normalizePackageFilePath(value) {
+  if (typeof value !== "string" || value.trim() === "") {
+    return null;
+  }
+
+  let normalized = normalizePath(value.trim()).replace(/^\/+/, "");
+  if (normalized.startsWith("package/")) {
+    normalized = normalized.slice("package/".length);
+  }
+
+  return normalized || null;
+}
+
+async function analyzePackageFiles(state, packageGate) {
+  const packageFiles = new Set(packageGate.packageFiles.map((file) => file.toLowerCase()));
+
+  addPackageHygieneFindings(state, packageGate, packageFiles);
+
+  for (const filePath of packageGate.packageFiles) {
+    const finding = classifyPackageFile(filePath, state.packageMetadata);
+    if (finding) {
+      addPackageGateFinding(state, packageGate, finding);
+    }
+
+    if (isEnvTemplatePackagePath(normalizePackageFilePath(filePath)?.toLowerCase() ?? "")) {
+      await analyzeEnvTemplateContent(state, packageGate, filePath);
+    }
+  }
+
+  if (packageGate.findings.length === 0) {
+    addPackageGateFinding(state, packageGate, {
+      ruleId: "package-gate-clean",
+      severity: "info",
+      message: "npm package dry-run did not surface package-boundary findings.",
+      recommendation: "Keep running the package gate before release or publish steps."
+    });
+  }
+}
+
+function addPackageHygieneFindings(state, packageGate, packageFiles) {
+  const hasReadme = hasPackageFile(packageFiles, "README.md");
+  const hasLicense = hasPackageFile(packageFiles, "LICENSE");
+  const hasPackageJson = hasPackageFile(packageFiles, "package.json");
+
+  if (!hasReadme) {
+    addPackageGateFinding(state, packageGate, {
+      ruleId: "package-gate-missing-readme",
+      severity: "warn",
+      message: "Package output is missing README.md.",
+      recommendation: "Include README.md in package output so package consumers see public usage context."
+    });
+  }
+
+  if (!hasLicense) {
+    addPackageGateFinding(state, packageGate, {
+      ruleId: "package-gate-missing-license",
+      severity: "warn",
+      message: "Package output is missing LICENSE.",
+      recommendation: "Include LICENSE in package output."
+    });
+  }
+
+  if (!hasPackageJson) {
+    addPackageGateFinding(state, packageGate, {
+      ruleId: "package-gate-missing-package-json",
+      severity: "fail",
+      message: "Package output is missing package.json.",
+      recommendation: "Fix package metadata so npm package output includes package.json."
+    });
+  }
+
+  if (hasReadme && hasLicense && hasPackageJson) {
+    addPackageGateFinding(state, packageGate, {
+      ruleId: "package-gate-hygiene-files-present",
+      severity: "info",
+      message: "Package output includes README.md, LICENSE, and package.json.",
+      recommendation: "No action needed for required package hygiene files."
+    });
+  }
+
+  if (state.packageMetadata?.name === "freshcontext-mcp" && !hasPackageFile(packageFiles, "dist/server.js")) {
+    addPackageGateFinding(state, packageGate, {
+      ruleId: "package-gate-freshcontext-missing-dist-server",
+      severity: "fail",
+      message: "freshcontext-mcp package output is missing dist/server.js.",
+      recommendation: "Run the build and verify package files include the MCP server entrypoint."
+    });
+  }
+}
+
+function classifyPackageFile(filePath, packageMetadata) {
+  const normalized = normalizePackageFilePath(filePath);
+  if (!normalized) {
+    return null;
+  }
+
+  const lowerPath = normalized.toLowerCase();
+  const basename = path.posix.basename(lowerPath);
+  const freshContextMcp = packageMetadata?.name === "freshcontext-mcp";
+
+  if (isEnvTemplatePackagePath(lowerPath)) {
+    return {
+      ruleId: "package-gate-env-template",
+      severity: "info",
+      path: normalized,
+      message: `Package output includes an environment template: ${normalized}.`,
+      recommendation: "Verify this env template contains placeholders only and no live secrets."
+    };
+  }
+
+  if (isDangerousPackagePath(lowerPath, basename)) {
+    return {
+      ruleId: "package-gate-dangerous-file",
+      severity: "fail",
+      path: normalized,
+      message: `Dangerous package-boundary file would be included: ${normalized}.`,
+      recommendation: "Remove private, secret-shaped, backup, credential, or sale-sensitive files from npm package output."
+    };
+  }
+
+  if (freshContextMcp && isFreshContextMcpPackageLeak(lowerPath, packageMetadata)) {
+    return {
+      ruleId: "package-gate-freshcontext-private-surface",
+      severity: "fail",
+      path: normalized,
+      message: `freshcontext-mcp package output includes a runtime-private or development-only surface: ${normalized}.`,
+      recommendation: "Keep Worker, tests, examples, and private/ignored docs out of freshcontext-mcp package output."
+    };
+  }
+
+  if (isWarningPackagePath(lowerPath, basename)) {
+    return {
+      ruleId: "package-gate-review-file",
+      severity: "warn",
+      path: normalized,
+      message: `Package output includes a review-only or local-history file: ${normalized}.`,
+      recommendation: "Confirm this file belongs in the public package, or exclude it before publishing."
+    };
+  }
+
+  return null;
+}
+
+function isDangerousPackagePath(lowerPath, basename) {
+  if (isRealEnvPackagePath(lowerPath, basename)) {
+    return true;
+  }
+
+  if (basename === "backup.sql" || basename.endsWith(".sql") || basename.endsWith(".bak") || basename.endsWith(".old")) {
+    return true;
+  }
+
+  if (basename.startsWith(".mcpregistry_") || lowerPath.includes("mcpregistry") || lowerPath.includes("cloudflare") && lowerPath.includes("token")) {
+    return true;
+  }
+
+  if (/(^|[/_. -])(private[-_ ]?data[-_ ]?room|buyer[-_ ]?(docs|target)|sale[-_ ]?strategy|pricing[-_ ]?strategy|valuation|acquisition[-_ ]?checklist|outreach[-_ ]?plan)([/_. -]|$)/iu.test(lowerPath)) {
+    return true;
+  }
+
+  if (/(^|[/_. -])(token|api[-_ ]?key|secret|credential)([/_. -]|$)/iu.test(lowerPath)) {
+    return true;
+  }
+
+  return lowerPath.includes(".github/private") || lowerPath.includes("private-user-images");
+}
+
+function isRealEnvPackagePath(lowerPath, basename = path.posix.basename(lowerPath)) {
+  if (isEnvTemplatePackagePath(lowerPath)) {
+    return false;
+  }
+
+  return basename === ".env" || basename.endsWith(".env") || basename.startsWith(".env.");
+}
+
+function isEnvTemplatePackagePath(lowerPath) {
+  const basename = path.posix.basename(lowerPath);
+  return basename === ".env.example" || basename === ".env.sample" || basename === ".env.template" || basename === ".env.defaults";
+}
+
+async function analyzeEnvTemplateContent(state, packageGate, packageFilePath) {
+  const normalized = normalizePackageFilePath(packageFilePath);
+  if (!normalized) {
+    return;
+  }
+
+  const absolutePath = path.resolve(state.projectRoot, normalized);
+  let content;
+  try {
+    content = await fs.readFile(absolutePath, "utf8");
+  } catch (error) {
+    addPackageGateFinding(state, packageGate, {
+      ruleId: "package-gate-env-template-unreadable",
+      severity: "warn",
+      path: normalized,
+      message: `Unable to inspect env template content: ${error.message}`,
+      recommendation: "Inspect the env template manually before publishing."
+    });
+    return;
+  }
+
+  if (envTemplateContainsSecret(content)) {
+    addPackageGateFinding(state, packageGate, {
+      ruleId: "package-gate-env-template-secret",
+      severity: "fail",
+      path: normalized,
+      message: `Environment template contains secret-shaped values: ${normalized}.`,
+      recommendation: "Replace live-looking values with placeholders before publishing."
+    });
+  }
+}
+
+function envTemplateContainsSecret(content) {
+  if (/\bsk-[A-Za-z0-9_-]{8,}\b/u.test(content)) {
+    return true;
+  }
+
+  if (/\bghp_[A-Za-z0-9_]{8,}\b/u.test(content)) {
+    return true;
+  }
+
+  if (/\bnpm_[A-Za-z0-9_]{8,}\b/u.test(content)) {
+    return true;
+  }
+
+  if (/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}\b/iu.test(content)) {
+    return true;
+  }
+
+  const assignmentPattern = /^[ \t]*(CLOUDFLARE_API_TOKEN|OPENAI_API_KEY|GITHUB_TOKEN|NPM_TOKEN)[ \t]*=[ \t]*(.*)$/gimu;
+  let match;
+  while ((match = assignmentPattern.exec(content)) !== null) {
+    if (isNonPlaceholderSecretValue(match[2])) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isNonPlaceholderSecretValue(rawValue) {
+  const value = rawValue.trim().replace(/^["']|["']$/gu, "");
+  if (value === "") {
+    return false;
+  }
+
+  const normalizedValue = value.toLowerCase();
+  if (normalizedValue === "replace-me" || normalizedValue === "your-token-here" || normalizedValue === "your-api-key-here" || normalizedValue === "changeme") {
+    return false;
+  }
+
+  if (/^<[^>]+>$/u.test(value) || (value.startsWith("${") && value.endsWith("}"))) {
+    return false;
+  }
+
+  return true;
+}
+
+function isFreshContextMcpPackageLeak(lowerPath, packageMetadata) {
+  if (lowerPath.startsWith("worker/") || lowerPath.startsWith("tests/")) {
+    return true;
+  }
+
+  if (lowerPath.startsWith("examples/") && !packageMetadata.files.some((entry) => normalizePath(entry).startsWith("examples"))) {
+    return true;
+  }
+
+  return lowerPath.includes("trust_roadmap") || lowerPath.includes("private") || lowerPath.includes("handoff") || lowerPath.includes("session_save") || lowerPath.includes("launch-drafts");
+}
+
+function isWarningPackagePath(lowerPath, basename) {
+  if (lowerPath.startsWith("_archive/") || lowerPath.startsWith("archive/") || lowerPath.includes("/launch-drafts/")) {
+    return true;
+  }
+
+  if (basename.includes("handoff") || basename.includes("session_save") || basename.includes("roadmap")) {
+    return true;
+  }
+
+  if (basename.includes("audit") || basename.includes("review")) {
+    return true;
+  }
+
+  if (lowerPath.includes("screenshots/") || lowerPath.includes("screenshot")) {
+    return true;
+  }
+
+  return lowerPath.startsWith("scripts/local") || lowerPath.includes("/local-only");
+}
+
+function hasPackageFile(packageFiles, expectedPath) {
+  const normalized = normalizePackageFilePath(expectedPath)?.toLowerCase();
+  return Boolean(normalized) && packageFiles.has(normalized);
+}
+
+function addPackageGateFinding(state, packageGate, finding) {
+  const packageFinding = createPackageGateFinding(finding);
+  packageGate.findings.push(packageFinding);
+  state.findings.push(packageFinding);
+}
+
+function summarizeCommandFailure(result) {
+  const output = redactSensitiveText([result.error, result.stderr, result.stdout].filter(Boolean).join("\n"));
+  return truncateText(output || `npm exited with code ${result.exitCode}`, 1200);
+}
+
+function redactSensitiveText(value) {
+  return value
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/gu, "sk-[REDACTED]")
+    .replace(/\bghp_[A-Za-z0-9_]{8,}\b/gu, "ghp_[REDACTED]")
+    .replace(/\bnpm_[A-Za-z0-9_]{8,}\b/gu, "npm_[REDACTED]")
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}\b/giu, "Bearer [REDACTED]")
+    .replace(/\b(CLOUDFLARE_API_TOKEN|OPENAI_API_KEY|GITHUB_TOKEN|NPM_TOKEN)\s*=\s*[^\s]+/giu, "$1=[REDACTED]");
+}
+
+function truncateText(value, maxLength) {
+  return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+}
+
+function uniqueSorted(values) {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }
 
 main().catch((error) => {
