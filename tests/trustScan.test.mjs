@@ -236,6 +236,74 @@ test("repo-map project warnings are warn-level and fail gate still uses effectiv
   }
 });
 
+test("multiple path scans include project grouping in JSON", async () => {
+  const fixture = await createFixture();
+  try {
+    const alpha = path.join(fixture, "alpha");
+    const beta = path.join(fixture, "beta");
+    await mkdir(alpha, { recursive: true });
+    await mkdir(path.join(beta, "_archive"), { recursive: true });
+
+    const rawSecret = ["sk", "multiRepoSecret12345"].join("-");
+    await writeFile(path.join(alpha, "README.md"), `Current docs mention ${staleToolCountClaim} and ${rawSecret}.\n`, "utf8");
+    await writeFile(path.join(beta, "_archive", "notes.md"), `Historical ${staleToolCountClaim} note.\n`, "utf8");
+
+    const result = runScanner(fixture, ["--path", "alpha", "--path", "beta", "--repo-map", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.includes(rawSecret), false);
+
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.summary.projectsScanned, 2);
+    assert.equal(report.projects.length, 2);
+    assert.deepEqual(report.projects.map((project) => project.name), ["alpha", "beta"]);
+    assert.equal(report.findings.length > 0, true);
+
+    const alphaProject = report.projects.find((project) => project.name === "alpha");
+    const betaProject = report.projects.find((project) => project.name === "beta");
+    assert.equal(alphaProject.repoMap.hasReadme, true);
+    assert.equal(betaProject.repoMap.privateOrArchiveDocs.includes("_archive/notes.md"), true);
+
+    const secretFinding = report.findings.find((finding) => finding.ruleId === "secret-openai-key-shape");
+    assert.equal(secretFinding.project, "alpha");
+    assert.equal(secretFinding.match, "sk-[REDACTED]");
+    assert.equal(report.findings.some((finding) => finding.project === "beta" && finding.ruleId === "stale-20-tools"), true);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("multi-project Markdown and fail gate remain grouped and redacted", async () => {
+  const fixture = await createFixture();
+  try {
+    const alpha = path.join(fixture, "alpha");
+    const beta = path.join(fixture, "beta");
+    await mkdir(alpha, { recursive: true });
+    await mkdir(beta, { recursive: true });
+
+    const rawSecret = ["sk", "failGateSecret12345"].join("-");
+    await writeFile(path.join(alpha, "README.md"), "Clean docs.\n", "utf8");
+    await writeFile(path.join(beta, "README.md"), `Token ${rawSecret}\n`, "utf8");
+
+    const markdown = runScanner(fixture, ["--path", "alpha", "--path", "beta", "--repo-map", "--markdown"]);
+    assert.equal(markdown.status, 0, markdown.stderr);
+    assert.match(markdown.stdout, /## Projects/u);
+    assert.match(markdown.stdout, /### alpha/u);
+    assert.match(markdown.stdout, /### beta/u);
+    assert.equal(markdown.stdout.includes(rawSecret), false);
+
+    const gated = runScanner(fixture, ["--path", "alpha", "--path", "beta", "--fail-on", "fail", "--json"]);
+    assert.equal(gated.status, 1);
+    assert.equal(gated.stdout.includes(rawSecret), false);
+
+    const report = JSON.parse(gated.stdout);
+    assert.equal(report.summary.highestSeverity, "fail");
+    assert.equal(report.projects.find((project) => project.name === "beta").summary.highestSeverity, "fail");
+    assert.equal(report.projects.find((project) => project.name === "alpha").summary.highestSeverity, "warn");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 async function createFixture({ rules = baseRules, allowlist = { allow: [] }, withPackageJson = false } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "trust-scan-"));
   await mkdir(path.join(root, "config"), { recursive: true });
