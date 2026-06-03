@@ -127,27 +127,29 @@ async function main() {
   const cwd = process.cwd();
   const rulesPath = path.join(cwd, "config", "trust-scan-rules.json");
   const allowlistPath = path.join(cwd, "config", "trust-scan-allowlist.json");
-  const [rules, allowlist, packageMetadata] = await Promise.all([
+  const [rules, allowlist] = await Promise.all([
     loadRules(rulesPath),
-    loadAllowlist(allowlistPath),
-    loadPackageMetadata(cwd)
+    loadAllowlist(allowlistPath)
   ]);
   const compiledRules = compileRules(rules);
   validateAllowlistRuleIds(allowlist, compiledRules);
-  const scanState = createScanState({
-    cwd,
-    rules: compiledRules,
-    allowlist,
-    packageMetadata
-  });
+  const projectStates = [];
 
   for (const selectedPath of args.paths) {
     const absolutePath = path.resolve(cwd, selectedPath);
+    const scanState = await createProjectScanState({
+      cwd,
+      selectedPath,
+      absolutePath,
+      rules: compiledRules,
+      allowlist
+    });
     await scanSelectedPath(absolutePath, scanState);
+    finalizeRepoMap(scanState);
+    projectStates.push(scanState);
   }
 
-  finalizeRepoMap(scanState);
-  const report = generateReport(scanState, { includeRepoMap: args.repoMap });
+  const report = generateReport(projectStates, { includeRepoMap: args.repoMap });
   writeReport(report, args.output, { showAllowed: args.showAllowed, showRepoMap: args.repoMap });
 
   if (shouldFail(report.summary, args.failOn)) {
@@ -439,9 +441,42 @@ function compileRules(rules) {
   });
 }
 
-function createScanState({ cwd, rules, allowlist, packageMetadata }) {
+async function createProjectScanState({ cwd, selectedPath, absolutePath, rules, allowlist }) {
+  const projectRoot = await resolveProjectRoot(absolutePath);
+  const packageMetadata = await loadPackageMetadata(projectRoot);
+
+  return createScanState({
+    cwd: projectRoot,
+    baseCwd: cwd,
+    projectName: projectNameFromPath(projectRoot, absolutePath),
+    projectRoot,
+    selectedPath,
+    rules,
+    allowlist,
+    packageMetadata
+  });
+}
+
+async function resolveProjectRoot(absolutePath) {
+  try {
+    const stat = await fs.lstat(absolutePath);
+    return stat.isDirectory() ? absolutePath : path.dirname(absolutePath);
+  } catch {
+    return path.dirname(absolutePath);
+  }
+}
+
+function projectNameFromPath(projectRoot, absolutePath) {
+  return path.basename(projectRoot) || path.basename(absolutePath) || ".";
+}
+
+function createScanState({ cwd, baseCwd, projectName, projectRoot, selectedPath, rules, allowlist, packageMetadata }) {
   return {
     cwd,
+    baseCwd,
+    projectName,
+    projectRoot,
+    selectedPath,
     rules,
     allowlist,
     packageMetadata,
@@ -1114,24 +1149,75 @@ function createRepoMapFinding({ ruleId, severity, message, recommendation }) {
   };
 }
 
-function generateReport(state, options = {}) {
-  const sortedFindings = sortFindings(state.findings);
-  const summary = generateSummaryStats(sortedFindings, state.stats);
+function generateReport(states, options = {}) {
+  const projectStates = Array.isArray(states) ? states : [states];
+  const projects = projectStates.map((state) => generateProjectReport(state, options));
+  const sortedFindings = sortFindings(projects.flatMap((project) => project.findings));
+  const summary = generateSummaryStats(sortedFindings, aggregateStats(projectStates), {
+    projectsScanned: projects.length,
+    groupProjectPaths: projects.length > 1
+  });
   const report = {
     tool: TOOL_NAME,
+    package: projects[0]?.package ?? null,
+    summary,
+    projects,
+    findings: sortedFindings
+  };
+
+  if (options.includeRepoMap && projects.length === 1) {
+    report.repoMap = projects[0].repoMap;
+  }
+
+  return report;
+}
+
+function generateProjectReport(state, options = {}) {
+  const sortedFindings = sortFindings(state.findings.map((finding) => annotateProjectFinding(finding, state)));
+  const summary = generateSummaryStats(sortedFindings, state.stats, { projectsScanned: 1 });
+  const project = {
+    name: state.projectName,
+    root: normalizePath(path.resolve(state.projectRoot)),
+    selectedPath: state.selectedPath,
     package: state.packageMetadata,
     summary,
     findings: sortedFindings
   };
 
   if (options.includeRepoMap) {
-    report.repoMap = state.repoMap;
+    project.repoMap = state.repoMap;
   }
 
-  return report;
+  return project;
 }
 
-function generateSummaryStats(findings, stats) {
+function annotateProjectFinding(finding, state) {
+  const projectPath = finding.path === "." ? state.projectName : `${state.projectName}/${finding.path}`;
+  return {
+    project: state.projectName,
+    projectRoot: normalizePath(path.resolve(state.projectRoot)),
+    projectPath: normalizePath(projectPath),
+    ...finding
+  };
+}
+
+function aggregateStats(states) {
+  return states.reduce((stats, state) => ({
+    scannedFiles: stats.scannedFiles + state.stats.scannedFiles,
+    skippedFiles: stats.skippedFiles + state.stats.skippedFiles,
+    skippedDirectories: stats.skippedDirectories + state.stats.skippedDirectories,
+    visitedDirectories: stats.visitedDirectories + state.stats.visitedDirectories,
+    scanErrors: stats.scanErrors + state.stats.scanErrors
+  }), {
+    scannedFiles: 0,
+    skippedFiles: 0,
+    skippedDirectories: 0,
+    visitedDirectories: 0,
+    scanErrors: 0
+  });
+}
+
+function generateSummaryStats(findings, stats, options = {}) {
   const allowedFindings = findings.filter((finding) => finding.allowed).length;
   const unallowedFindings = findings.length - allowedFindings;
   const highestSeverity = findings
@@ -1152,13 +1238,14 @@ function generateSummaryStats(findings, stats) {
     allowedFindings,
     unallowedFindings,
     highestSeverity,
+    projectsScanned: options.projectsScanned,
     scanErrors: stats.scanErrors,
     findingsBySeverity: countBy(findings, "severity", ["fail", "warn", "info"]),
     findingsByEffectiveSeverity: countBy(findings, "effectiveSeverity", ["fail", "warn", "info"]),
     findingsByCategory: countBy(findings, "category"),
     findingsByRule: countBy(findings, "ruleId"),
     findingsByFileCategory: countBy(findings, "fileCategory"),
-    topPaths: topCounts(findings, "path", 10),
+    topPaths: topCounts(findings, options.groupProjectPaths ? "projectPath" : "path", 10),
     downgradedFindings: downgradedFindings.length,
     topDowngradedRules: topCounts(downgradedFindings, "ruleId", 10)
   };
@@ -1174,6 +1261,11 @@ function sortFindings(findings) {
     const rawSeverityDiff = SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity];
     if (rawSeverityDiff !== 0) {
       return rawSeverityDiff;
+    }
+
+    const projectDiff = (a.project ?? "").localeCompare(b.project ?? "");
+    if (projectDiff !== 0) {
+      return projectDiff;
     }
 
     const pathDiff = a.path.localeCompare(b.path);
@@ -1240,6 +1332,7 @@ function writeReport(report, outputMode, options = {}) {
 
 function formatHuman(report, options = {}) {
   const visibleFindings = filterVisibleFindings(report.findings, options);
+  const showProjectBreakdown = Array.isArray(report.projects) && report.projects.length > 1;
   const lines = [
     TOOL_NAME,
     "",
@@ -1249,6 +1342,11 @@ function formatHuman(report, options = {}) {
 
   if (options.showRepoMap && report.repoMap) {
     lines.push(...formatHumanRepoMap(report.repoMap));
+    lines.push("");
+  }
+
+  if (showProjectBreakdown) {
+    lines.push(...formatHumanProjects(report.projects, options));
     lines.push("");
   }
 
@@ -1273,8 +1371,12 @@ function formatHuman(report, options = {}) {
   for (const finding of visibleFindings) {
     const allowedLabel = finding.allowed ? " ALLOWED" : "";
     const rawLabel = finding.severity === finding.effectiveSeverity ? "" : ` (raw ${finding.severity.toUpperCase()})`;
-    lines.push(`${finding.effectiveSeverity.toUpperCase()}${rawLabel}${allowedLabel} ${finding.ruleId} ${finding.path}:${finding.line}`);
+    const findingPath = finding.project ? `${finding.project}/${finding.path}` : finding.path;
+    lines.push(`${finding.effectiveSeverity.toUpperCase()}${rawLabel}${allowedLabel} ${finding.ruleId} ${findingPath}:${finding.line}`);
     lines.push(finding.message);
+    if (finding.project) {
+      lines.push(`Project: ${finding.project}`);
+    }
     lines.push(`File category: ${finding.fileCategory}`);
     lines.push(`Severity reason: ${finding.severityReason}`);
     if (finding.match) {
@@ -1293,9 +1395,9 @@ function formatHuman(report, options = {}) {
 function formatMarkdown(report, options = {}) {
   const visibleFindings = filterVisibleFindings(report.findings, options);
   const lines = [
-    `# ${TOOL_NAME}`,
+    `# ${TOOL_NAME} Report`,
     "",
-    "## Summary",
+    "## Global Summary",
     "",
     ...formatSummaryLines(report.summary).map((line) => `- ${line}`),
     ""
@@ -1303,6 +1405,11 @@ function formatMarkdown(report, options = {}) {
 
   if (options.showRepoMap && report.repoMap) {
     lines.push(...formatMarkdownRepoMap(report.repoMap));
+    lines.push("");
+  }
+
+  if (Array.isArray(report.projects) && report.projects.length > 0) {
+    lines.push(...formatMarkdownProjects(report.projects, options));
     lines.push("");
   }
 
@@ -1345,6 +1452,9 @@ function formatMarkdown(report, options = {}) {
     const rawLabel = finding.severity === finding.effectiveSeverity ? "" : ` (raw ${finding.severity.toUpperCase()})`;
     lines.push(`### ${finding.effectiveSeverity.toUpperCase()}${rawLabel}${allowedLabel}: ${finding.ruleId}`);
     lines.push("");
+    if (finding.project) {
+      lines.push(`- Project: \`${finding.project}\``);
+    }
     lines.push(`- Path: \`${finding.path}:${finding.line}\``);
     lines.push(`- File category: \`${finding.fileCategory}\``);
     lines.push(`- Severity reason: ${finding.severityReason}`);
@@ -1361,7 +1471,7 @@ function formatMarkdown(report, options = {}) {
 }
 
 function formatSummaryLines(summary) {
-  return [
+  const lines = [
     `Scanned files: ${summary.scannedFiles}`,
     `Skipped files: ${summary.skippedFiles}`,
     `Findings: ${summary.findings}`,
@@ -1370,6 +1480,98 @@ function formatSummaryLines(summary) {
     `Highest severity: ${summary.highestSeverity}`,
     `Downgraded findings: ${summary.downgradedFindings}`
   ];
+
+  if (summary.projectsScanned !== undefined) {
+    lines.splice(2, 0, `Projects scanned: ${summary.projectsScanned}`);
+  }
+
+  return lines;
+}
+
+function formatHumanProjects(projects, options = {}) {
+  const lines = ["Projects:"];
+
+  for (const project of projects) {
+    const severity = severityCountMap(project.summary);
+    lines.push("");
+    lines.push(`${project.name}`);
+    lines.push(`  root: ${project.root}`);
+    lines.push(`  scanned: ${project.summary.scannedFiles}`);
+    lines.push(`  skipped: ${project.summary.skippedFiles}`);
+    lines.push(`  findings: ${project.summary.findings}`);
+    lines.push(`  allowed: ${project.summary.allowedFindings}`);
+    lines.push(`  unallowed: ${project.summary.unallowedFindings}`);
+    lines.push(`  fail: ${severity.fail} warn: ${severity.warn} info: ${severity.info}`);
+    lines.push(`  highest: ${project.summary.highestSeverity}`);
+    lines.push(`  top rules: ${formatInlineCounts(project.summary.findingsByRule, 3)}`);
+    lines.push(`  top categories: ${formatInlineCounts(project.summary.findingsByCategory, 3)}`);
+    lines.push(`  top paths: ${formatInlineCounts(project.summary.topPaths, 3)}`);
+
+    if (options.showRepoMap && project.repoMap) {
+      lines.push(`  repo map: ${formatInlineRepoMap(project.repoMap)}`);
+    }
+  }
+
+  return lines;
+}
+
+function formatMarkdownProjects(projects, options = {}) {
+  const lines = ["## Projects", ""];
+
+  for (const project of projects) {
+    const severity = severityCountMap(project.summary);
+    lines.push(`### ${project.name}`);
+    lines.push("");
+    lines.push(`- Root: \`${project.root}\``);
+    lines.push(`- Scanned files: ${project.summary.scannedFiles}`);
+    lines.push(`- Skipped files: ${project.summary.skippedFiles}`);
+    lines.push(`- Findings: ${project.summary.findings}`);
+    lines.push(`- Allowed findings: ${project.summary.allowedFindings}`);
+    lines.push(`- Unallowed findings: ${project.summary.unallowedFindings}`);
+    lines.push(`- Effective severity: fail ${severity.fail}, warn ${severity.warn}, info ${severity.info}`);
+    lines.push(`- Highest severity: ${project.summary.highestSeverity}`);
+    lines.push(`- Top rules: ${formatInlineCounts(project.summary.findingsByRule, 5)}`);
+    lines.push(`- Top categories: ${formatInlineCounts(project.summary.findingsByCategory, 5)}`);
+    lines.push(`- Top paths: ${formatInlineCounts(project.summary.topPaths, 5)}`);
+
+    if (options.showRepoMap && project.repoMap) {
+      lines.push(`- Repo map: ${formatInlineRepoMap(project.repoMap)}`);
+    }
+
+    lines.push("");
+  }
+
+  return lines;
+}
+
+function severityCountMap(summary) {
+  const counts = Object.fromEntries(summary.findingsByEffectiveSeverity.map((entry) => [entry.name, entry.count]));
+  return {
+    fail: counts.fail ?? 0,
+    warn: counts.warn ?? 0,
+    info: counts.info ?? 0
+  };
+}
+
+function formatInlineCounts(entries, limit) {
+  const visible = entries.filter((entry) => entry.count > 0).slice(0, limit);
+  if (visible.length === 0) {
+    return "none";
+  }
+
+  return visible.map((entry) => `${entry.name} ${entry.count}`).join(", ");
+}
+
+function formatInlineRepoMap(repoMap) {
+  return [
+    `public docs ${repoMap.publicDocs.length}`,
+    `private/archive docs ${repoMap.privateOrArchiveDocs.length}`,
+    `source ${repoMap.sourceFiles.length}`,
+    `tests ${repoMap.testFiles.length}`,
+    `config ${repoMap.configFiles.length}`,
+    `package-boundary ${repoMap.packageBoundaryFiles.length}`,
+    `unknown ${repoMap.unknownFiles.length}`
+  ].join(", ");
 }
 
 function formatHumanRepoMap(repoMap) {
