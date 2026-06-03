@@ -14,6 +14,10 @@ This document describes release hardening practices for future FreshContext pack
 - Run `npm audit --omit=dev`.
 - Run `npm audit`.
 - Run `npm pack --dry-run --json`.
+- Smoke-test the packed tarball in a temporary install:
+  - Confirm `npm start` works from the installed package.
+  - Confirm the `freshcontext-mcp` binary works from the installed package.
+  - Confirm repo-only scripts print a source-checkout notice instead of failing when examples, tests, or scripts are intentionally excluded.
 - Run a stale-claim scan across public docs and package-facing files.
 - Run a secret scan before sharing archives, diligence folders, or package artifacts.
 
