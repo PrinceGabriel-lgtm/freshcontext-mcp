@@ -320,7 +320,7 @@ Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 ## Roadmap
 
 - [x] FreshContext Specification v1.2 published (MIT, open standard)
-- [x] DAR engine with proprietary λ constants (v0.3.17)
+- [x] DAR engine with proprietary λ constants (v0.3.18)
 - [x] Ha-Pri v1 provenance signatures on stored signals
 - [x] Semantic deduplication via fingerprinting
 - [x] Live before/after demo at `/demo`
@@ -330,7 +330,7 @@ Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 - [x] Cloudflare Workers deployment — global edge, KV cache, KV rate limiting
 - [x] Listed on official MCP Registry, Apify Store, npm
 - [ ] Ha-Pri v2 hardened canonical content hash verification
-- [x] GitHub Actions CI/CD — auto-publish on every push
+- [x] GitHub Actions release workflow — manual or `v*` tag-triggered npm publish path
 - [ ] Webhook triggers — push high-entropy signals on threshold
 - [ ] Dashboard — React frontend for the D1 intelligence pipeline
 - [ ] GKG upgrade for `extract_gdelt` — tone scores, goldstein scale, event codes
@@ -353,6 +353,7 @@ If you're building something FreshContext-compatible, open an issue and we'll ad
 - [TRADEMARKS.md](./TRADEMARKS.md)
 - [Dependency diligence notes](./docs/DEPENDENCY_DILIGENCE.md)
 - [Release integrity notes](./docs/RELEASE_INTEGRITY.md)
+- [Release notes](./docs/RELEASE_NOTES.md)
 
 ---
 
