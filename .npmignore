@@ -11,6 +11,10 @@ mcp-publisher
 # Source (already in dist/)
 src/
 
+# Apify Actor entrypoint is source-checkout / separate-actor packaging,
+# not part of the published MCP npm runtime package.
+dist/apify.js
+
 # Worker (not part of npm package — separate Cloudflare deployment)
 worker/
 
