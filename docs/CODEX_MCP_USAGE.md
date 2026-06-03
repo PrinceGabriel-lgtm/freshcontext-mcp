@@ -9,12 +9,12 @@ Codex can launch FreshContext as a local MCP server over stdio.
 The verified local server entrypoint is:
 
 ```powershell
-& 'C:\Program Files\nodejs\node.exe' 'C:\Users\Immanuel Gabriel\Downloads\freshcontext-mcp\dist\server.js'
+& '<node-executable>' '<repo-root>\dist\server.js'
 ```
 
 The MCP server exposes 21 tools. The local smoke test verifies the package version, server version, expected tool count, and representative tool calls.
 
-No API key is required for the local stdio smoke path.
+No credential is required for the local stdio smoke path.
 
 ## Local stdio setup
 
@@ -27,18 +27,18 @@ Prerequisites:
 From the repository root:
 
 ```powershell
-cd 'C:\Users\Immanuel Gabriel\Downloads\freshcontext-mcp'
+cd '<repo-root>'
 npm install
 npm run build
 npm run smoke:stdio
 ```
 
-For this machine, the Codex MCP command should use the same Node executable and built server path validated by the smoke test:
+For a local Codex setup, use the same Node executable and built server path validated by the smoke test:
 
 ```toml
 [mcp_servers.freshcontext]
-command = 'C:\Program Files\nodejs\node.exe'
-args = ['C:\Users\Immanuel Gabriel\Downloads\freshcontext-mcp\dist\server.js']
+command = '<node-executable>'
+args = ['<repo-root>\dist\server.js']
 ```
 
 A more portable variant is also valid when `node` is available on Codex's PATH:
@@ -46,7 +46,7 @@ A more portable variant is also valid when `node` is available on Codex's PATH:
 ```toml
 [mcp_servers.freshcontext]
 command = "node"
-args = ['C:\Users\Immanuel Gabriel\Downloads\freshcontext-mcp\dist\server.js']
+args = ['<repo-root>\dist\server.js']
 ```
 
 Keep this configuration in the local Codex config file, not in the repository. Do not commit machine-local paths.
@@ -74,7 +74,7 @@ This remote path was identified from repository metadata. The validation in this
 Run the local smoke test:
 
 ```powershell
-cd 'C:\Users\Immanuel Gabriel\Downloads\freshcontext-mcp'
+cd '<repo-root>'
 npm run smoke:stdio
 ```
 
@@ -99,8 +99,8 @@ Expected result: no output and exit code 0.
 
 ## Safety notes
 
-- Do not place secrets, API keys, registry tokens, npm tokens, GitHub tokens, or Cloudflare tokens in Codex MCP config.
-- Do not read, edit, print, or commit local token files such as `.env`, `.api-key.local.txt`, `.mcpregistry_*`, `.dev.vars`, or `.wrangler`.
+- Do not place secrets, credentials, registry tokens, npm tokens, GitHub tokens, or Cloudflare tokens in Codex MCP config.
+- Do not read, edit, print, or commit local token files, local environment files, registry credentials, Cloudflare local state, or Wrangler state.
 - Do not commit local Codex config or machine-specific paths.
 - Prefer the local stdio path for this compatibility check because it is verified by `npm run smoke:stdio`.
 - Do not claim Codex Cloud support unless it is separately tested and documented.

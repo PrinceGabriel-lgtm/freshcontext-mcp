@@ -31,6 +31,23 @@
   "bin": {
     "freshcontext-mcp": "dist/server.js"
   },
+  "files": [
+    ".env.example",
+    "dist/",
+    "docs/API_DESIGN.md",
+    "docs/CODEX_MCP_USAGE.md",
+    "docs/CORE_API.md",
+    "docs/DEPENDENCY_DILIGENCE.md",
+    "docs/HA_PRI_V2_DESIGN.md",
+    "docs/RELEASE_INTEGRITY.md",
+    "docs/SIGNAL_CONTRACT.md",
+    "docs/SOURCE_PROFILES.md",
+    "freshcontext.schema.json",
+    "NOTICE.md",
+    "SECURITY.md",
+    "server.json",
+    "TRADEMARKS.md"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/server.ts",
