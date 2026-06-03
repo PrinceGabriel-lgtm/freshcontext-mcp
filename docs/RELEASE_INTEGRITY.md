@@ -39,6 +39,8 @@ Confirm release artifacts do not include:
 
 ## Release Notes and Integrity Artifacts
 
+- Current prepared release notes: [`RELEASE_NOTES.md`](./RELEASE_NOTES.md).
+
 Future release hardening may include:
 
 - GitHub release notes for tagged releases.
