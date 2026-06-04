@@ -31,7 +31,7 @@ MCP, REST, SDK, CLI, and future operator workflows are hosts over Core. They sho
 
 Adapters provide candidate context. They fetch, search, scrape, read, or receive source data, then turn that data into FreshContext-compatible signals.
 
-The 21 MCP tools in this repository are reference adapters, source-profile examples, and proof surfaces. They are useful, but they are not the product identity.
+The named MCP tools in this repository are reference adapters, source-profile examples, and proof surfaces. They are useful, but they are not the product identity.
 
 They demonstrate that FreshContext can evaluate different information classes:
 
@@ -423,5 +423,5 @@ Sharper agent-facing sentence:
 FreshContext decides what context deserves to reach the model.
 ```
 
-Use the 21 tools as proof of breadth, not as the headline.
+Use named reference adapters as proof of breadth, not as the headline.
 
