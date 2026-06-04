@@ -43,7 +43,7 @@ R_t = R_0 · e^(−λt)
 
 That's the whole fix. No model swap. No re-embedding. No re-indexing. The layer drops onto whatever retrieval pipeline you already have.
 
-**The layer is the product.** The 21 tools shipped with this repo are reference adapters demonstrating compatibility — useful, but commodity. The DAR engine, the freshness envelope, and the FreshContext Specification are the moat.
+**The layer is the product.** The named adapters shipped with this repo demonstrate compatibility across different source classes. The DAR engine, the freshness envelope, Source Profiles, and the FreshContext Specification are the moat.
 
 ---
 
@@ -72,7 +72,7 @@ The FreshContext Specification v1.2 is published as an open standard under MIT l
 
 FreshContext Core is the reusable center of the current integrated package. It owns freshness scoring, envelope formatting, failure guards, shared types, rank/explain primitives, and the context-conditioned utility primitive.
 
-MCP is the primary reference/interface implementation over Core. Claude Desktop is supported, but not required. The 21 MCP tools in this repo are reference adapters and a live interface for using the system.
+MCP is the primary reference/interface implementation over Core. Claude Desktop is supported, but not required. The MCP tool surface exposes named reference adapters and a live interface for using the system.
 
 The production Cloudflare Worker now uses Core-backed envelope generation. Worker-specific concerns remain outside Core: MCP transport, runtime guards, KV cache policy, cache metadata injection, JSON parse/replace cache helpers, D1 feeds, cron, rate limiting, and Store/feed scoring/provenance.
 
@@ -92,9 +92,9 @@ Production endpoint: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 
 ---
 
-## Reference adapters
+## Named reference adapters
 
-The repo ships 21 tools demonstrating how to make any data source FreshContext-compatible. Useful as drop-in tools, but the value is the layer above them.
+The repo ships named reference adapters that demonstrate how different source classes can become FreshContext-compatible. Each adapter keeps its own name because it represents a source boundary; the adapter count is operational proof, not the product headline.
 
 ### Intelligence
 | Adapter | What it returns |
@@ -348,7 +348,7 @@ Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 - [x] Semantic deduplication via fingerprinting
 - [x] Live before/after demo at `/demo`
 - [x] METHODOLOGY.md — formal IP and engineering documentation
-- [x] 21 reference tools across intelligence, competitive research, market data, and composites
+- [x] Named reference adapters across intelligence, competitive research, market data, and composites
 - [x] Core-backed envelope generation shared by npm/MCP and the Cloudflare Worker
 - [x] Cloudflare Workers deployment — global edge, KV cache, KV rate limiting
 - [x] Listed on official MCP Registry, Apify Store, npm
