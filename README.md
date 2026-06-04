@@ -377,7 +377,6 @@ If you're building something FreshContext-compatible, open an issue and we'll ad
 - [Dependency diligence notes](./docs/DEPENDENCY_DILIGENCE.md)
 - [Release integrity notes](./docs/RELEASE_INTEGRITY.md)
 - [Release notes](./docs/RELEASE_NOTES.md)
-- [Operational demo runbook](./docs/OPERATIONAL_DEMO_RUNBOOK.md)
 
 ---
 
