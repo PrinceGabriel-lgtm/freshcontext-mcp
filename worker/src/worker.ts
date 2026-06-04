@@ -12,7 +12,7 @@ import {
   stamp,
 } from "./freshcontextEnvelope.js";
 
-const SERVICE_VERSION = "0.3.17";
+const SERVICE_VERSION = "0.3.18";
 const SERVICE_UA = `freshcontext-mcp/${SERVICE_VERSION} (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)`;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
