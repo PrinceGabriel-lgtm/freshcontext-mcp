@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -583,6 +583,46 @@ test("claim check allows future or not-yet Ha-Pri v2 wording", async () => {
 
     const report = JSON.parse(result.stdout);
     assert.equal(report.findings.some((finding) => finding.ruleId === "claim-check-ha-pri-v2-overclaim"), false);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("package scripts expose release gate and report commands", async () => {
+  const packageJson = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8"));
+
+  assert.equal(packageJson.scripts["trust:gate"], "node package-script-guard.mjs trust:gate");
+  assert.equal(packageJson.scripts["trust:report"], "node package-script-guard.mjs trust:report");
+  assert.equal(packageJson.scripts["trust:report:json"], "node package-script-guard.mjs trust:report:json");
+});
+
+test("package script guard routes release gate and reports to expected scanner flags", async () => {
+  const guard = await readFile(path.join(repoRoot, "package-script-guard.mjs"), "utf8");
+
+  assert.match(guard, /"trust:gate"[\s\S]*"--repo-map"[\s\S]*"--package-gate"[\s\S]*"--claim-check"[\s\S]*"--fail-on",\s*"fail"/u);
+  assert.match(guard, /"trust:report"[\s\S]*"--markdown"[\s\S]*passThroughArgs:\s*true/u);
+  assert.match(guard, /"trust:report:json"[\s\S]*"--json"[\s\S]*passThroughArgs:\s*true/u);
+});
+
+test("--output writes selected report mode and keeps redaction", async () => {
+  const fixture = await createFixture();
+  try {
+    const rawSecret = ["sk", "outputFileSecret12345"].join("-");
+    await writeFile(path.join(fixture, "README.md"), `Token ${rawSecret}\n`, "utf8");
+
+    const outputPath = path.join("reports", "trust-report.json");
+    const result = runScanner(fixture, ["--path", ".", "--json", "--output", outputPath]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, "");
+    assert.equal(result.stderr.includes(rawSecret), false);
+    assert.match(result.stderr, /Wrote json trust scan report/u);
+
+    const written = await readFile(path.join(fixture, outputPath), "utf8");
+    assert.equal(written.includes(rawSecret), false);
+
+    const report = JSON.parse(written);
+    const finding = report.findings.find((item) => item.ruleId === "secret-openai-key-shape");
+    assert.equal(finding.match, "sk-[REDACTED]");
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }

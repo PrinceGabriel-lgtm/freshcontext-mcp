@@ -176,7 +176,8 @@ async function main() {
     includePackageGate: args.packageGate,
     includeRepoMap: args.repoMap
   });
-  writeReport(report, args.output, {
+  await writeReport(report, args.output, {
+    outputFile: args.outputFile,
     showAllowed: args.showAllowed,
     showClaimCheck: args.claimCheck,
     showPackageGate: args.packageGate,
@@ -195,6 +196,7 @@ function parseArgs(argv) {
     failOn: null,
     help: false,
     claimCheck: false,
+    outputFile: null,
     packageGate: false,
     repoMap: false,
     showAllowed: false
@@ -272,6 +274,25 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--output") {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error("--output requires a file path.");
+      }
+      result.outputFile = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--output=")) {
+      const value = arg.slice("--output=".length);
+      if (!value) {
+        throw new Error("--output requires a file path.");
+      }
+      result.outputFile = value;
+      continue;
+    }
+
     throw new Error(`Unknown argument: ${arg}`);
   }
 
@@ -311,6 +332,7 @@ Options:
   --show-allowed      Show full allowlisted finding details in text and Markdown output.
   --package-gate      Run npm pack dry-run package-boundary inspection.
   --claim-check       Run deterministic local public-claim consistency checks.
+  --output <file>     Write the selected output mode to a file, overwriting that file.
   -h, --help          Show this help.
 
 Defaults:
@@ -1422,18 +1444,37 @@ function topCounts(items, key, limit) {
   return countBy(items, key).slice(0, limit);
 }
 
-function writeReport(report, outputMode, options = {}) {
-  if (outputMode === "json") {
-    console.log(JSON.stringify(report, null, 2));
+async function writeReport(report, outputMode, options = {}) {
+  const rendered = renderReport(report, outputMode, options);
+
+  if (options.outputFile) {
+    await writeOutputFile(options.outputFile, rendered);
+    console.error(`Wrote ${outputMode} trust scan report to ${options.outputFile}`);
     return;
+  }
+
+  console.log(rendered);
+}
+
+function renderReport(report, outputMode, options = {}) {
+  if (outputMode === "json") {
+    return `${JSON.stringify(report, null, 2)}\n`;
   }
 
   if (outputMode === "markdown") {
-    console.log(formatMarkdown(report, options));
-    return;
+    return `${formatMarkdown(report, options)}\n`;
   }
 
-  console.log(formatHuman(report, options));
+  return `${formatHuman(report, options)}\n`;
+}
+
+async function writeOutputFile(outputFile, content) {
+  const outputPath = path.resolve(process.cwd(), outputFile);
+  const parentDir = path.dirname(outputPath);
+  if (parentDir && parentDir !== outputPath) {
+    await fs.mkdir(parentDir, { recursive: true });
+  }
+  await fs.writeFile(outputPath, content, "utf8");
 }
 
 function formatHuman(report, options = {}) {
