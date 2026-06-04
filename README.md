@@ -224,6 +224,29 @@ From an installed npm package, the supported runtime entrypoints are `npm start`
 
 The Apify Actor entrypoint remains available in the source checkout for separate actor packaging, but it is intentionally not part of the published MCP npm runtime package.
 
+### Release trust gate
+
+Run the local release gate before a release, package review, demo, or PR review:
+
+```bash
+npm run trust:gate
+```
+
+The gate runs the Trust Scanner with repo-map reporting, npm package-boundary inspection, deterministic claim checks, and `--fail-on fail`. It is local-only, does not publish or deploy, does not send telemetry, and does not replace dedicated security scanners.
+
+Generate review reports when you need a shareable summary:
+
+```bash
+npm run trust:report
+npm run trust:report:json
+```
+
+To write a Markdown report file explicitly:
+
+```bash
+npm run trust:report -- --output TRUST_SCAN_REPORT.md
+```
+
 ### Bring your own source list
 
 FreshContext can evaluate candidate context you provide as a local JSON file:

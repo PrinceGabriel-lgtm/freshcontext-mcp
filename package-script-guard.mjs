@@ -50,6 +50,23 @@ const commands = {
     command: "node",
     args: ["scripts/smoke-stdio.mjs"],
   },
+  "trust:gate": {
+    required: ["scripts/trust-scan.mjs"],
+    command: "node",
+    args: ["scripts/trust-scan.mjs", "--path", ".", "--repo-map", "--package-gate", "--claim-check", "--fail-on", "fail"],
+  },
+  "trust:report": {
+    required: ["scripts/trust-scan.mjs"],
+    command: "node",
+    args: ["scripts/trust-scan.mjs", "--path", ".", "--repo-map", "--package-gate", "--claim-check", "--markdown"],
+    passThroughArgs: true,
+  },
+  "trust:report:json": {
+    required: ["scripts/trust-scan.mjs"],
+    command: "node",
+    args: ["scripts/trust-scan.mjs", "--path", ".", "--repo-map", "--package-gate", "--claim-check", "--json"],
+    passThroughArgs: true,
+  },
   "trust:scan": {
     required: ["scripts/trust-scan.mjs"],
     command: "node",
