@@ -22,6 +22,7 @@ This document describes release hardening practices for future FreshContext pack
   - Confirm fresh consumer `npm audit --omit=dev` is clean.
 - Run a stale-claim scan across public docs and package-facing files.
 - Run a secret scan before sharing archives, diligence folders, or package artifacts.
+- Keep operational demo runbooks, buyer scripts, outreach plans, diligence checklists, and negotiation materials outside the public npm package.
 
 ## Package Exclusion Checks
 
@@ -34,6 +35,7 @@ Confirm release artifacts do not include:
 - Local database snapshots or SQL dumps.
 - Private sale, buyer, target, outreach, or diligence documents.
 - Private data-room folders.
+- Operational demo runbooks intended for buyer calls or internal screen-share rehearsal.
 - Local logs.
 - Old package tarballs.
 
