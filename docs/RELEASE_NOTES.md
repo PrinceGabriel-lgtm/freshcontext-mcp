@@ -2,7 +2,7 @@
 
 ## 0.3.18
 
-FreshContext 0.3.18 prepares the next npm package release without changing the deployed Worker or publishing automatically.
+FreshContext 0.3.18 is the current published npm package release. It makes the MCP/Core package easier to install, validate, and explain without changing the deployed Worker runtime.
 
 ### Core and Context Evaluation
 
@@ -32,7 +32,7 @@ FreshContext 0.3.18 prepares the next npm package release without changing the d
 
 ### Boundaries
 
-- No npm publish in this preparation pass.
-- No git tag in this preparation pass.
-- No deployment in this preparation pass.
-- No Worker, REST handler, Core runtime, MCP tool schema, or adapter behavior changes are included in the version bump itself.
+- No Worker deploy is part of the npm package release.
+- No hosted dashboard, billing system, Operator mode, browser crawling, or local file scanning is included.
+- No Worker, REST handler, MCP tool schema, or existing adapter behavior changes are included in the package release itself.
+- Future work is tracked in [`FUTURE_LANES.md`](./FUTURE_LANES.md).
