@@ -351,12 +351,14 @@ Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 - [x] Named reference adapters across intelligence, competitive research, market data, and composites
 - [x] Core-backed envelope generation shared by npm/MCP and the Cloudflare Worker
 - [x] Cloudflare Workers deployment — global edge, KV cache, KV rate limiting
-- [x] Listed on official MCP Registry, Apify Store, npm
+- [x] Published on npm and listed for MCP usage; Apify/feed assets are separated from the normal MCP runtime package
 - [ ] Ha-Pri v2 hardened canonical content hash verification
 - [x] GitHub Actions release workflow — manual or `v*` tag-triggered npm publish path
 - [ ] Webhook triggers — push high-entropy signals on threshold
 - [ ] Dashboard — React frontend for the D1 intelligence pipeline
 - [ ] GKG upgrade for `extract_gdelt` — tone scores, goldstein scale, event codes
+
+Future work is organized in [FreshContext Future Lanes](./docs/FUTURE_LANES.md). Roadmap items are not live product claims until implemented and validated.
 
 ---
 
@@ -391,4 +393,4 @@ MIT
 
 ---
 
-**Also on:** [Apify Store](https://apify.com/prince_gabriel/freshcontext-mcp) · [MCP Registry](https://registry.modelcontextprotocol.io) · [npm](https://www.npmjs.com/package/freshcontext-mcp)
+**Also on:** [MCP Registry](https://registry.modelcontextprotocol.io) · [npm](https://www.npmjs.com/package/freshcontext-mcp)
