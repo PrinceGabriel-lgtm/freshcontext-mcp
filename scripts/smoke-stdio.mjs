@@ -80,9 +80,16 @@ try {
     arguments: { url: "MSFT", max_length: 2000 },
   }));
   assert(!/Yahoo Finance API error|query1\.finance\.yahoo\.com|\[MSFT\].*401|Yahoo 401/i.test(finance), "Finance still exposes Yahoo 401 path");
-  assert(/source:\s*stooq/i.test(finance), "Finance output missing source: stooq");
   assertNoMisleadingFailureEnvelope(finance, "finance MSFT");
-  parseFreshContextJson(finance);
+  let financeStatus = "ok";
+  if (/\[FRESHCONTEXT_JSON\]/.test(finance)) {
+    assert(/source:\s*stooq/i.test(finance), "Finance output missing source: stooq");
+    parseFreshContextJson(finance);
+  } else {
+    assert(/\[Error\]/i.test(finance), "Finance output missing FreshContext JSON block and explicit error marker");
+    assert(/source=stooq|Stooq/i.test(finance), "Finance upstream failure missing Stooq source marker");
+    financeStatus = "upstream_unavailable";
+  }
 
   const financeFailure = textOf(await client.callTool({
     name: "extract_finance",
@@ -95,6 +102,7 @@ try {
     package_version: pkg.version,
     server_version: serverVersion.version,
     tool_count: names.length,
+    finance_status: financeStatus,
   }, null, 2));
 } finally {
   await client.close();
