@@ -83,8 +83,8 @@ Expected result:
 ```json
 {
   "ok": true,
-  "package_version": "0.3.18",
-  "server_version": "0.3.18",
+  "package_version": "0.3.19",
+  "server_version": "0.3.19",
   "tool_count": 22
 }
 ```

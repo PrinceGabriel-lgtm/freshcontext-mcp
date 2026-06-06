@@ -405,7 +405,7 @@ Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 ## Roadmap
 
 - [x] FreshContext Specification v1.2 published (MIT, open standard)
-- [x] DAR engine with proprietary λ constants (v0.3.18)
+- [x] DAR engine with proprietary λ constants (v0.3.19)
 - [x] Ha-Pri v1 provenance signatures on stored signals
 - [x] Semantic deduplication via fingerprinting
 - [x] Live before/after demo at `/demo`

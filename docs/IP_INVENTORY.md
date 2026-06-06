@@ -141,7 +141,7 @@ Checklist:
 Known package presence:
 
 - npm package: `freshcontext-mcp`
-- current local package version: `0.3.18`
+- current local package version: `0.3.19`
 - MCP registry name in `package.json`: `io.github.PrinceGabriel-lgtm/freshcontext`
 - Ops Pulse npm package metadata: `freshcontext-ops-pulse`, local version `0.1.1`
 

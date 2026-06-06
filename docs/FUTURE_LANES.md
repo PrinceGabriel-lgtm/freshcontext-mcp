@@ -10,7 +10,7 @@ The current package boundary is documented in [Core / MCP Boundary](./CORE_MCP_B
 
 Live today:
 
-- npm package: `freshcontext-mcp@0.3.18`
+- npm package: `freshcontext-mcp@0.3.19`
 - MCP stdio server
 - `evaluate_context` MCP tool for caller-provided candidate context
 - 21 read-only reference adapters
