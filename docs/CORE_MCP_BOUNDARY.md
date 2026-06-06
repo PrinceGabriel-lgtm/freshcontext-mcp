@@ -52,6 +52,7 @@ Live today:
 
 - npm package: `freshcontext-mcp@0.3.18`
 - MCP stdio server and published binary: `freshcontext-mcp`
+- `evaluate_context` MCP tool for caller-provided candidate context
 - 21 named read-only reference adapters
 - Core signal evaluation
 - Source Profiles

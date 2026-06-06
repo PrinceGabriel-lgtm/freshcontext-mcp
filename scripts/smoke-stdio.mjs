@@ -51,9 +51,34 @@ try {
 
   const tools = await client.listTools();
   const names = tools.tools.map((tool) => tool.name).sort();
-  assert(names.length === 21, `Expected 21 tools, got ${names.length}: ${names.join(", ")}`);
+  assert(names.length === 22, `Expected 22 tools, got ${names.length}: ${names.join(", ")}`);
+  assert(names.includes("evaluate_context"), "Missing evaluate_context");
   assert(names.includes("extract_hackernews"), "Missing extract_hackernews");
   assert(names.includes("extract_finance"), "Missing extract_finance");
+
+  const evaluateContext = textOf(await client.callTool({
+    name: "evaluate_context",
+    arguments: {
+      profile: "academic_research",
+      intent: "citation_check",
+      now: "2026-05-24T13:00:00.000Z",
+      signals: [
+        {
+          title: "Fresh research source",
+          content: "A relevant academic source with a reliable publication date.",
+          source: "https://arxiv.org/abs/2605.12345",
+          source_type: "arxiv",
+          published_at: "2026-05-24T12:00:00.000Z",
+          retrieved_at: "2026-05-24T13:00:00.000Z",
+          semantic_score: 0.94,
+          date_confidence: "high",
+        },
+      ],
+    },
+  }));
+  assert(/FreshContext evaluate_context/.test(evaluateContext), "evaluate_context missing title");
+  assert(/Decision:\s+Cite as primary/i.test(evaluateContext), "evaluate_context missing decision-first output");
+  assert(/\[FRESHCONTEXT_EVALUATION_JSON\]/.test(evaluateContext), "evaluate_context missing structured JSON block");
 
   const hnText = textOf(await client.callTool({
     name: "extract_hackernews",

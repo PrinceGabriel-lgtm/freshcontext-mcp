@@ -12,6 +12,7 @@ Live today:
 
 - npm package: `freshcontext-mcp@0.3.18`
 - MCP stdio server
+- `evaluate_context` MCP tool for caller-provided candidate context
 - 21 read-only reference adapters
 - Core signal evaluation
 - Source Profiles
@@ -51,7 +52,7 @@ Goal:
 Let any caller provide candidate context and get decision-ready output.
 ```
 
-Possible MCP tool:
+Current live MCP path:
 
 ```text
 evaluate_context
@@ -64,7 +65,7 @@ No fetching, crawling, browsing, folder reading, or retrieval orchestration.
 Only evaluate caller-provided candidate context.
 ```
 
-This lane should start with an audit before implementation. Tool count changes only if the tool lands.
+Next work in this lane should focus on CLI, SDK, and REST ergonomics over the same caller-provided signal shape.
 
 ## Lane 3: Multi-Agent Context Handoff Proof
 

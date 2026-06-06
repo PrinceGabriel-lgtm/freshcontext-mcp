@@ -30,7 +30,16 @@ That's not hallucination. That's correct summarization of corrupted retrieval.
 
 ## The layer
 
-FreshContext is a **temporal correction layer for retrieval systems**. One math correction applied before context reaches the LLM:
+FreshContext is **context integrity infrastructure for AI agents and retrieval systems**. It sits between retrieval and reasoning:
+
+```text
+candidate context
+  -> FreshContext Core
+  -> decision-ready context
+  -> model / agent / app
+```
+
+FreshContext evaluates freshness, source profile, confidence, utility, provenance material, and failure honesty before context reaches the LLM. The temporal core uses Decay-Adjusted Relevancy:
 
 ```
 R_t = R_0 · e^(−λt)
@@ -41,7 +50,7 @@ R_t = R_0 · e^(−λt)
 - `t` — hours elapsed since publication
 - `R_t` — decay-adjusted relevancy at query time
 
-That's the whole fix. No model swap. No re-embedding. No re-indexing. The layer drops onto whatever retrieval pipeline you already have.
+That's the core correction. No model swap. No re-embedding. No re-indexing. The layer drops onto whatever retrieval pipeline you already have.
 
 **The layer is the product.** The named adapters shipped with this repo demonstrate compatibility across different source classes. The DAR engine, the freshness envelope, Source Profiles, and the FreshContext Specification are the moat.
 
@@ -80,9 +89,52 @@ See [Core / MCP Boundary](./docs/CORE_MCP_BOUNDARY.md) for the current package b
 
 ---
 
-## The intelligence feed
+## Primary MCP interface
 
-Beyond the per-call envelope, the production FreshContext deployment exposes a continuous, decay-scored, deduplicated feed:
+The clearest MCP path is `evaluate_context`.
+
+It accepts candidate context from any retriever, agent, database, local script, note parser, or adapter output:
+
+```json
+{
+  "profile": "academic_research",
+  "intent": "citation_check",
+  "signals": [
+    {
+      "title": "Example source",
+      "content": "Candidate context text...",
+      "source": "https://example.com/source",
+      "source_type": "arxiv",
+      "published_at": "2026-05-24T12:00:00.000Z",
+      "retrieved_at": "2026-05-24T13:00:00.000Z",
+      "semantic_score": 0.92
+    }
+  ]
+}
+```
+
+FreshContext returns decision-first output:
+
+- Decision
+- Meaning
+- Action
+- Warnings
+- Source
+- Freshness
+- Rank score
+- Utility
+- Confidence
+- Why
+
+`evaluate_context` does not fetch URLs, crawl, scrape, browse, read folders, or call adapters. It only evaluates candidate context the caller provides.
+
+Current boundary: `evaluate_context` is part of the published npm/local stdio MCP server. The hosted Cloudflare Worker endpoint is a separate deployment surface and may lag npm package interfaces until a dedicated Worker sync pass.
+
+---
+
+## Advanced Worker/feed surface
+
+Beyond the per-call Core/MCP paths, the production Worker deployment exposes a continuous, decay-scored, deduplicated feed. This is an advanced deployment surface, not the required way to use FreshContext Core:
 
 ```
 GET /v1/intel/feed/:profile_id?limit=20&min_rt=0
@@ -94,7 +146,7 @@ Production endpoint: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 
 ---
 
-## Named reference adapters
+## Reference adapters
 
 The repo ships named reference adapters that demonstrate how different source classes can become FreshContext-compatible. Each adapter keeps its own name because it represents a source boundary; the adapter count is operational proof, not the product headline.
 
@@ -130,7 +182,7 @@ The repo ships named reference adapters that demonstrate how different source cl
 | `extract_finance_landscape` | 5 | Finance + HN + Reddit + GitHub + changelog |
 | `extract_company_landscape` | 5 | The full picture on any company |
 
-### Unique — not available in any other MCP server
+### Official, regulatory, and procurement sources
 | Adapter | Source | What it returns |
 |---|---|---|
 | `extract_changelog` | GitHub Releases / npm / auto-discover | Update history from any repo, package, or website |
@@ -292,6 +344,14 @@ Minimal shape:
 
 This local demo does not fetch URLs, crawl, or read folders. It evaluates candidate context you provide and returns decision-first output: Decision, Meaning, Action, Warnings, and supporting metrics.
 
+In an MCP client, use `evaluate_context` when you already have candidate context from another retriever, database, agent, or script:
+
+```text
+Use evaluate_context with profile "academic_research", intent "citation_check", and these candidate signals: [...]
+```
+
+Use the named reference adapters when you want FreshContext's current MCP package to fetch public source examples for you.
+
 **Should I build this idea?**
 ```
 Use extract_idea_landscape with idea "procurement intelligence saas"
@@ -351,6 +411,7 @@ Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 - [x] Live before/after demo at `/demo`
 - [x] METHODOLOGY.md — formal IP and engineering documentation
 - [x] Named reference adapters across intelligence, competitive research, market data, and composites
+- [x] Generic MCP `evaluate_context` tool for caller-provided candidate context
 - [x] Core-backed envelope generation shared by npm/MCP and the Cloudflare Worker
 - [x] Cloudflare Workers deployment — global edge, KV cache, KV rate limiting
 - [x] Published on npm and listed for MCP usage; Apify/feed assets are separated from the normal MCP runtime package
@@ -366,7 +427,7 @@ Future work is organized in [FreshContext Future Lanes](./docs/FUTURE_LANES.md).
 
 ## Contributing
 
-PRs welcome. New adapters are the highest-value contribution — see `src/adapters/` for the pattern and [`FRESHCONTEXT_SPEC.md`](./FRESHCONTEXT_SPEC.md) for the contract any adapter must fulfil.
+PRs welcome. The highest-value contributions improve the caller-provided context path, decision output, host integrations, and FreshContext-compatible signal quality. New reference adapters are useful when they preserve source boundaries and emit timestamped, failure-honest context — see `src/adapters/` for examples and [`FRESHCONTEXT_SPEC.md`](./FRESHCONTEXT_SPEC.md) for the compatibility contract.
 
 If you're building something FreshContext-compatible, open an issue and we'll add you to the ecosystem list.
 

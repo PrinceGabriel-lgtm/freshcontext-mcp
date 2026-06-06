@@ -12,7 +12,7 @@ The verified local server entrypoint is:
 & '<node-executable>' '<repo-root>\dist\server.js'
 ```
 
-The MCP server exposes 21 tools. The local smoke test verifies the package version, server version, expected tool count, and representative tool calls.
+The MCP server exposes 22 tools: the front-door `evaluate_context` tool plus 21 read-only reference adapters. The local smoke test verifies the package version, server version, expected tool count, the generic context-evaluation path, and representative adapter calls.
 
 No credential is required for the local stdio smoke path.
 
@@ -85,7 +85,7 @@ Expected result:
   "ok": true,
   "package_version": "0.3.18",
   "server_version": "0.3.18",
-  "tool_count": 21
+  "tool_count": 22
 }
 ```
 
@@ -112,5 +112,5 @@ If Codex cannot start the server:
 - Confirm `dist/server.js` exists. If not, run `npm run build`.
 - Confirm Node is installed with `node -v`. The package requires Node.js 20 or newer.
 - If `node` is not found by Codex, use the full executable path from `node -p "process.execPath"`.
-- Run `npm run smoke:stdio` from the repository root and confirm `tool_count` is 21.
+- Run `npm run smoke:stdio` from the repository root and confirm `tool_count` is 22.
 - If the remote setup fails, verify network access, `npx` availability, and the remote endpoint separately. Do not treat remote failure as evidence that local stdio is broken.

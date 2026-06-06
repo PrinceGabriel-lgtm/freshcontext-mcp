@@ -88,7 +88,7 @@ It does not add `retrieve(...)`, Operator mode, adapter selection, local file se
 
 ## Adapter Registry Metadata
 
-As of Pass 8-S, the 21 MCP tools are also represented as adapter metadata. The registry maps each current tool name to a future adapter identity, Source Profile, output mode, runtime kind, and migration risk.
+As of Pass 8-S, the 21 named adapter tools are also represented as adapter metadata. The registry maps each adapter tool name to a future adapter identity, Source Profile, output mode, runtime kind, and migration risk. The generic `evaluate_context` MCP tool is not an adapter; it is a host interface over caller-provided candidate context.
 
 This registry is metadata-only. It does not change MCP behavior, adapter implementation behavior, Worker behavior, REST behavior, Core evaluation behavior, or runtime transport. It exists to make future extraction deliberate instead of ad hoc.
 

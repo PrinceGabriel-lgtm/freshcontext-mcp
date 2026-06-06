@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
   "name": "io.github.PrinceGabriel-lgtm/freshcontext",
-  "description": "Freshness-aware AI retrieval with 21 MCP tools for timestamped, decay-ranked live signals.",
+  "description": "Context integrity infrastructure for AI agents and retrieval systems. Evaluates caller-provided and adapter-sourced context before it reaches the model.",
   "repository": {
     "url": "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp",
     "source": "github"

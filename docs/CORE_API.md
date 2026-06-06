@@ -110,7 +110,7 @@ Public exports:
 - `SourceFailurePolicy`
 - `SourceSurface`
 
-They reframe the 21 MCP tools as reference adapters and source-profile examples instead of the product identity. They do not implement `retrieve(...)`, Operator mode, adapter selection, crawling, local file search, or any host/runtime behavior.
+They reframe the 21 named adapter tools as reference adapters and source-profile examples instead of the product identity. The MCP server also exposes `evaluate_context` as the generic caller-provided context evaluation path. Source Profiles do not implement `retrieve(...)`, Operator mode, adapter selection, crawling, local file search, or any host/runtime behavior.
 
 ## Decision Helper
 

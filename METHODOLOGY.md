@@ -52,7 +52,7 @@ This D1 cron ledger is one implementation layer and future Store direction. It i
 
 FreshContext currently has:
 
-- A reference MCP implementation with 21 read-only MCP tools / reference adapters
+- A reference MCP implementation with `evaluate_context` and 21 read-only reference adapters
 - Separate feed products such as Fresh HN Feed and Fresh Jobs Feed
 - A Store/Ledger methodology for systems that collect recurring signals over time
 
@@ -356,7 +356,7 @@ For technical integrators, auditors, and future platform partners:
 
 5. **The Store / Ledger design** — support for recurring watched queries, historical signal accumulation, D1-backed storage, and time-series auditability.
 
-6. **The Reference Implementation** — `freshcontext-mcp@0.3.17`, 21 read-only MCP tools / reference adapters, listed on the official MCP Registry and npm. Deployed globally on Cloudflare's edge infrastructure.
+6. **The Reference Implementation** — `freshcontext-mcp@0.3.18`, the `evaluate_context` MCP interface, and 21 read-only reference adapters, listed on the official MCP Registry and npm. Deployed globally on Cloudflare's edge infrastructure.
 
 ---
 
@@ -365,7 +365,7 @@ For technical integrators, auditors, and future platform partners:
 ### Version 1.2 — May 2026
 - Clarified Core methodology vs Store/Ledger methodology.
 - Preserved DAR as the mathematical scoring backbone.
-- Updated reference implementation language for 21 MCP tools/reference adapters.
+- Updated reference implementation language for `evaluate_context` plus 21 MCP reference adapters.
 - Reframed source decay constants as reference defaults/calibration values.
 - Added failure-honesty methodology.
 - Added context-conditioned utility as a Core scoring primitive.
