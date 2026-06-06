@@ -38,6 +38,7 @@
     "!dist/apify.js",
     "docs/API_DESIGN.md",
     "docs/CODEX_MCP_USAGE.md",
+    "docs/CORE_MCP_BOUNDARY.md",
     "docs/CORE_API.md",
     "docs/DEPENDENCY_DILIGENCE.md",
     "docs/FUTURE_LANES.md",

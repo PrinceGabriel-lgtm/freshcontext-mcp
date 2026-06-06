@@ -6,7 +6,7 @@ Claude had no idea. It presented everything with the same confidence.
 
 That's the problem freshcontext fixes.
 
-This repository is the integrated FreshContext MCP/Core package. Core is the context-integrity layer that scores, ranks, explains, and wraps retrieved context before it reaches an LLM or agent; MCP is the primary reference/interface implementation.
+This repository is the integrated FreshContext Core/MCP package. FreshContext is the context judgment layer between retrieval and reasoning. Core is the reusable engine that scores, ranks, explains, and turns candidate context into decision-ready context; MCP is the first live host/interface over that engine.
 
 [![npm version](https://img.shields.io/npm/v/freshcontext-mcp)](https://www.npmjs.com/package/freshcontext-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -70,11 +70,13 @@ The FreshContext Specification v1.2 is published as an open standard under MIT l
 
 ## Architecture boundary
 
-FreshContext Core is the reusable center of the current integrated package. It owns freshness scoring, envelope formatting, failure guards, shared types, rank/explain primitives, and the context-conditioned utility primitive.
+FreshContext Core is the reusable center of the current integrated package. It owns signal normalization, freshness scoring, Source Profiles, decision output, envelope formatting, failure guards, shared types, rank/explain primitives, and the context-conditioned utility primitive.
 
 MCP is the primary reference/interface implementation over Core. Claude Desktop is supported, but not required. The MCP tool surface exposes named reference adapters and a live interface for using the system.
 
 The production Cloudflare Worker now uses Core-backed envelope generation. Worker-specific concerns remain outside Core: MCP transport, runtime guards, KV cache policy, cache metadata injection, JSON parse/replace cache helpers, D1 feeds, cron, rate limiting, and Store/feed scoring/provenance.
+
+See [Core / MCP Boundary](./docs/CORE_MCP_BOUNDARY.md) for the current package boundary and the staged path toward a future standalone Core package.
 
 ---
 
