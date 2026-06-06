@@ -101,6 +101,7 @@ const commands = {
       "tests/coreApiContract.test.ts",
       "tests/corePipeline.test.ts",
       "tests/decision.test.ts",
+      "tests/evaluateContextTool.test.ts",
       "tests/restHandler.test.ts",
       "tests/sourceProfiles.test.ts",
       "tests/adapterRegistry.test.ts",

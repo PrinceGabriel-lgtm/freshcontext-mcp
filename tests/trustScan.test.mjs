@@ -446,7 +446,7 @@ test("claim check reports matching package and server versions", async () => {
   try {
     await writeFreshContextPackageJson(fixture, "1.2.3");
     await writeServerJson(fixture, "1.2.3");
-    await writeFile(path.join(fixture, "README.md"), "FreshContext ships 21 tools.\n", "utf8");
+    await writeFile(path.join(fixture, "README.md"), "FreshContext ships 22 tools.\n", "utf8");
 
     const result = runScanner(fixture, ["--claim-check", "--json"]);
     assert.equal(result.status, 0, result.stderr);
@@ -454,7 +454,7 @@ test("claim check reports matching package and server versions", async () => {
     const report = JSON.parse(result.stdout);
     assert.equal(report.claimChecks.length, 1);
     assert.equal(report.projects[0].claimCheck.packageName, "freshcontext-mcp");
-    assert.equal(report.projects[0].claimCheck.expectedToolCount, 21);
+    assert.equal(report.projects[0].claimCheck.expectedToolCount, 22);
     assert.equal(report.findings.some((finding) => finding.ruleId === "claim-check-version-match" && finding.effectiveSeverity === "info"), true);
     assert.equal(report.findings.some((finding) => finding.category === "claim_check"), true);
   } finally {
@@ -467,7 +467,7 @@ test("claim check fails mismatched package and server versions", async () => {
   try {
     await writeFreshContextPackageJson(fixture, "1.2.3");
     await writeServerJson(fixture, "1.2.4");
-    await writeFile(path.join(fixture, "README.md"), "FreshContext ships 21 tools.\n", "utf8");
+    await writeFile(path.join(fixture, "README.md"), "FreshContext ships 22 tools.\n", "utf8");
 
     const result = runScanner(fixture, ["--claim-check", "--fail-on", "fail", "--json"]);
     assert.equal(result.status, 1);

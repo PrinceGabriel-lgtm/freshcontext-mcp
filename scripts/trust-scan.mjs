@@ -113,14 +113,14 @@ const SEVERITY_RANK = {
 };
 
 const FRESHCONTEXT_MCP_PACKAGE_NAME = "freshcontext-mcp";
-const FRESHCONTEXT_MCP_EXPECTED_TOOL_COUNT = 21;
+const FRESHCONTEXT_MCP_EXPECTED_TOOL_COUNT = 22;
 
 const CLAIM_SURFACE_CONFIG_FILES = new Set([
   "package.json",
   "server.json"
 ]);
 
-const STALE_TOOL_COUNT_CLAIM_PATTERN = /\b(?:20|11)\s+(?:MCP\s+)?tools\b/giu;
+const STALE_TOOL_COUNT_CLAIM_PATTERN = /\b(?:21|20|11)\s+(?:MCP\s+)?tools\b/giu;
 const YAHOO_CLAIM_PATTERN = /\byahoo\b/giu;
 
 const HA_PRI_BOUNDARY_PATTERNS = [
@@ -2124,7 +2124,7 @@ function checkToolCountClaims(state, claimCheck, claimSurfaces) {
     addClaimCheckFinding(state, claimCheck, {
       ruleId: "claim-check-tool-count-current",
       severity: "info",
-      message: `No stale current 20/11 tool-count claims were found in public/package claim surfaces. Expected count is ${expectedToolCount}.`,
+      message: `No stale current 21/20/11 tool-count claims were found in public/package claim surfaces. Expected count is ${expectedToolCount}.`,
       recommendation: "Keep public tool-count claims aligned with smoke/static evidence."
     });
   }

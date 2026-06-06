@@ -248,7 +248,7 @@ Claude Desktop is a supported MCP client, but FreshContext Core is not Claude-de
 
 The canonical reference implementation of this specification is:
 
-**freshcontext-mcp@0.3.17** — an MCP server with 21 read-only MCP tools / reference adapters covering:
+**freshcontext-mcp@0.3.18** — an MCP server with `evaluate_context` for caller-provided candidate context plus 21 read-only reference adapters covering:
 
 **Intelligence:** GitHub, Hacker News, Google Scholar, arXiv, Reddit
 
@@ -256,7 +256,7 @@ The canonical reference implementation of this specification is:
 
 **Market data:** Stooq quote data (up to 5 tickers), job listings (Remotive, RemoteOK, HN Hiring)
 
-**Unique — not available in any other MCP server:**
+**Official, regulatory, and procurement sources:**
 - `extract_changelog` — release history from any repo, npm package, or website
 - `extract_govcontracts` — US federal contract awards (USASpending.gov)
 - `extract_sec_filings` — SEC 8-K material event disclosures (EDGAR)
@@ -282,13 +282,13 @@ The canonical reference implementation of this specification is:
 - Added Core-backed envelope/scoring implementation status.
 - Added optional context-conditioned scoring language without changing the envelope contract.
 - Clarified MCP as one interface over the FreshContext methodology.
-- Updated reference implementation language for freshcontext-mcp@0.3.17 and 21 read-only tools/reference adapters.
+- Updated reference implementation language for freshcontext-mcp@0.3.18, `evaluate_context`, and 21 read-only reference adapters.
 
 ### Version 1.1 — April 2026
 - Added Composite Adapters section
 - Added domain-specific decay rate table with recommended values
 - Added Compatibility Levels table (compatible / aware / scored)
-- Updated reference implementation to 21 tools
+- Updated reference implementation to 21 reference adapter tools
 - Added `extract_gdelt`, `extract_gebiz`, `extract_sec_filings` to high-confidence examples
 - Added Apify Store and MCP Registry to reference implementation listings
 
