@@ -1,8 +1,10 @@
 # FreshContext Core API
 
-FreshContext Core is the reusable engine layer in the current integrated MCP/Core package. It owns signal normalization, envelope creation, freshness scoring, failure honesty, rank/explain primitives, the context-utility primitive, and pure provenance helpers.
+FreshContext Core is the reusable engine layer in the current integrated Core/MCP package. It owns signal normalization, envelope creation, freshness scoring, failure honesty, Source Profiles, decision output, rank/explain primitives, the context-utility primitive, and pure provenance helpers.
 
 MCP, Worker HTTP, future REST, and future CLI/SDK surfaces should use Core as the contract center instead of redefining freshness or envelope behavior per host.
+
+For the package-level boundary between Core, MCP, adapters, and deployment surfaces, see [Core / MCP Boundary](./CORE_MCP_BOUNDARY.md).
 
 ## Stable Public Core API
 
