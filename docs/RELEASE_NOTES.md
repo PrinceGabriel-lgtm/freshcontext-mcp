@@ -1,8 +1,25 @@
 # FreshContext Release Notes
 
+## 0.3.19
+
+FreshContext 0.3.19 syncs the public MCP package with the new generic `evaluate_context` interface.
+
+### Context Evaluation Front Door
+
+- Adds `evaluate_context` as the primary MCP tool for caller-provided candidate context.
+- Returns decision-first output for agents and users: decision, meaning, action, warnings, source, freshness, rank score, utility, confidence, and explanation.
+- Keeps the boundary explicit: `evaluate_context` does not fetch, crawl, scrape, browse, read folders, or call adapters.
+- Updates stdio smoke and Trust Scanner claim checks to expect 22 MCP tools: `evaluate_context` plus 21 read-only reference adapters.
+
+### Public Framing
+
+- Reframes the MCP package around FreshContext as context integrity infrastructure, not a 21-tool toolbox.
+- Keeps the 21 adapter tools as read-only reference adapters and proof surfaces.
+- Updates package-facing docs/spec language to point first at `candidate context -> FreshContext Core -> decision-ready context`.
+
 ## 0.3.18
 
-FreshContext 0.3.18 is the current published npm package release. It makes the MCP/Core package easier to install, validate, and explain without changing the deployed Worker runtime.
+FreshContext 0.3.18 made the MCP/Core package easier to install, validate, and explain without changing the deployed Worker runtime.
 
 ### Core and Context Evaluation
 

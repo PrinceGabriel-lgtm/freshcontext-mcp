@@ -28,7 +28,7 @@ import { SecurityError, formatSecurityError } from "./security.js";
 
 const server = new McpServer({
   name: "freshcontext-mcp",
-  version: "0.3.18",
+  version: "0.3.19",
 });
 
 const signalInputSchema = z.object({
@@ -47,7 +47,7 @@ const signalInputSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 }).passthrough();
 
-// ─── Tool: evaluate_context ─────────────────────────────────────────────────
+// Tool: evaluate_context
 server.registerTool(
   "evaluate_context",
   {
