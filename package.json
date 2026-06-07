@@ -37,6 +37,7 @@
     "dist/",
     "!dist/apify.js",
     "docs/API_DESIGN.md",
+    "docs/CLIENT_SETUP.md",
     "docs/CODEX_MCP_USAGE.md",
     "docs/CORE_MCP_BOUNDARY.md",
     "docs/CORE_API.md",
