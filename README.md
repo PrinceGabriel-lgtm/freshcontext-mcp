@@ -195,6 +195,8 @@ The repo ships named reference adapters that demonstrate how different source cl
 
 ## Quick start
 
+For Claude Desktop, Codex, `npx`, global npm, and source-checkout setup, see the concise [client setup guide](./docs/CLIENT_SETUP.md).
+
 ### Cloud (no install)
 
 Add to your Claude Desktop config and restart:
