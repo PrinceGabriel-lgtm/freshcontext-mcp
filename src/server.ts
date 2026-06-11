@@ -28,7 +28,7 @@ import { SecurityError, formatSecurityError } from "./security.js";
 
 const server = new McpServer({
   name: "freshcontext-mcp",
-  version: "0.3.19",
+  version: "0.3.20",
 });
 
 const signalInputSchema = z.object({
