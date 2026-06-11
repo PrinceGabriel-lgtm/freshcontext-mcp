@@ -1,0 +1,121 @@
+{
+  "profile": "official_docs",
+  "intent": "developer_adoption",
+  "now": "2026-06-09T12:00:00.000Z",
+  "signals": [
+    {
+      "title": "Current API quickstart",
+      "content": "The official quickstart documents the current setup flow and supported runtime requirements.",
+      "source": "https://docs.example.org/api/quickstart",
+      "source_type": "official_docs",
+      "published_at": "2026-06-08T10:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.94,
+      "date_confidence": "high"
+    },
+    {
+      "title": "Latest changelog entry",
+      "content": "The official changelog describes a recent compatibility fix for SDK consumers.",
+      "source": "https://docs.example.org/changelog/2026-06",
+      "source_type": "changelog",
+      "published_at": "2026-06-07T16:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.88,
+      "date_confidence": "high"
+    },
+    {
+      "title": "Older migration guide",
+      "content": "This migration guide remains useful background but refers to an older package layout.",
+      "source": "https://docs.example.org/migration/2024",
+      "source_type": "official_docs",
+      "published_at": "2024-04-10T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.72,
+      "date_confidence": "high"
+    },
+    {
+      "title": "Undated configuration note",
+      "content": "The configuration note is relevant but lacks visible publication metadata.",
+      "source": "https://docs.example.org/configuration/runtime",
+      "source_type": "official_docs",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.77
+    },
+    {
+      "title": "Malformed docs timestamp",
+      "content": "This official reference has malformed date metadata in the caller-provided candidate record.",
+      "source": "https://docs.example.org/reference/malformed-date",
+      "source_type": "official_docs",
+      "published_at": "June-ish",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.73
+    },
+    {
+      "title": "Future-dated docs page",
+      "content": "This page appears to have a publication timestamp after the retrieval time.",
+      "source": "https://docs.example.org/reference/future-date",
+      "source_type": "official_docs",
+      "published_at": "2026-06-09T12:09:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.8
+    },
+    {
+      "title": "Blocked docs response",
+      "content": "[ERROR] documentation gateway returned access denied",
+      "source": "https://docs.example.org/private/blocked",
+      "source_type": "official_docs",
+      "published_at": "2026-06-08T11:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.85
+    },
+    {
+      "title": "Weak forum mirror",
+      "content": "A copied setup note from an unofficial mirror with unclear provenance.",
+      "source": "https://example.com/forum/copied-docs-note",
+      "source_type": "official_docs",
+      "published_at": "2026-05-20T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.36,
+      "metadata": {
+        "provenance": "unclear mirror"
+      }
+    },
+    {
+      "title": "Overscored install page",
+      "content": "A current install page whose caller-provided semantic score is above the accepted range.",
+      "source": "https://docs.example.org/install",
+      "source_type": "official_docs",
+      "published_at": "2026-06-06T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 1.2
+    },
+    {
+      "title": "Underscored troubleshooting page",
+      "content": "A useful troubleshooting page whose caller-provided semantic score is below the accepted range.",
+      "source": "https://docs.example.org/troubleshooting",
+      "source_type": "official_docs",
+      "published_at": "2026-06-05T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": -0.15
+    },
+    {
+      "title": "Stable API reference",
+      "content": "A stable reference page for request and response fields.",
+      "source": "https://docs.example.org/reference/api",
+      "source_type": "official_docs",
+      "published_at": "2026-05-30T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.82,
+      "date_confidence": "medium"
+    },
+    {
+      "title": "Low relevance docs page",
+      "content": "A general branding page with little setup or technical adoption value.",
+      "source": "https://docs.example.org/brand",
+      "source_type": "official_docs",
+      "published_at": "2026-06-02T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.22
+    }
+  ]
+}

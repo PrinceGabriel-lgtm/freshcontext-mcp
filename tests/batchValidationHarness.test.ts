@@ -6,6 +6,38 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const FIXTURE = "examples/batches/signal-contract-v1.academic.json";
+const REPLAY_FIXTURES = [
+  {
+    path: "examples/batches/signal-contract-v1.academic.json",
+    profile: "academic_research",
+    intent: "citation_check",
+    total: 12,
+  },
+  {
+    path: "examples/batches/signal-contract-v1.official-docs.json",
+    profile: "official_docs",
+    intent: "developer_adoption",
+    total: 12,
+  },
+  {
+    path: "examples/batches/signal-contract-v1.rag-vendors.json",
+    profile: "company_intel",
+    intent: "business_due_diligence",
+    total: 12,
+  },
+  {
+    path: "examples/batches/signal-contract-v1.jobs.json",
+    profile: "jobs_opportunities",
+    intent: "job_search",
+    total: 12,
+  },
+  {
+    path: "examples/batches/signal-contract-v1.mixed-agent-handoff.json",
+    profile: "composite_landscape",
+    intent: "developer_adoption",
+    total: 12,
+  },
+] as const;
 
 function runBatch(path: string) {
   return spawnSync(
@@ -50,6 +82,40 @@ function extractStructured(stdout: string) {
   assert.ok(match, "expected structured batch JSON block");
   return JSON.parse(match[1]);
 }
+
+function sumCounts(counts: Record<string, number>): number {
+  return Object.values(counts).reduce((sum, count) => sum + count, 0);
+}
+
+function sumAnomalies(counts: Record<string, number>): number {
+  return Object.entries(counts)
+    .filter(([key]) => key !== "failed_status")
+    .reduce((sum, [, count]) => sum + count, 0);
+}
+
+test("all replay fixtures run through the batch harness", () => {
+  for (const fixture of REPLAY_FIXTURES) {
+    const result = runBatch(fixture.path);
+    assert.equal(result.status, 0, `${fixture.path}\n${result.stderr}`);
+
+    const structured = extractStructured(result.stdout);
+    assert.equal(structured.profile, fixture.profile);
+    assert.equal(structured.intent, fixture.intent);
+    assert.equal(structured.total_signals, fixture.total);
+    assert.equal(sumCounts(structured.decision_counts), fixture.total);
+    assert.ok(sumCounts(structured.status_counts) >= fixture.total);
+    assert.ok(sumCounts(structured.date_confidence_counts) >= fixture.total);
+    assert.ok(structured.top_results.length > 0);
+    assert.ok(
+      Object.values(structured.decision_counts).some((count) => Number(count) > 0),
+      `${fixture.path} should produce at least one decision`
+    );
+    assert.ok(
+      sumAnomalies(structured.anomaly_counts) > 0 || structured.anomaly_counts.failed_status > 0,
+      `${fixture.path} should include at least one intentional anomaly`
+    );
+  }
+});
 
 test("batch validation fixture exits 0 and prints a decision-ready summary", () => {
   const result = runBatch(FIXTURE);

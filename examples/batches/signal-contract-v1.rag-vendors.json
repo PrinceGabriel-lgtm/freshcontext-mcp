@@ -1,0 +1,127 @@
+{
+  "profile": "company_intel",
+  "intent": "business_due_diligence",
+  "now": "2026-06-09T12:00:00.000Z",
+  "signals": [
+    {
+      "title": "ContextLayer Labs product overview",
+      "content": "A fictional vendor page describes context routing, provenance checks, and enterprise integrations.",
+      "source": "https://example.com/vendors/contextlayer-labs",
+      "source_type": "company_landscape",
+      "published_at": "2026-06-06T09:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.9,
+      "metadata": {
+        "provenance": "vendor page"
+      }
+    },
+    {
+      "title": "RetrievalWorks funding announcement",
+      "content": "A fictional company announcement claims new funding for enterprise retrieval governance.",
+      "source": "https://example.org/news/retrievalworks-funding",
+      "source_type": "company_landscape",
+      "published_at": "2026-06-03T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.86,
+      "date_confidence": "medium"
+    },
+    {
+      "title": "Older vector search comparison",
+      "content": "An older comparison is useful background but predates current agentic retrieval patterns.",
+      "source": "https://example.net/research/vector-search-comparison",
+      "source_type": "company_landscape",
+      "published_at": "2023-11-12T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.71
+    },
+    {
+      "title": "Undated vendor capability page",
+      "content": "A vendor page lists capabilities but does not show a publication date.",
+      "source": "https://example.com/vendors/no-date-capabilities",
+      "source_type": "company_landscape",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.74,
+      "metadata": {
+        "provenance": "marketing page"
+      }
+    },
+    {
+      "title": "Malformed acquisition rumor date",
+      "content": "A fictional rumor post has malformed date metadata and weak provenance.",
+      "source": "https://example.net/rumors/context-startup",
+      "source_type": "company_landscape",
+      "published_at": "next quarter",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.59,
+      "metadata": {
+        "provenance": "unverified post"
+      }
+    },
+    {
+      "title": "Future-dated launch page",
+      "content": "A launch page appears to be dated after retrieval time.",
+      "source": "https://example.com/vendors/future-launch",
+      "source_type": "company_landscape",
+      "published_at": "2026-06-09T12:15:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.78
+    },
+    {
+      "title": "Blocked vendor comparison",
+      "content": "[ERROR] access denied by vendor comparison page",
+      "source": "https://example.com/vendors/blocked-comparison",
+      "source_type": "company_landscape",
+      "published_at": "2026-06-05T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.89
+    },
+    {
+      "title": "Low relevance AI glossary",
+      "content": "A generic AI glossary mentions retrieval but does not help evaluate vendor strategy.",
+      "source": "https://example.org/glossary/rag",
+      "source_type": "company_landscape",
+      "published_at": "2026-06-01T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.2
+    },
+    {
+      "title": "Overscored customer quote",
+      "content": "A short customer quote has limited diligence value but an oversized caller score.",
+      "source": "https://example.com/vendors/customer-quote",
+      "source_type": "company_landscape",
+      "published_at": "2026-06-04T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 1.3
+    },
+    {
+      "title": "Underscored technical brief",
+      "content": "A technical brief contains useful architecture details but an invalid negative score.",
+      "source": "https://example.org/vendors/technical-brief",
+      "source_type": "company_landscape",
+      "published_at": "2026-05-29T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": -0.1
+    },
+    {
+      "title": "Current pricing documentation",
+      "content": "A fictional pricing page gives current packaging and integration clues.",
+      "source": "https://example.com/vendors/pricing",
+      "source_type": "company_landscape",
+      "published_at": "2026-06-02T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.79
+    },
+    {
+      "title": "Independent market note",
+      "content": "A neutral analyst note compares context quality tools and retrieval governance vendors.",
+      "source": "https://example.net/analysis/context-quality-market",
+      "source_type": "company_landscape",
+      "published_at": "2026-05-25T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.83,
+      "metadata": {
+        "provenance": "third-party note"
+      }
+    }
+  ]
+}

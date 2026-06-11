@@ -1,0 +1,121 @@
+{
+  "profile": "composite_landscape",
+  "intent": "developer_adoption",
+  "now": "2026-06-09T12:00:00.000Z",
+  "signals": [
+    {
+      "title": "Agent handoff summary",
+      "content": "A prior agent summarized that context quality failures are blocking reliable downstream reasoning.",
+      "source": "https://example.com/agent-handoff/context-quality-summary",
+      "source_type": "landscape",
+      "published_at": "2026-06-09T09:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.91,
+      "metadata": {
+        "handoff_stage": "research_summary"
+      }
+    },
+    {
+      "title": "Current GitHub activity note",
+      "content": "A collected note says the reference implementation has current commits and package validation evidence.",
+      "source": "https://example.org/agent-handoff/code-activity",
+      "source_type": "company_landscape",
+      "published_at": "2026-06-08T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.83
+    },
+    {
+      "title": "Older market context",
+      "content": "An older note describes retrieval market fragmentation but predates newer agent context tooling.",
+      "source": "https://example.net/agent-handoff/older-market-context",
+      "source_type": "idea_landscape",
+      "published_at": "2024-09-01T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.7
+    },
+    {
+      "title": "Undated analyst clipping",
+      "content": "A clipped analyst note is relevant but does not include a visible date.",
+      "source": "https://example.com/agent-handoff/undated-analyst-note",
+      "source_type": "landscape",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.76
+    },
+    {
+      "title": "Malformed social timestamp",
+      "content": "A collected social thread has malformed timestamp metadata.",
+      "source": "https://example.org/agent-handoff/social-thread",
+      "source_type": "idea_landscape",
+      "published_at": "yesterday noon",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.62
+    },
+    {
+      "title": "Future-dated pipeline note",
+      "content": "A pipeline note appears to be dated after retrieval time and should be treated cautiously.",
+      "source": "https://example.net/agent-handoff/future-pipeline-note",
+      "source_type": "landscape",
+      "published_at": "2026-06-09T12:30:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.73
+    },
+    {
+      "title": "Failed tool output",
+      "content": "Timeout: upstream research tool did not return before deadline",
+      "source": "https://example.com/agent-handoff/failed-tool-output",
+      "source_type": "landscape",
+      "published_at": "2026-06-08T10:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.88
+    },
+    {
+      "title": "Low relevance personal note",
+      "content": "A loose personal note about writing style that does not materially help developer adoption analysis.",
+      "source": "https://example.org/agent-handoff/low-relevance-note",
+      "source_type": "idea_landscape",
+      "published_at": "2026-06-06T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.14
+    },
+    {
+      "title": "Overscored handoff note",
+      "content": "A short handoff note has useful framing but its caller-provided score exceeds the accepted range.",
+      "source": "https://example.com/agent-handoff/overscored-note",
+      "source_type": "landscape",
+      "published_at": "2026-06-07T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 1.1
+    },
+    {
+      "title": "Underscored integration clue",
+      "content": "A useful note says downstream agents need structured decisions rather than raw retrieval snippets.",
+      "source": "https://example.net/agent-handoff/integration-clue",
+      "source_type": "idea_landscape",
+      "published_at": "2026-06-05T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": -0.05
+    },
+    {
+      "title": "Weak provenance scraped note",
+      "content": "A copied note mentions context judgment but its original source is unclear.",
+      "source": "https://example.com/agent-handoff/copied-note",
+      "source_type": "landscape",
+      "published_at": "2026-06-04T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.55,
+      "metadata": {
+        "provenance": "copied note with unclear origin"
+      }
+    },
+    {
+      "title": "Current implementation evidence",
+      "content": "A saved note says the package has a generic evaluate_context front door and batch validation harness.",
+      "source": "https://example.org/agent-handoff/current-implementation",
+      "source_type": "company_landscape",
+      "published_at": "2026-06-09T08:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.87,
+      "date_confidence": "high"
+    }
+  ]
+}

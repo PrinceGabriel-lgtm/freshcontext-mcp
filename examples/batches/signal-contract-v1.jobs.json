@@ -1,0 +1,119 @@
+{
+  "profile": "jobs_opportunities",
+  "intent": "job_search",
+  "now": "2026-06-09T12:00:00.000Z",
+  "signals": [
+    {
+      "title": "AI infrastructure engineer",
+      "content": "A fresh role for building evaluation infrastructure for AI agents and retrieval systems.",
+      "source": "https://careers.example.net/jobs/ai-infrastructure-engineer",
+      "source_type": "jobs",
+      "published_at": "2026-06-09T08:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.93,
+      "date_confidence": "high"
+    },
+    {
+      "title": "Context systems developer",
+      "content": "A recent listing for context systems, data pipelines, and model tool integration.",
+      "source": "https://careers.example.net/jobs/context-systems-developer",
+      "source_type": "jobs",
+      "published_at": "2026-06-07T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.88,
+      "date_confidence": "high"
+    },
+    {
+      "title": "Older ML platform listing",
+      "content": "A relevant ML platform role, but the listing is old enough to require refresh before acting.",
+      "source": "https://careers.example.net/jobs/ml-platform-old",
+      "source_type": "jobs",
+      "published_at": "2026-04-01T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.79
+    },
+    {
+      "title": "Undated AI tools listing",
+      "content": "A promising AI tools listing with no visible posted date.",
+      "source": "https://jobs.example.org/ai-tools-undated",
+      "source_type": "jobs",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.81
+    },
+    {
+      "title": "Malformed job date",
+      "content": "A relevant job listing whose posted date was parsed incorrectly.",
+      "source": "https://jobs.example.org/malformed-date-role",
+      "source_type": "jobs",
+      "published_at": "recently",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.75
+    },
+    {
+      "title": "Future-dated hiring post",
+      "content": "A listing with a posted date after retrieval time.",
+      "source": "https://jobs.example.org/future-role",
+      "source_type": "jobs",
+      "published_at": "2026-06-09T12:20:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.77
+    },
+    {
+      "title": "Blocked job board response",
+      "content": "[ERROR] job board security check blocked the response",
+      "source": "https://careers.example.net/jobs/blocked",
+      "source_type": "jobs",
+      "published_at": "2026-06-08T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.9
+    },
+    {
+      "title": "Low relevance sales role",
+      "content": "A general sales position with little relevance to AI infrastructure or context systems.",
+      "source": "https://jobs.example.org/sales-generalist",
+      "source_type": "jobs",
+      "published_at": "2026-06-05T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.16
+    },
+    {
+      "title": "Overscored vague listing",
+      "content": "A vague AI role whose caller-provided score is above the allowed range.",
+      "source": "https://jobs.example.org/vague-ai-role",
+      "source_type": "jobs",
+      "published_at": "2026-06-04T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 1.25
+    },
+    {
+      "title": "Underscored backend role",
+      "content": "A backend role includes data quality and model integration requirements but has an invalid negative score.",
+      "source": "https://careers.example.net/jobs/backend-context",
+      "source_type": "jobs",
+      "published_at": "2026-06-03T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": -0.2
+    },
+    {
+      "title": "Weak provenance reposted role",
+      "content": "A reposted role appears on an aggregator without a clear original posting link.",
+      "source": "https://example.com/jobs/reposted-ai-role",
+      "source_type": "jobs",
+      "published_at": "2026-06-02T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.64,
+      "metadata": {
+        "provenance": "aggregator repost"
+      }
+    },
+    {
+      "title": "Research engineer internship",
+      "content": "A current internship that is related but less directly useful for a senior infrastructure target.",
+      "source": "https://careers.example.net/jobs/research-intern",
+      "source_type": "jobs",
+      "published_at": "2026-06-06T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.57
+    }
+  ]
+}
