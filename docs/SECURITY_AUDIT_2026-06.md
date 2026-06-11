@@ -107,6 +107,7 @@ Package dry-run includes expected public/runtime files such as `dist/server.js`,
 | SEC-2026-06-09 | low | Worker debug routes | fixed_in_12_B | `/health`, `/debug/db`, and `/debug/scrape` now have explicit method guards. Debug scrape failures return a generic JSON error while detailed errors remain in structured logs. Added regression tests. |
 | SEC-2026-06-10 | low | Reference adapter network surface | fixed_in_12_B | arXiv, Reddit, and broad changelog direct URL paths now pass through shared URL validation where applicable. Public URL support remains, but private/internal addresses and non-http protocols are blocked. Added regression tests. |
 | SEC-2026-06-11 | info | Ha-Pri v2 provenance boundary | accepted_risk | Core helpers provide deterministic SHA-256 provenance vectors only. Docs correctly avoid production-enforced, absolute integrity, origin-authenticated, or externally audited claims. HMAC/private-key signing remains future work. |
+| SEC-2026-06-12 | info | Ha-Pri v2 production enforcement | design_only | Pass 11-K documents the future Worker/D1 enforcement path in `docs/HA_PRI_V2_PRODUCTION_ENFORCEMENT_PLAN.md`. No enforcement, rejection, HMAC, deploy, or security claim upgrade is implemented by the design document. |
 
 ## Safe Hardening Applied
 
@@ -148,6 +149,8 @@ Pass 12-B closed the deferred implementation items from this audit without addin
 The public npm package is MIT-licensed and can be forked. That is not a data-access risk by itself because the package should remain stateless and should not contain secrets or private user data. Protectable surfaces are hosted data, deploy secrets, account credentials, private commercial materials, trademarks, and any future hosted/proprietary layer.
 
 Future hosted deployments should use explicit bearer/OAuth-style authentication for any endpoint that reads or writes user-specific data. The public MCP discovery path can remain read-only and unauthenticated only if it never exposes private D1/KV data and remains rate-limited.
+
+Ha-Pri v2 production enforcement remains a future rollout path. The current implemented boundary is pure Core helper behavior plus deterministic golden vectors. Worker/D1 enforcement requires a later implementation pass with migration, write-path, read-path, compatibility, and debug-output tests.
 
 ## Non-Goals Confirmed
 
