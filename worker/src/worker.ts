@@ -2,6 +2,11 @@ import puppeteer from "@cloudflare/puppeteer";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
+import {
+  EvaluateContextInputError,
+  evaluateContextInput,
+  formatEvaluateContextResult,
+} from "../../src/tools/evaluateContext.js";
 import { synthesizeBriefing as generateAIBriefing } from "./synthesize.js";
 import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate, applyDecay, RT_EXPIRY_FLOOR } from "./intelligence.js";
 import {
@@ -12,8 +17,24 @@ import {
   stamp,
 } from "./freshcontextEnvelope.js";
 
-const SERVICE_VERSION = "0.3.18";
+const SERVICE_VERSION = "0.3.19";
 const SERVICE_UA = `freshcontext-mcp/${SERVICE_VERSION} (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)`;
+
+const signalInputSchema = z.object({
+  id: z.string().optional(),
+  source: z.string().min(1).describe("Source URL, URI, document id, or stable source label."),
+  source_type: z.string().optional().describe("Source type such as arxiv, jobs, official_docs, custom, or user_provided."),
+  title: z.string().optional(),
+  content: z.string().optional(),
+  published_at: z.string().nullable().optional(),
+  content_date: z.string().nullable().optional(),
+  retrieved_at: z.string().nullable().optional(),
+  semantic_score: z.number().optional().describe("Optional relevance score from 0..1. Core clamps out-of-range values."),
+  date_confidence: z.enum(["high", "medium", "low", "unknown"]).optional(),
+  freshness_confidence: z.enum(["high", "medium", "low"]).optional(),
+  status: z.enum(["success", "partial", "stale", "failed", "unknown"]).optional(),
+  metadata: z.record(z.unknown()).optional(),
+}).passthrough();
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1169,6 +1190,28 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
     logEvent("adapter_error", adapterLog(tool, adapter, input), err);
     return ok(`[ERROR] ${err instanceof Error ? err.message : String(err)}`);
   };
+
+  server.registerTool("evaluate_context", {
+    description:
+      "Evaluate caller-provided candidate context and return decision-ready output. This is the primary FreshContext judgment path: it does not fetch, crawl, scrape, browse, read folders, or call adapters.",
+    inputSchema: z.object({
+      profile: z.string().min(1).describe("Source Profile id, e.g. academic_research, jobs_opportunities, market_finance, official_docs, local_custom."),
+      intent: z.string().min(1).describe("Intent Profile id, e.g. citation_check, student_research, developer_adoption, job_search, market_watch, business_due_diligence, medical_literature_triage."),
+      signals: z.array(signalInputSchema).min(1).describe("Candidate context items provided by the caller. FreshContext evaluates these; it does not retrieve them."),
+      now: z.string().optional().describe("Optional ISO timestamp for deterministic evaluation."),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ profile, intent, signals, now }) => {
+    try {
+      const result = evaluateContextInput({ profile, intent, signals, now });
+      return ok(formatEvaluateContextResult(result));
+    } catch (err) {
+      if (err instanceof EvaluateContextInputError) {
+        return ok(`[FreshContext evaluate_context error]\n${err.message}`);
+      }
+      return ok(`[FreshContext evaluate_context error]\n${err instanceof Error ? err.message : String(err)}`);
+    }
+  });
 
   server.registerTool("extract_github", {
     description: "Extract real-time data from a GitHub repository — README, stars, forks, last commit, topics. Returns timestamped freshcontext.",
