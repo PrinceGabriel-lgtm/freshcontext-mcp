@@ -13,7 +13,9 @@
       "semantic_score": 0.9,
       "metadata": {
         "provenance": "vendor page"
-      }
+      },
+      "expected_decision": "use_as_background",
+      "review_note": "Relevant vendor page, but promotional source should remain background."
     },
     {
       "title": "RetrievalWorks funding announcement",
@@ -43,7 +45,9 @@
       "semantic_score": 0.74,
       "metadata": {
         "provenance": "marketing page"
-      }
+      },
+      "expected_decision": "needs_verification",
+      "review_note": "Marketing source without a date needs verification."
     },
     {
       "title": "Malformed acquisition rumor date",
@@ -55,7 +59,9 @@
       "semantic_score": 0.59,
       "metadata": {
         "provenance": "unverified post"
-      }
+      },
+      "expected_decision": "watch_only",
+      "review_note": "Rumor-like source should not drive a diligence decision."
     },
     {
       "title": "Future-dated launch page",
@@ -64,7 +70,9 @@
       "source_type": "company_landscape",
       "published_at": "2026-06-09T12:15:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 0.78
+      "semantic_score": 0.78,
+      "expected_decision": "needs_verification",
+      "review_note": "Future-dated launch metadata requires verification."
     },
     {
       "title": "Blocked vendor comparison",
@@ -73,7 +81,9 @@
       "source_type": "company_landscape",
       "published_at": "2026-06-05T00:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 0.89
+      "semantic_score": 0.89,
+      "expected_decision": "exclude",
+      "review_note": "Access-denied output should be excluded."
     },
     {
       "title": "Low relevance AI glossary",
@@ -91,7 +101,9 @@
       "source_type": "company_landscape",
       "published_at": "2026-06-04T00:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 1.3
+      "semantic_score": 1.3,
+      "expected_decision": "watch_only",
+      "review_note": "A short quote with an oversized score should not be treated as strong diligence evidence."
     },
     {
       "title": "Underscored technical brief",
@@ -121,7 +133,9 @@
       "semantic_score": 0.83,
       "metadata": {
         "provenance": "third-party note"
-      }
+      },
+      "expected_decision": "use_as_background",
+      "review_note": "Third-party market note is useful as background evidence."
     }
   ]
 }

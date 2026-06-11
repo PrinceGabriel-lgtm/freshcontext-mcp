@@ -11,7 +11,9 @@
       "published_at": "2026-06-08T10:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
       "semantic_score": 0.94,
-      "date_confidence": "high"
+      "date_confidence": "high",
+      "expected_decision": "use_first",
+      "review_note": "Current official setup source should be used first."
     },
     {
       "title": "Latest changelog entry",
@@ -31,7 +33,9 @@
       "published_at": "2024-04-10T00:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
       "semantic_score": 0.72,
-      "date_confidence": "high"
+      "date_confidence": "high",
+      "expected_decision": "use_as_background",
+      "review_note": "Older official migration material is useful background."
     },
     {
       "title": "Undated configuration note",
@@ -39,7 +43,9 @@
       "source": "https://docs.example.org/configuration/runtime",
       "source_type": "official_docs",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 0.77
+      "semantic_score": 0.77,
+      "expected_decision": "needs_verification",
+      "review_note": "Official-looking source still needs date verification."
     },
     {
       "title": "Malformed docs timestamp",
@@ -57,7 +63,9 @@
       "source_type": "official_docs",
       "published_at": "2026-06-09T12:09:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 0.8
+      "semantic_score": 0.8,
+      "expected_decision": "needs_verification",
+      "review_note": "Future-dated official metadata should be checked."
     },
     {
       "title": "Blocked docs response",
@@ -66,7 +74,9 @@
       "source_type": "official_docs",
       "published_at": "2026-06-08T11:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 0.85
+      "semantic_score": 0.85,
+      "expected_decision": "exclude",
+      "review_note": "Access-denied content is not usable documentation."
     },
     {
       "title": "Weak forum mirror",
@@ -78,7 +88,9 @@
       "semantic_score": 0.36,
       "metadata": {
         "provenance": "unclear mirror"
-      }
+      },
+      "expected_decision": "needs_verification",
+      "review_note": "Unofficial mirror has weak provenance."
     },
     {
       "title": "Overscored install page",
@@ -87,7 +99,9 @@
       "source_type": "official_docs",
       "published_at": "2026-06-06T00:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 1.2
+      "semantic_score": 1.2,
+      "expected_decision": "use_as_background",
+      "review_note": "Caller overscore makes this worth review even though the page is current."
     },
     {
       "title": "Underscored troubleshooting page",

@@ -93,6 +93,33 @@ function sumAnomalies(counts: Record<string, number>): number {
     .reduce((sum, [, count]) => sum + count, 0);
 }
 
+function assertHumanReviewSummary(structured: any, expectLabels: boolean): void {
+  assert.ok(structured.human_review, "expected human_review summary");
+  const review = structured.human_review;
+
+  assert.equal(review.labeled_signals + review.unlabeled_signals, structured.total_signals);
+  assert.equal(review.label_match_count + review.label_mismatch_count, review.labeled_signals);
+
+  if (expectLabels) {
+    assert.ok(review.labeled_signals > 0, "expected fixture to include human labels");
+    assert.equal(typeof review.label_match_rate, "number");
+  } else {
+    assert.equal(review.labeled_signals, 0);
+    assert.equal(review.label_match_rate, null);
+  }
+
+  assert.ok(Array.isArray(review.mismatches));
+  for (const mismatch of review.mismatches) {
+    assert.equal(typeof mismatch.index, "number");
+    assert.equal(typeof mismatch.title, "string");
+    assert.equal(typeof mismatch.source, "string");
+    assert.equal(typeof mismatch.expected_decision, "string");
+    assert.equal(typeof mismatch.actual_decision, "string");
+    assert.equal(typeof mismatch.review_note, "string");
+    assert.equal(typeof mismatch.reason, "string");
+  }
+}
+
 test("all replay fixtures run through the batch harness", () => {
   for (const fixture of REPLAY_FIXTURES) {
     const result = runBatch(fixture.path);
@@ -114,6 +141,7 @@ test("all replay fixtures run through the batch harness", () => {
       sumAnomalies(structured.anomaly_counts) > 0 || structured.anomaly_counts.failed_status > 0,
       `${fixture.path} should include at least one intentional anomaly`
     );
+    assertHumanReviewSummary(structured, true);
   }
 });
 
@@ -147,6 +175,7 @@ test("batch validation fixture reports mixed anomaly and decision counts", () =>
   assert.ok(structured.decision_counts.needs_verification >= 1);
   assert.ok(structured.decision_counts.exclude >= 1);
   assert.ok(structured.top_results.length > 0);
+  assertHumanReviewSummary(structured, true);
 });
 
 test("batch validation rejects unknown source profiles", () => {
@@ -161,6 +190,34 @@ test("batch validation rejects unsupported intents", () => {
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /intent "write_me_a_trade" is not supported/);
+});
+
+test("batch validation rejects unsupported expected human decisions", () => {
+  const result = runBatch(writeTempJson(baseBatch({
+    signals: [
+      {
+        title: "Useful current source",
+        content: "A relevant current source with a clear timestamp.",
+        source: "https://example.com/source",
+        source_type: "arxiv",
+        published_at: "2026-06-08T12:00:00.000Z",
+        retrieved_at: "2026-06-09T12:00:00.000Z",
+        semantic_score: 0.9,
+        expected_decision: "looks_good_to_me",
+      },
+    ],
+  })));
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /expected_decision must be a supported FreshContext decision label/);
+});
+
+test("batch validation keeps stable human_review output when no labels are present", () => {
+  const result = runBatch(writeTempJson(baseBatch()));
+  assert.equal(result.status, 0, result.stderr);
+
+  const structured = extractStructured(result.stdout);
+  assertHumanReviewSummary(structured, false);
 });
 
 test("batch validation rejects missing, non-array, and empty signals", () => {

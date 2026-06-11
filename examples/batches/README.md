@@ -10,6 +10,21 @@ npm run batch:validate -- <dataset>
 
 The fixtures do not fetch, crawl, scrape, browse, or call live adapters. They are saved candidate-context examples used to inspect decision distributions, date quality, failed content handling, and score normalization.
 
+## Human Review Labels
+
+Replay signals may include optional fixture-only review metadata:
+
+```json
+{
+  "expected_decision": "needs_verification",
+  "review_note": "Relevant, but missing publication date."
+}
+```
+
+These labels compare FreshContext's decision with an expected human treatment label. They do not change Core scoring, ranking, normalization, or runtime behavior. Mismatches are review evidence, not automatic bugs, and they are useful when a source is borderline or the current decision policy deserves a closer look.
+
+The replay datasets are not production-scale benchmarks and do not certify truth. They make agreement, disagreement, missing dates, failed content, and score normalization visible over saved candidate-context batches.
+
 ## Replay Summary
 
 | Dataset | Profile | Intent | Signals | Notable decisions | Anomalies | Top decision | Command |

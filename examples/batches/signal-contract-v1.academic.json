@@ -11,7 +11,9 @@
       "published_at": "2026-06-08T09:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
       "semantic_score": 0.95,
-      "date_confidence": "high"
+      "date_confidence": "high",
+      "expected_decision": "cite_as_primary",
+      "review_note": "Current, relevant, and appropriate as primary citation candidate."
     },
     {
       "title": "Older foundational retrieval survey",
@@ -21,7 +23,9 @@
       "published_at": "2021-04-12T00:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
       "semantic_score": 0.84,
-      "date_confidence": "high"
+      "date_confidence": "high",
+      "expected_decision": "cite_as_supporting",
+      "review_note": "Useful foundation, but too old to cite as current evidence."
     },
     {
       "title": "Undated but relevant lab note",
@@ -29,7 +33,9 @@
       "source": "https://lab.example.org/context-note",
       "source_type": "academic_blog",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 0.77
+      "semantic_score": 0.77,
+      "expected_decision": "needs_verification",
+      "review_note": "Relevant, but missing publication date."
     },
     {
       "title": "Malformed date metadata",
@@ -47,7 +53,9 @@
       "source_type": "arxiv",
       "published_at": "2026-06-09T12:08:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 0.81
+      "semantic_score": 0.81,
+      "expected_decision": "needs_verification",
+      "review_note": "Future-dated metadata should be checked before use."
     },
     {
       "title": "Blocked academic source",
@@ -56,7 +64,9 @@
       "source_type": "scholar",
       "published_at": "2026-06-07T10:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 0.91
+      "semantic_score": 0.91,
+      "expected_decision": "exclude",
+      "review_note": "Error output should not be used as source context."
     },
     {
       "title": "Low relevance neighboring topic",
@@ -74,7 +84,9 @@
       "source_type": "arxiv",
       "published_at": "2026-06-05T00:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 1.4
+      "semantic_score": 1.4,
+      "expected_decision": "use_as_background",
+      "review_note": "Overscored caller metadata should invite review even if the source is current."
     },
     {
       "title": "Underscored candidate from caller",
@@ -113,7 +125,9 @@
       "published_at": "2026-03-15T00:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
       "semantic_score": 0.58,
-      "date_confidence": "medium"
+      "date_confidence": "medium",
+      "expected_decision": "watch_only",
+      "review_note": "Moderate relevance and older date make this secondary at best."
     }
   ]
 }

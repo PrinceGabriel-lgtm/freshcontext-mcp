@@ -25,11 +25,46 @@ const SUPPORTED_INTENTS = new Set<IntentProfileId>([
   "medical_literature_triage",
 ]);
 
+const SUPPORTED_DECISIONS = new Set<ContextDecision>([
+  "use_first",
+  "cite_as_primary",
+  "cite_as_supporting",
+  "use_as_background",
+  "needs_verification",
+  "needs_refresh",
+  "watch_only",
+  "exclude",
+]);
+
+type ReviewableSignalInput = FreshContextSignalInput & {
+  expected_decision?: ContextDecision;
+  review_note?: string;
+};
+
 interface BatchInput {
   profile: string;
   intent: IntentProfileId;
   now?: string;
-  signals: FreshContextSignalInput[];
+  signals: ReviewableSignalInput[];
+}
+
+interface HumanReviewMismatch {
+  index: number;
+  title: string;
+  source: string;
+  expected_decision: ContextDecision;
+  actual_decision: ContextDecision;
+  review_note: string;
+  reason: string;
+}
+
+interface HumanReviewSummary {
+  labeled_signals: number;
+  unlabeled_signals: number;
+  label_match_count: number;
+  label_mismatch_count: number;
+  label_match_rate: number | null;
+  mismatches: HumanReviewMismatch[];
 }
 
 interface BatchReport {
@@ -47,6 +82,7 @@ interface BatchReport {
     clamped_semantic_score: number;
     failed_status: number;
   };
+  human_review: HumanReviewSummary;
   top_results: Array<{
     rank: number;
     title: string;
@@ -89,7 +125,7 @@ function assertOptionalNumber(value: Record<string, unknown>, field: string, ind
   }
 }
 
-function validateSignal(value: unknown, index: number): FreshContextSignalInput {
+function validateSignal(value: unknown, index: number): ReviewableSignalInput {
   if (!isRecord(value)) {
     fail(`signals[${index}] must be an object.`);
   }
@@ -101,7 +137,14 @@ function validateSignal(value: unknown, index: number): FreshContextSignalInput 
   assertOptionalStringOrNull(value, "published_at", index);
   assertOptionalStringOrNull(value, "content_date", index);
   assertOptionalStringOrNull(value, "retrieved_at", index);
+  assertOptionalStringOrNull(value, "review_note", index);
   assertOptionalNumber(value, "semantic_score", index);
+
+  if (value.expected_decision !== undefined) {
+    if (typeof value.expected_decision !== "string" || !SUPPORTED_DECISIONS.has(value.expected_decision as ContextDecision)) {
+      fail(`signals[${index}].expected_decision must be a supported FreshContext decision label.`);
+    }
+  }
 
   const hasTitle = typeof value.title === "string" && value.title.trim().length > 0;
   const hasContent = typeof value.content === "string" && value.content.trim().length > 0;
@@ -109,7 +152,7 @@ function validateSignal(value: unknown, index: number): FreshContextSignalInput 
     fail(`signals[${index}] must include title or content.`);
   }
 
-  return value as unknown as FreshContextSignalInput;
+  return value as unknown as ReviewableSignalInput;
 }
 
 function validateInput(value: unknown): BatchInput {
@@ -159,6 +202,65 @@ function sourceTitle(result: CoreSignalEvaluationResult): string {
 
 function formatScore(value: number): string {
   return value.toFixed(3);
+}
+
+function buildHumanReview(
+  input: BatchInput,
+  evaluations: CoreSignalEvaluationResult[],
+  decisions: ContextDecisionResult[]
+): HumanReviewSummary {
+  const reviewBySource = new Map<string, {
+    index: number;
+    expected_decision: ContextDecision;
+    review_note: string;
+  }>();
+
+  input.signals.forEach((signal, index) => {
+    if (signal.expected_decision) {
+      reviewBySource.set(signal.source, {
+        index: index + 1,
+        expected_decision: signal.expected_decision,
+        review_note: signal.review_note ?? "",
+      });
+    }
+  });
+
+  const mismatches: HumanReviewMismatch[] = [];
+  let labelMatchCount = 0;
+
+  evaluations.forEach((result, index) => {
+    const review = reviewBySource.get(result.signal.source);
+    if (!review) return;
+
+    const actualDecision = decisions[index].decision;
+    if (actualDecision === review.expected_decision) {
+      labelMatchCount += 1;
+      return;
+    }
+
+    mismatches.push({
+      index: review.index,
+      title: sourceTitle(result),
+      source: result.signal.source,
+      expected_decision: review.expected_decision,
+      actual_decision: actualDecision,
+      review_note: review.review_note,
+      reason: result.explanation,
+    });
+  });
+
+  const labeledSignals = reviewBySource.size;
+
+  return {
+    labeled_signals: labeledSignals,
+    unlabeled_signals: input.signals.length - labeledSignals,
+    label_match_count: labelMatchCount,
+    label_mismatch_count: mismatches.length,
+    label_match_rate: labeledSignals > 0
+      ? Number((labelMatchCount / labeledSignals).toFixed(3))
+      : null,
+    mismatches,
+  };
 }
 
 function buildReport(
@@ -231,6 +333,7 @@ function buildReport(
       clamped_semantic_score: clampedSemanticScore,
       failed_status: statusCounts.failed,
     },
+    human_review: buildHumanReview(input, evaluations, decisions),
     top_results: evaluations.slice(0, 5).map((result, index) => ({
       rank: index + 1,
       title: sourceTitle(result),
@@ -268,6 +371,25 @@ function printReport(report: BatchReport): void {
   printCounts("Date confidence counts", report.date_confidence_counts);
   printCounts("Decision counts", report.decision_counts);
   printCounts("Anomaly counts", report.anomaly_counts);
+  console.log(
+    `Human review: labeled ${report.human_review.labeled_signals}; `
+    + `unlabeled ${report.human_review.unlabeled_signals}; `
+    + `matches ${report.human_review.label_match_count}; `
+    + `mismatches ${report.human_review.label_mismatch_count}; `
+    + `match rate ${report.human_review.label_match_rate === null ? "n/a" : report.human_review.label_match_rate}`
+  );
+  if (report.human_review.mismatches.length > 0) {
+    console.log("Human review mismatches:");
+    report.human_review.mismatches.forEach((mismatch) => {
+      console.log(`- ${mismatch.index}. ${mismatch.title}`);
+      console.log(`  Expected: ${mismatch.expected_decision}`);
+      console.log(`  Actual: ${mismatch.actual_decision}`);
+      if (mismatch.review_note) {
+        console.log(`  Review note: ${mismatch.review_note}`);
+      }
+      console.log(`  Why: ${mismatch.reason}`);
+    });
+  }
   console.log("");
   console.log("Top decision-ready results:");
   report.top_results.forEach((result) => {

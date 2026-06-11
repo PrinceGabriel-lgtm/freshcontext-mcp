@@ -11,7 +11,9 @@
       "published_at": "2026-06-09T08:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
       "semantic_score": 0.93,
-      "date_confidence": "high"
+      "date_confidence": "high",
+      "expected_decision": "use_first",
+      "review_note": "Fresh, relevant opportunity should be prioritized."
     },
     {
       "title": "Context systems developer",
@@ -30,7 +32,9 @@
       "source_type": "jobs",
       "published_at": "2026-04-01T00:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 0.79
+      "semantic_score": 0.79,
+      "expected_decision": "needs_refresh",
+      "review_note": "Older listing should be refreshed before acting."
     },
     {
       "title": "Undated AI tools listing",
@@ -38,7 +42,9 @@
       "source": "https://jobs.example.org/ai-tools-undated",
       "source_type": "jobs",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 0.81
+      "semantic_score": 0.81,
+      "expected_decision": "needs_refresh",
+      "review_note": "A promising job without a posted date should be refreshed."
     },
     {
       "title": "Malformed job date",
@@ -47,7 +53,9 @@
       "source_type": "jobs",
       "published_at": "recently",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 0.75
+      "semantic_score": 0.75,
+      "expected_decision": "needs_refresh",
+      "review_note": "Malformed posted date blocks confident action."
     },
     {
       "title": "Future-dated hiring post",
@@ -65,7 +73,9 @@
       "source_type": "jobs",
       "published_at": "2026-06-08T00:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 0.9
+      "semantic_score": 0.9,
+      "expected_decision": "exclude",
+      "review_note": "Blocked job board response is not usable listing content."
     },
     {
       "title": "Low relevance sales role",
@@ -74,7 +84,9 @@
       "source_type": "jobs",
       "published_at": "2026-06-05T00:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 0.16
+      "semantic_score": 0.16,
+      "expected_decision": "watch_only",
+      "review_note": "Low relevance role should not be prioritized."
     },
     {
       "title": "Overscored vague listing",
@@ -83,7 +95,9 @@
       "source_type": "jobs",
       "published_at": "2026-06-04T00:00:00.000Z",
       "retrieved_at": "2026-06-09T12:00:00.000Z",
-      "semantic_score": 1.25
+      "semantic_score": 1.25,
+      "expected_decision": "needs_verification",
+      "review_note": "Overscored vague listing needs human review before action."
     },
     {
       "title": "Underscored backend role",
