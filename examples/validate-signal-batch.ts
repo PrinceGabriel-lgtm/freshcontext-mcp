@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import {
   evaluateSignals,
   getSourceProfile,
@@ -36,6 +36,12 @@ const SUPPORTED_DECISIONS = new Set<ContextDecision>([
   "watch_only",
   "exclude",
 ]);
+
+const MAX_BATCH_FILE_BYTES = 1024 * 1024;
+const MAX_BATCH_SIGNALS = 500;
+const MAX_SOURCE_CHARS = 2048;
+const MAX_TITLE_CHARS = 1000;
+const MAX_CONTENT_CHARS = 100000;
 
 type ReviewableSignalInput = FreshContextSignalInput & {
   expected_decision?: ContextDecision;
@@ -147,6 +153,12 @@ function assertOptionalNumber(value: Record<string, unknown>, field: string, ind
   }
 }
 
+function assertMaxLength(value: Record<string, unknown>, field: string, maxLength: number, index: number): void {
+  if (typeof value[field] === "string" && value[field].length > maxLength) {
+    fail(`signals[${index}].${field} exceeds maximum length of ${maxLength} characters.`);
+  }
+}
+
 function validateSignal(value: unknown, index: number): ReviewableSignalInput {
   if (!isRecord(value)) {
     fail(`signals[${index}] must be an object.`);
@@ -161,6 +173,9 @@ function validateSignal(value: unknown, index: number): ReviewableSignalInput {
   assertOptionalStringOrNull(value, "retrieved_at", index);
   assertOptionalStringOrNull(value, "review_note", index);
   assertOptionalNumber(value, "semantic_score", index);
+  assertMaxLength(value, "source", MAX_SOURCE_CHARS, index);
+  assertMaxLength(value, "title", MAX_TITLE_CHARS, index);
+  assertMaxLength(value, "content", MAX_CONTENT_CHARS, index);
 
   if (value.expected_decision !== undefined) {
     if (typeof value.expected_decision !== "string" || !SUPPORTED_DECISIONS.has(value.expected_decision as ContextDecision)) {
@@ -200,6 +215,9 @@ function validateInput(value: unknown): BatchInput {
   }
   if (value.signals.length === 0) {
     fail("signals must include at least one candidate context item.");
+  }
+  if (value.signals.length > MAX_BATCH_SIGNALS) {
+    fail(`signals must include at most ${MAX_BATCH_SIGNALS} candidate context items.`);
   }
 
   return {
@@ -548,6 +566,13 @@ async function main(): Promise<void> {
 
   let raw: string;
   try {
+    const info = await stat(filePath);
+    if (!info.isFile()) {
+      fail(`"${filePath}" is not a file.`);
+    }
+    if (info.size > MAX_BATCH_FILE_BYTES) {
+      fail(`"${filePath}" exceeds maximum batch file size of ${MAX_BATCH_FILE_BYTES} bytes.`);
+    }
     raw = await readFile(filePath, "utf8");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

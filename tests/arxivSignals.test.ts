@@ -100,6 +100,25 @@ test("searchArxivSignals respects direct API URLs, retrievedAt, semanticScore, a
   }
 });
 
+test("searchArxivSignals rejects non-arXiv direct URLs before fetch", async () => {
+  const requestedUrls: string[] = [];
+  const restoreFetch = installFetch(new Response(ARXIV_FIXTURE, { status: 200 }), requestedUrls);
+
+  try {
+    await assert.rejects(
+      searchArxivSignals({ query: "http://127.0.0.1:8787/internal" }),
+      /Access to internal\/private addresses is not permitted/
+    );
+    await assert.rejects(
+      searchArxivSignals({ query: "https://example.com/api/query?search_query=all:test" }),
+      /Domain not allowed for arxiv adapter/
+    );
+    assert.equal(requestedUrls.length, 0);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test("searchArxivSignals defaults retrieved_at and semantic_score for signal output", async () => {
   const restoreFetch = installFetch(new Response(ARXIV_FIXTURE, { status: 200 }));
 

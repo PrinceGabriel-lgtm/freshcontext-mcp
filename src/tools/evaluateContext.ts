@@ -22,6 +22,11 @@ const SUPPORTED_INTENTS: readonly IntentProfileId[] = [
   "medical_literature_triage",
 ];
 
+const MAX_CONTEXT_SIGNALS = 100;
+const MAX_SOURCE_CHARS = 2048;
+const MAX_TITLE_CHARS = 1000;
+const MAX_CONTENT_CHARS = 50000;
+
 export class EvaluateContextInputError extends Error {
   constructor(message: string) {
     super(message);
@@ -55,6 +60,13 @@ function isIntentProfileId(value: string): value is IntentProfileId {
   return (SUPPORTED_INTENTS as readonly string[]).includes(value);
 }
 
+function assertMaxLength(value: unknown, field: string, maxLength: number, index?: number): void {
+  if (typeof value === "string" && value.length > maxLength) {
+    const prefix = index === undefined ? "" : `signals[${index}].`;
+    throw new EvaluateContextInputError(`${prefix}${field} exceeds maximum length of ${maxLength} characters.`);
+  }
+}
+
 function validateSignal(value: unknown, index: number): FreshContextSignalInput {
   if (!isRecord(value)) {
     throw new EvaluateContextInputError(`signals[${index}] must be an object.`);
@@ -62,6 +74,9 @@ function validateSignal(value: unknown, index: number): FreshContextSignalInput 
   if (typeof value.source !== "string" || value.source.trim().length === 0) {
     throw new EvaluateContextInputError(`signals[${index}].source must be a non-empty string.`);
   }
+  assertMaxLength(value.source, "source", MAX_SOURCE_CHARS, index);
+  assertMaxLength(value.title, "title", MAX_TITLE_CHARS, index);
+  assertMaxLength(value.content, "content", MAX_CONTENT_CHARS, index);
   if (
     (typeof value.title !== "string" || value.title.trim().length === 0)
     && (typeof value.content !== "string" || value.content.trim().length === 0)
@@ -89,6 +104,12 @@ export function evaluateContextInput(input: EvaluateContextInput): EvaluateConte
   }
   if (input.signals.length === 0) {
     throw new EvaluateContextInputError("signals must contain at least one candidate context item.");
+  }
+  if (input.signals.length > MAX_CONTEXT_SIGNALS) {
+    throw new EvaluateContextInputError(`signals must contain at most ${MAX_CONTEXT_SIGNALS} candidate context items.`);
+  }
+  if (input.now !== undefined && Number.isNaN(new Date(input.now).getTime())) {
+    throw new EvaluateContextInputError("now must be a valid timestamp string when provided.");
   }
 
   const signals = input.signals.map(validateSignal);

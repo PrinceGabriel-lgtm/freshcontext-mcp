@@ -354,6 +354,40 @@ test("batch validation rejects missing, non-array, and empty signals", () => {
   assert.match(empty.stderr, /signals must include at least one candidate context item/);
 });
 
+test("batch validation rejects oversized files, batches, and fields", () => {
+  const dir = mkdtempSync(join(tmpdir(), "freshcontext-batch-"));
+  const bigPath = join(dir, "too-large.json");
+  writeFileSync(bigPath, " ".repeat(1024 * 1024 + 1), "utf8");
+
+  const bigFile = runBatch(bigPath);
+  assert.notEqual(bigFile.status, 0);
+  assert.match(bigFile.stderr, /exceeds maximum batch file size/);
+
+  const tooManySignals = runBatch(writeTempJson(baseBatch({
+    signals: Array.from({ length: 501 }, (_, index) => ({
+      title: `Source ${index}`,
+      content: "Candidate context.",
+      source: `https://example.com/${index}`,
+    })),
+  })));
+  assert.notEqual(tooManySignals.status, 0);
+  assert.match(tooManySignals.stderr, /at most 500 candidate context items/);
+
+  const oversizedField = runBatch(writeTempJson(baseBatch({
+    signals: [
+      {
+        title: "t".repeat(1001),
+        content: "Candidate context.",
+        source: "https://example.com/source",
+        semantic_score: 0.8,
+        published_at: "2026-06-08T12:00:00.000Z",
+      },
+    ],
+  })));
+  assert.notEqual(oversizedField.status, 0);
+  assert.match(oversizedField.stderr, /title exceeds maximum length/);
+});
+
 test("batch validation harness avoids host and retrieval runtime terms", () => {
   const source = readFileSync("examples/validate-signal-batch.ts", "utf8");
 

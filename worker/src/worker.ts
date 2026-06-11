@@ -418,6 +418,7 @@ const ALLOWED_DOMAINS: Record<string, string[]> = {
   scholar:     ["scholar.google.com"],
   hackernews:  ["news.ycombinator.com", "hn.algolia.com"],
   yc:          ["www.ycombinator.com", "ycombinator.com"],
+  arxiv:       ["export.arxiv.org", "arxiv.org"],
   producthunt: ["www.producthunt.com", "producthunt.com"],
 };
 
@@ -615,7 +616,7 @@ function formatQuoteValue(value: number | string | undefined, prefix = ""): stri
 // ── arXiv (HTTP, Atom XML) ───────────────────────────────────────────────────
 async function fetchArxiv(query: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
   const apiUrl = query.startsWith("http")
-    ? query
+    ? validateUrl(query, "arxiv")
     : `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&start=0&max_results=10&sortBy=relevance&sortOrder=descending`;
 
   const res = await sourceFetch(apiUrl, { headers: { "User-Agent": UA } }, { ...log, adapter: "arxiv" });

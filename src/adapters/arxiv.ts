@@ -1,5 +1,6 @@
 import { AdapterResult, ExtractOptions } from "../types.js";
 import type { FreshContextSignalInput } from "../core/types.js";
+import { validateUrl } from "../security.js";
 
 export type ArxivSignalSearchInput = {
   query: string;
@@ -28,7 +29,7 @@ function buildArxivApiUrl(input: string, maxResults = 10): string {
     : 10;
 
   return trimmed.startsWith("http")
-    ? trimmed
+    ? validateUrl(trimmed, "arxiv")
     : `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(trimmed)}&start=0&max_results=${safeMaxResults}&sortBy=relevance&sortOrder=descending`;
 }
 

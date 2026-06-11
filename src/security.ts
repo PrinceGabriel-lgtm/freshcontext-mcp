@@ -14,6 +14,7 @@ export const ALLOWED_DOMAINS: Record<string, string[]> = {
   packageTrends: [], // uses npm/PyPI APIs directly, no browser
   reddit: [],        // uses public Reddit JSON API, no browser
   finance: [],       // uses Stooq quote API, no browser
+  arxiv: ["export.arxiv.org", "arxiv.org"],
   productHunt: ["www.producthunt.com", "producthunt.com"],
 };
 

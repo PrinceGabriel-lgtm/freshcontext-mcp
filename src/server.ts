@@ -56,7 +56,7 @@ server.registerTool(
     inputSchema: z.object({
       profile: z.string().min(1).describe("Source Profile id, e.g. academic_research, jobs_opportunities, market_finance, official_docs, local_custom."),
       intent: z.string().min(1).describe("Intent Profile id, e.g. citation_check, student_research, developer_adoption, job_search, market_watch, business_due_diligence, medical_literature_triage."),
-      signals: z.array(signalInputSchema).min(1).describe("Candidate context items provided by the caller. FreshContext evaluates these; it does not retrieve them."),
+      signals: z.array(signalInputSchema).min(1).max(100).describe("Candidate context items provided by the caller. FreshContext evaluates these; it does not retrieve them."),
       now: z.string().optional().describe("Optional ISO timestamp for deterministic evaluation."),
     }),
     annotations: { readOnlyHint: true, openWorldHint: false },

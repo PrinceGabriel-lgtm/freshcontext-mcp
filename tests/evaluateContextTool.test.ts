@@ -84,6 +84,37 @@ test("evaluate_context rejects empty signal arrays", () => {
   );
 });
 
+test("evaluate_context rejects oversized batches and fields", () => {
+  assert.throws(
+    () => evaluateContextInput(validInput({
+      signals: Array.from({ length: 101 }, (_, index) => ({
+        title: `Source ${index}`,
+        content: "Candidate context.",
+        source: `https://example.com/${index}`,
+      })),
+    })),
+    /at most 100 candidate context items/
+  );
+
+  assert.throws(
+    () => evaluateContextInput(validInput({
+      signals: [
+        {
+          title: "Oversized source",
+          content: "Candidate context.",
+          source: `https://example.com/${"a".repeat(2050)}`,
+        },
+      ],
+    })),
+    /source exceeds maximum length/
+  );
+
+  assert.throws(
+    () => evaluateContextInput(validInput({ now: "not-a-date" })),
+    /now must be a valid timestamp/
+  );
+});
+
 test("evaluate_context surfaces missing-date signals as needs verification", () => {
   const result = evaluateContextInput(validInput({
     signals: [
