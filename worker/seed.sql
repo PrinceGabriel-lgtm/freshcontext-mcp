@@ -1,18 +1,18 @@
 -- ============================================================
--- FRESHCONTEXT D1 SEED — Full end-to-end intelligence setup
--- Prince Gabriel | Grootfontein, Namibia
+-- FRESHCONTEXT D1 SEED - sample end-to-end intelligence setup
+-- Demo data only. Replace the profile and watched queries before production use.
 -- ============================================================
 
 -- ── USER PROFILE ─────────────────────────────────────────────
 INSERT OR REPLACE INTO user_profiles (id, name, skills, certifications, targets, location, context)
 VALUES (
   'default',
-  'Prince Gabriel',
-  '["TypeScript","Cloudflare Workers","MCP servers","Node.js","Python","D1 SQLite","REST APIs","web scraping","AI integration","Wrangler CLI"]',
+  'Sample Analyst',
+  '["TypeScript","Cloudflare Workers","MCP servers","Node.js","D1 SQLite","REST APIs","AI integration","Wrangler CLI"]',
   '["Cloudflare Developer","MCP Builder","AI Tooling"]',
-  '["senior developer roles","AI tooling companies","MCP ecosystem jobs","remote TypeScript roles","Cloudflare ecosystem","developer tools startups"]',
-  'Namibia',
-  'Building freshcontext-mcp — a timestamped web intelligence MCP server on Cloudflare Workers. Seeking remote work in AI tooling, developer infrastructure, and the MCP ecosystem. Open to contract or full-time.'
+  '["AI tooling companies","MCP ecosystem","developer infrastructure","Cloudflare ecosystem","developer tools startups"]',
+  'Remote',
+  'Sample profile for validating FreshContext watched-query ingestion and briefing output. Replace this with project-specific context before production use.'
 );
 
 
@@ -32,7 +32,7 @@ INSERT OR REPLACE INTO watched_queries (id, adapter, query, label, user_id, enab
 INSERT OR REPLACE INTO watched_queries (id, adapter, query, label, user_id, enabled) VALUES
   ('wq_gh_cf_ai',  'github', 'https://github.com/cloudflare/workers-ai',        'GitHub: Cloudflare Workers AI', 'default', 1);
 INSERT OR REPLACE INTO watched_queries (id, adapter, query, label, user_id, enabled) VALUES
-  ('wq_gh_fc',     'github', 'https://github.com/PrinceGabriel-lgtm/freshcontext-mcp', 'GitHub: My Repo', 'default', 1);
+  ('wq_gh_fc',     'github', 'https://github.com/PrinceGabriel-lgtm/freshcontext-mcp', 'GitHub: FreshContext Repo', 'default', 1);
 
 -- ── WATCHED QUERIES — HACKER NEWS ────────────────────────────
 INSERT OR REPLACE INTO watched_queries (id, adapter, query, label, user_id, enabled) VALUES

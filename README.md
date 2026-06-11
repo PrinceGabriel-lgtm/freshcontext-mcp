@@ -128,7 +128,7 @@ FreshContext returns decision-first output:
 
 `evaluate_context` does not fetch URLs, crawl, scrape, browse, read folders, or call adapters. It only evaluates candidate context the caller provides.
 
-Current boundary: `evaluate_context` is part of the published npm/local stdio MCP server. The hosted Cloudflare Worker endpoint is a separate deployment surface and may lag npm package interfaces until a dedicated Worker sync pass.
+Current boundary: `evaluate_context` is part of the published npm/local stdio MCP server and has been verified on the hosted Cloudflare Worker MCP endpoint at `0.3.19 / 22 tools`. The Worker remains a separate deployment surface, so future package interfaces should be re-verified remotely before being claimed live.
 
 ---
 
@@ -407,17 +407,19 @@ Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 ## Roadmap
 
 - [x] FreshContext Specification v1.2 published (MIT, open standard)
-- [x] DAR engine with proprietary λ constants (v0.3.19)
+- [x] DAR engine with source-specific lambda constants (v0.3.19)
 - [x] Ha-Pri v1 provenance signatures on stored signals
 - [x] Semantic deduplication via fingerprinting
 - [x] Live before/after demo at `/demo`
-- [x] METHODOLOGY.md — formal IP and engineering documentation
+- [x] METHODOLOGY.md — methodology and engineering documentation
 - [x] Named reference adapters across intelligence, competitive research, market data, and composites
 - [x] Generic MCP `evaluate_context` tool for caller-provided candidate context
 - [x] Core-backed envelope generation shared by npm/MCP and the Cloudflare Worker
 - [x] Cloudflare Workers deployment — global edge, KV cache, KV rate limiting
 - [x] Published on npm and listed for MCP usage; Apify/feed assets are separated from the normal MCP runtime package
-- [ ] Ha-Pri v2 hardened canonical content hash verification
+- [x] Ha-Pri v2 Core helper and deterministic golden vectors
+- [x] Ha-Pri v2 production-enforcement design document
+- [ ] Ha-Pri v2 Worker/D1 production enforcement
 - [x] GitHub Actions release workflow — manual or `v*` tag-triggered npm publish path
 - [ ] Webhook triggers — push high-entropy signals on threshold
 - [ ] Dashboard — React frontend for the D1 intelligence pipeline

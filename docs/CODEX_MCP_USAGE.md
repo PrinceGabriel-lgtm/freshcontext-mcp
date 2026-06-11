@@ -67,7 +67,7 @@ command = "npx"
 args = ["-y", "mcp-remote", "https://freshcontext-mcp.gimmanuel73.workers.dev/mcp"]
 ```
 
-This remote path was identified from repository metadata. The validation in this task verified local stdio only, not remote Codex compatibility, Worker availability, or Codex Cloud support.
+This remote path was verified on 2026-06-11 as a live Worker MCP endpoint exposing `0.3.19 / 22 tools`, including `evaluate_context`. That confirms Worker availability and MCP tool discovery. It does not by itself claim Codex Cloud support or guarantee every MCP client can use the remote bridge without its own client-specific setup check.
 
 ## Verification steps
 
@@ -102,7 +102,7 @@ Expected result: no output and exit code 0.
 - Do not place secrets, credentials, registry tokens, npm tokens, GitHub tokens, or Cloudflare tokens in Codex MCP config.
 - Do not read, edit, print, or commit local token files, local environment files, registry credentials, Cloudflare local state, or Wrangler state.
 - Do not commit local Codex config or machine-specific paths.
-- Prefer the local stdio path for this compatibility check because it is verified by `npm run smoke:stdio`.
+- Prefer the local stdio path for source-checkout compatibility checks because it is verified by `npm run smoke:stdio`.
 - Do not claim Codex Cloud support unless it is separately tested and documented.
 
 ## Troubleshooting

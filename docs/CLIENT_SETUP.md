@@ -132,7 +132,7 @@ Some clients can use `mcp-remote`:
 }
 ```
 
-The npm/local stdio package is the current primary tested client path. The hosted Worker endpoint is a separate deployment surface and may lag npm package interfaces until a dedicated Worker sync pass.
+The npm/local stdio package remains the safest default client path. The hosted Worker endpoint was verified on 2026-06-11 at `0.3.19 / 22 tools` with `evaluate_context` present and returning decision-first output. Because the Worker is a separate deployment surface, re-run remote verification before claiming future package interfaces are live there.
 
 ## ChatGPT / OpenAI Connector Boundary
 

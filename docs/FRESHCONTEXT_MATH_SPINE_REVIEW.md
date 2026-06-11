@@ -1,9 +1,11 @@
 # FreshContext Math Spine Review
 
+> Historical review artifact. This document records the state of the math spine review on 2026-05-24 and is not current release metadata. Current package/runtime claims live in `package.json`, `server.json`, `README.md`, `docs/CORE_API.md`, `docs/SIGNAL_CONTRACT.md`, and `docs/RELEASE_NOTES.md`.
+
 Date: 2026-05-24
 Repository: `freshcontext-mcp`
 Current main at review start: `0b29873 Merge pull request #23`
-Current package version: `0.3.17`
+Reviewed package version at time of artifact: `0.3.17`
 Scope: current mathematics, code implementation, provenance model, tests, and open review questions.
 
 This document is written for technical review. It describes what FreshContext currently does, where the math lives in code, what is production-wired, what is only a Core primitive, and what should be reviewed before future Store/D1 wiring.

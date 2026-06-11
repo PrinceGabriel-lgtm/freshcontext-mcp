@@ -2442,7 +2442,7 @@ export default {
       return new Response(JSON.stringify({
         service: "freshcontext-mcp",
         version: SERVICE_VERSION,
-        description: "FreshContext — timestamped web intelligence with Decay-Adjusted Relevancy scoring",
+        description: "FreshContext - context integrity infrastructure for AI agents and retrieval systems",
         endpoints: {
           mcp: "POST /mcp  (JSON-RPC 2.0)",
           briefing: "GET /briefing",
