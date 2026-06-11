@@ -1,0 +1,129 @@
+{
+  "schema": "freshcontext.ha_pri_v2.golden.v1",
+  "description": "Deterministic Ha-Pri v2 Core provenance vectors. These prove repeatable canonicalization, hashing, signing payload construction, signature generation, and verification behavior only.",
+  "validVectors": [
+    {
+      "name": "valid basic payload",
+      "input": {
+        "resultId": "fc-test-001",
+        "rawContent": "Canonical test content for FreshContext.\nSecond line with evidence.",
+        "semanticFingerprint": "academic retrieval evaluation context",
+        "adapter": "arxiv",
+        "publishedAt": "2026-05-20T00:00:00.000Z",
+        "retrievedAt": "2026-06-09T12:00:00.000Z",
+        "engineVersion": "0.3.19"
+      },
+      "expected": {
+        "canonicalContent": "Canonical test content for FreshContext.\nSecond line with evidence.",
+        "canonicalContentSha256": "9f4e132a2f45f5694e782f3f6bfcd6f5234f718e398100392244ae260f803a07",
+        "semanticFingerprintSha256": "6f8ba42b67507f500f2b88e3aa740e88d8db696e93430f31eb7d76525a37844c",
+        "signingPayload": "FRESHCONTEXT_HA_PRI_V2\nresult_id=fc-test-001\ncanonical_content_sha256=9f4e132a2f45f5694e782f3f6bfcd6f5234f718e398100392244ae260f803a07\nsemantic_fingerprint_sha256=6f8ba42b67507f500f2b88e3aa740e88d8db696e93430f31eb7d76525a37844c\nadapter=arxiv\npublished_at=2026-05-20T00:00:00.000Z\nretrieved_at=2026-06-09T12:00:00.000Z\nengine_version=0.3.19",
+        "haPriSigV2": "063195fc7ea6b37442c7f622aaf69fcab604f692acd8d17663d5e14fcebccbe6",
+        "verifyStatus": "valid"
+      }
+    },
+    {
+      "name": "valid whitespace-normalized payload",
+      "input": {
+        "resultId": "fc-test-002",
+        "rawContent": "Alpha evidence line  \r\nBeta evidence\t\rGamma evidence   ",
+        "semanticFingerprint": "whitespace normalization context",
+        "adapter": "hackernews",
+        "publishedAt": "2026-06-01T08:00:00.000Z",
+        "retrievedAt": "2026-06-09T12:00:00.000Z",
+        "engineVersion": "0.3.19"
+      },
+      "expected": {
+        "canonicalContent": "Alpha evidence line\nBeta evidence\nGamma evidence",
+        "canonicalContentSha256": "d648fc0d1e78be4d96ccb80d89b8d97514ca7a1f77f275357966b86b59a03448",
+        "semanticFingerprintSha256": "60c59176769b1287b9025f5fd73150706c756e48049a96be8dbc4ab660e1b11f",
+        "signingPayload": "FRESHCONTEXT_HA_PRI_V2\nresult_id=fc-test-002\ncanonical_content_sha256=d648fc0d1e78be4d96ccb80d89b8d97514ca7a1f77f275357966b86b59a03448\nsemantic_fingerprint_sha256=60c59176769b1287b9025f5fd73150706c756e48049a96be8dbc4ab660e1b11f\nadapter=hackernews\npublished_at=2026-06-01T08:00:00.000Z\nretrieved_at=2026-06-09T12:00:00.000Z\nengine_version=0.3.19",
+        "haPriSigV2": "c219d72cb5c35bd1ad445f63d2886cff04ad00c02b2c21b8a4d32f658519de86",
+        "verifyStatus": "valid"
+      }
+    },
+    {
+      "name": "valid whitespace-only content payload",
+      "input": {
+        "resultId": "fc-test-003",
+        "rawContent": "  \r\n\t",
+        "semanticFingerprint": null,
+        "adapter": "local_custom",
+        "publishedAt": null,
+        "engineVersion": "0.3.19"
+      },
+      "expected": {
+        "canonicalContent": "\n",
+        "canonicalContentSha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+        "semanticFingerprintSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "signingPayload": "FRESHCONTEXT_HA_PRI_V2\nresult_id=fc-test-003\ncanonical_content_sha256=01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b\nsemantic_fingerprint_sha256=74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b\nadapter=local_custom\npublished_at=null\nretrieved_at=null\nengine_version=0.3.19",
+        "haPriSigV2": "6d3ad4f451d7d3983db720f7ce7b0d888943704056d6a14f43e857e2bb96728a",
+        "verifyStatus": "valid"
+      }
+    }
+  ],
+  "tamperVectors": [
+    {
+      "name": "changed content invalidates signature",
+      "baseVector": "valid basic payload",
+      "tamperField": "rawContent",
+      "tamperValue": "Canonical test content for FreshContext.\nSecond line with tampering.",
+      "expectedVerifyStatus": "invalid"
+    },
+    {
+      "name": "changed semantic fingerprint invalidates signature",
+      "baseVector": "valid basic payload",
+      "tamperField": "semanticFingerprint",
+      "tamperValue": "different semantic identity",
+      "expectedVerifyStatus": "invalid"
+    },
+    {
+      "name": "changed adapter invalidates signature",
+      "baseVector": "valid basic payload",
+      "tamperField": "adapter",
+      "tamperValue": "reddit",
+      "expectedVerifyStatus": "invalid"
+    },
+    {
+      "name": "changed published_at invalidates signature",
+      "baseVector": "valid basic payload",
+      "tamperField": "publishedAt",
+      "tamperValue": "2026-05-21T00:00:00.000Z",
+      "expectedVerifyStatus": "invalid"
+    },
+    {
+      "name": "changed retrieved_at invalidates signature",
+      "baseVector": "valid basic payload",
+      "tamperField": "retrievedAt",
+      "tamperValue": "2026-06-10T12:00:00.000Z",
+      "expectedVerifyStatus": "invalid"
+    },
+    {
+      "name": "changed engine version invalidates signature",
+      "baseVector": "valid basic payload",
+      "tamperField": "engineVersion",
+      "tamperValue": "0.3.20",
+      "expectedVerifyStatus": "invalid"
+    }
+  ],
+  "storedSignatureVectors": [
+    {
+      "name": "missing stored signature is unknown",
+      "baseVector": "valid basic payload",
+      "actualSig": null,
+      "expectedVerifyStatus": "unknown"
+    },
+    {
+      "name": "blank stored signature is unknown",
+      "baseVector": "valid basic payload",
+      "actualSig": " ",
+      "expectedVerifyStatus": "unknown"
+    },
+    {
+      "name": "malformed stored signature is invalid",
+      "baseVector": "valid basic payload",
+      "actualSig": "not-a-valid-ha-pri-v2-signature",
+      "expectedVerifyStatus": "invalid"
+    }
+  ]
+}

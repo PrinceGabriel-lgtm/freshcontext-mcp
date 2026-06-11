@@ -12,6 +12,10 @@ The goal is to keep Ha-Pri v1 readable while designing a stronger future signatu
 
 Phase 3-B adds pure Core helper functions and deterministic tests for the v2 model. Phase 3-C adds `examples/ha-pri-v2-example.ts`, a deterministic developer fixture showing `calculateHaPriV2` and `verifyHaPriV2` returning valid, invalid, and unknown verification states. Production Store wiring remains future work. This document does not change the D1 schema, change Worker write paths, migrate old rows, add HMAC secrets, or alter production scoring.
 
+Pass 11-J adds golden test vectors for the pure Core helpers. Ha-Pri v2 golden vectors prove deterministic Core provenance behavior: canonicalization, SHA-256 hashes, signing payload construction, signature generation, and verification status are stable and repeatable. They do not mean Ha-Pri v2 is production-enforced on Worker/D1 reads.
+
+Plain SHA-256 provides deterministic integrity and audit checks. HMAC or private-key signing would be needed later for stronger origin-authentication guarantees.
+
 ## Current Ha-Pri v1 Audit
 
 Ha-Pri v1 is implemented today as a provenance stamp and audit reference, not yet hard tamper enforcement.
