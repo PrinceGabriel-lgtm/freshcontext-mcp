@@ -78,7 +78,7 @@ These types describe the stable envelope and adapter result contract.
 
 ## Signal Contract v1
 
-Signal Contract v1 is the additive Core shape for a retrieved signal before it is ranked, wrapped, stored, or passed to an agent workflow.
+Signal Contract v1 is the current FreshContext input standard: the stable shape for candidate context before it is ranked, wrapped, stored, judged by `evaluate_context`, or passed to an agent workflow.
 
 Public exports:
 
@@ -91,6 +91,8 @@ Public exports:
 - `SignalNormalizeOptions`
 
 `published_at` is the canonical signal timestamp. `content_date` is accepted as an adapter/envelope compatibility alias. Normalization clears invalid or meaningfully future-dated timestamps, marks failed/error-looking content as `status: "failed"`, clamps `semantic_score` into `0..1`, and records normalization reasons.
+
+Future context signals and control signals are optional future metadata layers, not replacements for Signal Contract v1 and not required public input fields today.
 
 See [Signal Contract v1](./SIGNAL_CONTRACT.md).
 

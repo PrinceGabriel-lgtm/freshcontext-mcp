@@ -93,6 +93,7 @@ const commands = {
       "tests/arxivSignals.test.ts",
       "tests/arxivDecisionIntegration.test.ts",
       "tests/core.test.ts",
+      "tests/signalContractExamples.test.ts",
       "tests/rank.test.ts",
       "tests/workerEnvelope.test.ts",
       "tests/workerCoreEnvelopeParity.test.ts",

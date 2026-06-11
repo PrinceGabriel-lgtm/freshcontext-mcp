@@ -13,6 +13,7 @@ Live today:
 - npm package: `freshcontext-mcp@0.3.19`
 - MCP stdio server
 - `evaluate_context` MCP tool for caller-provided candidate context
+- Signal Contract v1 as the stable candidate-context input shape
 - 21 read-only reference adapters
 - Core signal evaluation
 - Source Profiles
@@ -31,6 +32,26 @@ Not live today:
 - hard Ha-Pri v2 production enforcement
 - standalone Core SDK package
 - full adapter ingestion
+
+## Phase 0: Stabilize The Signal Contract
+
+Goal:
+
+```text
+Treat Signal Contract v1 as the stable input boundary for FreshContext.
+```
+
+Current contract:
+
+```text
+title + content + source + source_type + published_at + retrieved_at + semantic_score
+```
+
+This is live today. It is not the same thing as future context signals or control signals.
+
+Tasks in this lane should document examples, invalid-input behavior, and normalization expectations. Do not expand required fields unless tests prove the new metadata improves decisions.
+
+Future context signals, control signals, ingestion quality signals, structure preservation signals, and provenance confidence signals belong to later Decision Layer upgrades. They should remain optional metadata, not public required fields.
 
 ## Lane 1: Client Setup Reliability
 
@@ -121,7 +142,9 @@ Goal:
 Make decisions more useful without silently changing ranking.
 ```
 
-Possible inputs include context utility, control signal, future context signal, confidence tiers, and source-profile-specific thresholds.
+Possible inputs include context utility, control signal, future context signal, ingestion quality, structure preservation, provenance confidence, confidence tiers, and source-profile-specific thresholds.
+
+These are optional future metadata upgrades on top of Signal Contract v1. They should only be exposed when they make decisions clearer without making the caller-facing contract harder to use.
 
 Do not make `utility.score` affect ranking by default without a dedicated ranking policy pass.
 
