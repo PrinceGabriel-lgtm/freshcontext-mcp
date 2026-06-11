@@ -1,0 +1,119 @@
+{
+  "profile": "academic_research",
+  "intent": "citation_check",
+  "now": "2026-06-09T12:00:00.000Z",
+  "signals": [
+    {
+      "title": "Fresh benchmark with replicated RAG evaluation",
+      "content": "A recent academic paper reports replicated benchmarks for retrieval-augmented generation reliability and context quality.",
+      "source": "https://arxiv.org/abs/2606.00001",
+      "source_type": "arxiv",
+      "published_at": "2026-06-08T09:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.95,
+      "date_confidence": "high"
+    },
+    {
+      "title": "Older foundational retrieval survey",
+      "content": "A useful survey explains the foundations of retrieval systems but predates current agent workflows.",
+      "source": "https://example.edu/retrieval-survey-2021",
+      "source_type": "scholar",
+      "published_at": "2021-04-12T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.84,
+      "date_confidence": "high"
+    },
+    {
+      "title": "Undated but relevant lab note",
+      "content": "The note describes context evaluation methods but does not include a reliable publication timestamp.",
+      "source": "https://lab.example.org/context-note",
+      "source_type": "academic_blog",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.77
+    },
+    {
+      "title": "Malformed date metadata",
+      "content": "This candidate has useful text but malformed date metadata.",
+      "source": "https://example.org/bad-date-paper",
+      "source_type": "arxiv",
+      "published_at": "not-a-date",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.74
+    },
+    {
+      "title": "Future-dated preprint record",
+      "content": "This candidate appears to be dated after the retrieval time and should be treated cautiously.",
+      "source": "https://arxiv.org/abs/2606.99999",
+      "source_type": "arxiv",
+      "published_at": "2026-06-09T12:08:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.81
+    },
+    {
+      "title": "Blocked academic source",
+      "content": "[ERROR] upstream timeout while reading abstract",
+      "source": "https://example.org/blocked-paper",
+      "source_type": "scholar",
+      "published_at": "2026-06-07T10:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.91
+    },
+    {
+      "title": "Low relevance neighboring topic",
+      "content": "A paper about unrelated data visualization workflows with only weak relevance to context judgment.",
+      "source": "https://example.edu/weak-neighbor",
+      "source_type": "scholar",
+      "published_at": "2026-05-20T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.18
+    },
+    {
+      "title": "Overscored candidate from caller",
+      "content": "A candidate whose caller-provided semantic score is above the allowed range and must be clamped.",
+      "source": "https://example.edu/overscored",
+      "source_type": "arxiv",
+      "published_at": "2026-06-05T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 1.4
+    },
+    {
+      "title": "Underscored candidate from caller",
+      "content": "A candidate whose caller-provided semantic score is below the allowed range and must be clamped.",
+      "source": "https://example.edu/underscored",
+      "source_type": "arxiv",
+      "published_at": "2026-06-04T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": -0.25
+    },
+    {
+      "title": "Current methods comparison",
+      "content": "A current comparison of context selection, reranking, and citation-readiness methods.",
+      "source": "https://example.edu/context-methods-2026",
+      "source_type": "scholar",
+      "published_at": "2026-06-01T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.87,
+      "date_confidence": "medium"
+    },
+    {
+      "title": "Recent provenance evaluation paper",
+      "content": "A recent paper discusses provenance-aware evaluation for agent retrieval pipelines.",
+      "source": "https://example.edu/provenance-evaluation",
+      "source_type": "scholar",
+      "published_at": "2026-05-28T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.82,
+      "date_confidence": "medium"
+    },
+    {
+      "title": "Mid-quality agent memory paper",
+      "content": "A moderately relevant paper explores agent memory and context windows without citation-readiness analysis.",
+      "source": "https://example.edu/agent-memory",
+      "source_type": "scholar",
+      "published_at": "2026-03-15T00:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.58,
+      "date_confidence": "medium"
+    }
+  ]
+}

@@ -45,6 +45,12 @@ const commands = {
     args: ["examples/evaluate-file.ts", "examples/sources.academic.example.json"],
     passThroughArgs: true,
   },
+  "batch:validate": {
+    required: ["examples/validate-signal-batch.ts"],
+    command: "tsx",
+    args: ["examples/validate-signal-batch.ts"],
+    passThroughArgs: true,
+  },
   "smoke:stdio": {
     required: ["scripts/smoke-stdio.mjs"],
     command: "node",
@@ -94,6 +100,7 @@ const commands = {
       "tests/arxivDecisionIntegration.test.ts",
       "tests/core.test.ts",
       "tests/signalContractExamples.test.ts",
+      "tests/batchValidationHarness.test.ts",
       "tests/rank.test.ts",
       "tests/workerEnvelope.test.ts",
       "tests/workerCoreEnvelopeParity.test.ts",

@@ -14,6 +14,16 @@ Do not rename this with future-signal terminology. Future context signals, contr
 
 It is an additive Core API. It does not change MCP tool schemas, Worker runtime behavior, D1 schema, Store scoring, feeds, or deployment behavior.
 
+## Batch Validation Harness
+
+Source checkouts include a small validation harness for testing larger Signal Contract v1 batches:
+
+```bash
+npm run batch:validate -- examples/batches/signal-contract-v1.academic.json
+```
+
+The harness reads caller-provided JSON, evaluates it through Core, summarizes status/date/decision counts, and prints a structured evidence block. It does not add required fields to the Signal Contract and does not fetch, crawl, scan folders, or call reference adapters.
+
 ## Contract Version
 
 ```ts
