@@ -1,4 +1,5 @@
 import { AdapterResult, ExtractOptions } from "../types.js";
+import { validateUrl } from "../security.js";
 
 /**
  * Changelog adapter — extracts update history from any product or repo.
@@ -243,7 +244,8 @@ export async function changelogAdapter(options: ExtractOptions): Promise<Adapter
   }
 
   // GitHub repo URL → use releases API
-  const ghMatch = input.match(/github\.com\/([^/]+)\/([^/?\s]+)/);
+  const safeInput = validateUrl(input, "changelog");
+  const ghMatch = safeInput.match(/github\.com\/([^/]+)\/([^/?\s]+)/);
   if (ghMatch) {
     try {
       return await fetchGitHubReleases(ghMatch[1], ghMatch[2], maxLength);
@@ -253,5 +255,5 @@ export async function changelogAdapter(options: ExtractOptions): Promise<Adapter
   }
 
   // Any other URL → discover changelog
-  return discoverChangelog(input, maxLength);
+  return discoverChangelog(safeInput, maxLength);
 }

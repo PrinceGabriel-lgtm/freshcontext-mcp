@@ -127,6 +127,16 @@ test("structured JSON envelope exposes freshness metadata", () => {
   assert.equal(parsed.freshcontext.adapter, "hackernews");
 });
 
+test("stamped envelope clamps overly large requested content lengths", () => {
+  const ctx = stampFreshness({
+    raw: "x".repeat(25000),
+    content_date: hoursAgo(1),
+    freshness_confidence: "high",
+  }, { url: "https://example.com/huge", maxLength: 1_000_000 }, "hackernews");
+
+  assert.equal(ctx.content.length, 20000);
+});
+
 test("error-looking adapter output downgrades confidence and clears content_date", () => {
   const ctx = stamp({
     raw: "[Error] upstream timeout",

@@ -12,10 +12,11 @@ export const ALLOWED_DOMAINS: Record<string, string[]> = {
   yc: ["www.ycombinator.com", "ycombinator.com"],
   repoSearch: [],    // uses GitHub API directly, no browser
   packageTrends: [], // uses npm/PyPI APIs directly, no browser
-  reddit: [],        // uses public Reddit JSON API, no browser
+  reddit: ["www.reddit.com", "reddit.com", "old.reddit.com"],
   finance: [],       // uses Stooq quote API, no browser
   arxiv: ["export.arxiv.org", "arxiv.org"],
   productHunt: ["www.producthunt.com", "producthunt.com"],
+  changelog: [],     // accepts public changelog URLs but blocks private/internal targets
 };
 
 // ─── Blocked IP ranges and internal hostnames ────────────────────────────────

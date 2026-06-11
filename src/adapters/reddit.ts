@@ -1,4 +1,5 @@
 import { AdapterResult, ExtractOptions } from "../types.js";
+import { sanitizeQuery, validateUrl } from "../security.js";
 
 /**
  * Reddit adapter — public JSON API, no auth required.
@@ -9,10 +10,14 @@ import { AdapterResult, ExtractOptions } from "../types.js";
 export async function redditAdapter(options: ExtractOptions): Promise<AdapterResult> {
   let apiUrl = options.url;
 
-  // If they pass a plain subreddit name like "r/MachineLearning", build the URL
+  // If they pass a plain subreddit or search query, build a Reddit JSON URL.
   if (!apiUrl.startsWith("http")) {
-    const clean = apiUrl.replace(/^r\//, "");
-    apiUrl = `https://www.reddit.com/r/${clean}/.json?limit=25&sort=hot`;
+    const clean = sanitizeQuery(apiUrl, 120).replace(/^r\//, "").replace(/^\/+|\/+$/g, "");
+    if (/^[A-Za-z0-9_]{2,21}$/.test(clean)) {
+      apiUrl = `https://www.reddit.com/r/${clean}/.json?limit=25&sort=hot`;
+    } else {
+      apiUrl = `https://www.reddit.com/search.json?q=${encodeURIComponent(clean)}&sort=new&limit=25`;
+    }
   }
 
   // Ensure we hit the JSON endpoint
@@ -25,7 +30,9 @@ export async function redditAdapter(options: ExtractOptions): Promise<AdapterRes
     apiUrl += (apiUrl.includes("?") ? "&" : "?") + "limit=25";
   }
 
-  const res = await fetch(apiUrl, {
+  const safeUrl = validateUrl(apiUrl, "reddit");
+
+  const res = await fetch(safeUrl, {
     headers: {
       "User-Agent": "freshcontext-mcp/0.1.5 (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)",
       "Accept": "application/json",

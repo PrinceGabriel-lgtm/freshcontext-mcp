@@ -103,9 +103,9 @@ Package dry-run includes expected public/runtime files such as `dist/server.js`,
 | SEC-2026-06-05 | info | npm package boundary | accepted_risk | `.env.example` ships intentionally as a placeholder-only template. Package gate confirms no fail-level package boundary issue. |
 | SEC-2026-06-06 | info | Secret pattern scan | accepted_risk | Matches are placeholder env names, workflow secret references, Trust Scanner rules/tests, and Worker binding names. No live secret value was identified in this audit. |
 | SEC-2026-06-07 | info | Trust Scanner warnings | accepted_risk | Remaining warnings are archive/history, scanner fixtures, tests, config metadata, or known review items. Effective fail remains 0. |
-| SEC-2026-06-08 | low | Source-checkout package script guard | deferred_to_12_B | `package-script-guard.mjs` uses `shell: true` on Windows for source-checkout scripts. Current command map is fixed, but pass-through arguments should receive a dedicated Windows quoting/no-shell review later. |
-| SEC-2026-06-09 | low | Worker debug routes | deferred_to_12_B | `/debug/db` and `/debug/scrape` are bearer-token protected, but deeper method guards, response minimization, and route visibility should be reviewed in the Worker security pass before further production expansion. |
-| SEC-2026-06-10 | low | Reference adapter network surface | deferred_to_12_B | arXiv direct URLs were fixed now. A follow-up adapter-by-adapter network boundary review should verify all direct URL, browser, API fallback, and query paths against SSRF, output-size, and host allowlist expectations. |
+| SEC-2026-06-08 | low | Source-checkout package script guard | fixed_in_12_B | `package-script-guard.mjs` now resolves local package binaries and uses no-shell spawning, including on Windows. Pass-through arguments reject null bytes. Added regression tests. |
+| SEC-2026-06-09 | low | Worker debug routes | fixed_in_12_B | `/health`, `/debug/db`, and `/debug/scrape` now have explicit method guards. Debug scrape failures return a generic JSON error while detailed errors remain in structured logs. Added regression tests. |
+| SEC-2026-06-10 | low | Reference adapter network surface | fixed_in_12_B | arXiv, Reddit, and broad changelog direct URL paths now pass through shared URL validation where applicable. Public URL support remains, but private/internal addresses and non-http protocols are blocked. Added regression tests. |
 | SEC-2026-06-11 | info | Ha-Pri v2 provenance boundary | accepted_risk | Core helpers provide deterministic SHA-256 provenance vectors only. Docs correctly avoid production-enforced, absolute integrity, origin-authenticated, or externally audited claims. HMAC/private-key signing remains future work. |
 
 ## Safe Hardening Applied
@@ -131,15 +131,23 @@ The arXiv adapter direct URL path now uses the shared URL validator. Query strin
 
 The GitHub publish workflow now uses Node 20 and fails visibly if npm publish fails.
 
-## Deferred Items For Pass 12-B
+## Pass 12-B Hardening Applied
 
-Pass 12-B should remain focused on security implementation and regression. Recommended scope:
+Pass 12-B closed the deferred implementation items from this audit without adding product features.
 
-1. Review `package-script-guard.mjs` Windows spawning and pass-through argument behavior. Prefer no-shell execution if it remains compatible.
-2. Add method guards and response minimization for Worker debug routes where compatible with existing ops workflows.
-3. Perform adapter-by-adapter network boundary review across browser, API fallback, direct URL, and query-only paths.
-4. Review output-size controls across adapter outputs and MCP formatting, especially for reference tools that accept broad queries.
-5. Review Worker route matrix for public, auth-required, debug, and MCP endpoints, including CORS/preflight behavior.
+- The package script guard now uses no-shell child process execution and resolves local package binaries before falling back to platform commands.
+- Pass-through script arguments reject null bytes before process spawning.
+- `/health` only allows `GET` and `HEAD`; debug routes only allow `GET`.
+- Debug scrape failure responses no longer return raw exception messages to callers.
+- Reddit direct URLs are limited to Reddit domains and still block private/internal addresses.
+- Broad changelog URL discovery still supports public URLs, but now blocks private/internal addresses before browser discovery.
+- Core FreshContext envelopes clamp stamped adapter content to a maximum of 20000 characters before text is returned to the model-facing host.
+
+## Remaining Security Notes
+
+The public npm package is MIT-licensed and can be forked. That is not a data-access risk by itself because the package should remain stateless and should not contain secrets or private user data. Protectable surfaces are hosted data, deploy secrets, account credentials, private commercial materials, trademarks, and any future hosted/proprietary layer.
+
+Future hosted deployments should use explicit bearer/OAuth-style authentication for any endpoint that reads or writes user-specific data. The public MCP discovery path can remain read-only and unauthenticated only if it never exposes private D1/KV data and remains rate-limited.
 
 ## Non-Goals Confirmed
 
@@ -157,6 +165,6 @@ This pass did not:
 
 ## Final Gate Summary
 
-FreshContext is in better pre-release security shape after this pass. The local MCP package and validation tooling now have explicit size and URL guardrails where the audit found low-risk gaps. Root and Worker dependency audits are clean, package dry-run contents remain bounded, Trust Scanner effective fail remains 0, and no live secret was identified by the local scan.
+FreshContext is in better pre-release security shape after Pass 12-A and Pass 12-B. The local MCP package, validation tooling, Worker debug routes, and selected network adapter boundaries now have explicit guardrails where the audit found low-risk gaps. Root and Worker dependency audits are clean, package dry-run contents remain bounded, Trust Scanner effective fail remains 0, and no live secret was identified by the local scan.
 
-Release remains gated on Pass 12-B for the deferred implementation items above.
+Release should still use a final release-decision gate before npm publish or Worker deploy, but the deferred Pass 12-B security items are closed.

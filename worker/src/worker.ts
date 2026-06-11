@@ -505,6 +505,25 @@ function errResponse(message: string, status: number): Response {
   });
 }
 
+function jsonResponse(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...extraHeaders },
+  });
+}
+
+function methodNotAllowedResponse(allowedMethods: string[]): Response {
+  return jsonResponse(
+    { error: "Method not allowed", allowed_methods: allowedMethods },
+    405,
+    { Allow: allowedMethods.join(", ") }
+  );
+}
+
+function requireMethod(request: Request, allowedMethods: string[]): Response | null {
+  return allowedMethods.includes(request.method) ? null : methodNotAllowedResponse(allowedMethods);
+}
+
 // ─── withCache helper ─────────────────────────────────────────────────────────
 
 type ToolResult = { content: Array<{ type: "text"; text: string }> };
@@ -1198,7 +1217,7 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
     inputSchema: z.object({
       profile: z.string().min(1).describe("Source Profile id, e.g. academic_research, jobs_opportunities, market_finance, official_docs, local_custom."),
       intent: z.string().min(1).describe("Intent Profile id, e.g. citation_check, student_research, developer_adoption, job_search, market_watch, business_due_diligence, medical_literature_triage."),
-      signals: z.array(signalInputSchema).min(1).describe("Candidate context items provided by the caller. FreshContext evaluates these; it does not retrieve them."),
+      signals: z.array(signalInputSchema).min(1).max(100).describe("Candidate context items provided by the caller. FreshContext evaluates these; it does not retrieve them."),
       now: z.string().optional().describe("Optional ISO timestamp for deterministic evaluation."),
     }),
     annotations: { readOnlyHint: true, openWorldHint: false },
@@ -2217,12 +2236,18 @@ export default {
 
     // ── GET /health — cheap liveness check for monitoring ───────────────────────
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({
+      const methodError = requireMethod(request, ["GET", "HEAD"]);
+      if (methodError) return methodError;
+      const health = {
         status: "ok",
         service: "freshcontext-mcp",
         version: SERVICE_VERSION,
         time: new Date().toISOString(),
-      }), { headers: { "Content-Type": "application/json" } });
+      };
+      if (request.method === "HEAD") {
+        return new Response(null, { headers: { "Content-Type": "application/json" } });
+      }
+      return jsonResponse(health);
     }
 
     // ── GET /watched-queries ─────────────────────────────────────────────────
@@ -2344,19 +2369,23 @@ export default {
     // ── DEBUG endpoints ───────────────────────────────────────────────────────
 
     if (url.pathname === "/debug/scrape") {
+      const methodError = requireMethod(request, ["GET"]);
+      if (methodError) return methodError;
       try { checkAuth(request, env); } catch (e: any) { return errResponse(e.message, 401); }
       const adapter = url.searchParams.get("adapter") ?? "hackernews";
       const query   = url.searchParams.get("query")   ?? "mcp server";
       try {
         const raw = await runAdapter(adapter, query, {}, env, { ...requestLog, adapter, input_hash: hashInput(query) });
-        return new Response(JSON.stringify({ adapter, query, raw, length: raw.length }), { headers: { "Content-Type": "application/json" } });
+        return jsonResponse({ adapter, query, raw, length: raw.length });
       } catch (err: unknown) {
         logEvent("route_error", { ...requestLog, adapter, input_hash: hashInput(query), status: 500 }, err);
-        return new Response(JSON.stringify({ adapter, query, error: err instanceof Error ? err.message : String(err) }), { status: 500, headers: { "Content-Type": "application/json" } });
+        return jsonResponse({ adapter, error: "Debug scrape failed." }, 500);
       }
     }
 
     if (url.pathname === "/debug/db") {
+      const methodError = requireMethod(request, ["GET"]);
+      if (methodError) return methodError;
       try { checkAuth(request, env); } catch (e: any) { return errResponse(e.message, 401); }
       try {
       const [wq, sr, br, up, scored, dedupe] = await Promise.all([

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 
 const SOURCE_CHECKOUT_MESSAGE = [
   "This npm script is for the FreshContext source checkout.",
@@ -104,6 +105,9 @@ const commands = {
       "tests/batchValidationHarness.test.ts",
       "tests/rank.test.ts",
       "tests/workerEnvelope.test.ts",
+      "tests/packageScriptGuard.test.mjs",
+      "tests/adapterNetworkBoundary.test.ts",
+      "tests/workerRouteSecurity.test.ts",
       "tests/workerCoreEnvelopeParity.test.ts",
       "tests/coreEnvelopeOptions.test.ts",
       "tests/mathSpine.test.ts",
@@ -133,13 +137,47 @@ if (!hasSourceCheckoutFiles) {
   process.exit(0);
 }
 
+function resolveCommand(command, args) {
+  if (command === "node") return { command: process.execPath, args };
+
+  const localNodeEntrypoints = {
+    tsx: join("node_modules", "tsx", "dist", "cli.mjs"),
+    tsc: join("node_modules", "typescript", "bin", "tsc"),
+  };
+  const nodeEntrypoint = localNodeEntrypoints[command];
+  if (nodeEntrypoint && existsSync(nodeEntrypoint)) {
+    return { command: process.execPath, args: [nodeEntrypoint, ...args] };
+  }
+
+  const localBin = process.platform === "win32"
+    ? join("node_modules", ".bin", `${command}.cmd`)
+    : join("node_modules", ".bin", command);
+
+  if (existsSync(localBin)) return { command: localBin, args };
+  if (process.platform === "win32" && !command.endsWith(".cmd")) {
+    return { command: `${command}.cmd`, args };
+  }
+  return { command, args };
+}
+
+function validatePassThroughArgs(args) {
+  for (const arg of args) {
+    if (arg.includes("\0")) {
+      console.error("FreshContext package script arguments cannot contain null bytes.");
+      process.exit(1);
+    }
+  }
+  return args;
+}
+
 const args = [
   ...config.args,
-  ...(config.passThroughArgs ? process.argv.slice(3) : []),
+  ...(config.passThroughArgs ? validatePassThroughArgs(process.argv.slice(3)) : []),
 ];
-const child = spawnSync(config.command, args, {
+const invocation = resolveCommand(config.command, args);
+const child = spawnSync(invocation.command, invocation.args, {
   stdio: "inherit",
-  shell: process.platform === "win32",
+  shell: false,
 });
 
 if (child.error) {

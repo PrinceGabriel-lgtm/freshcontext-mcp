@@ -2,6 +2,14 @@ import type { FreshContext, AdapterResult, ExtractOptions, EnvelopeFormatOptions
 import { calculateFreshnessScore, isMeaningfullyFutureDate, scoreLabel } from "./decay.js";
 import { looksLikeFailedAdapterContent } from "./guards.js";
 
+export const MAX_ENVELOPE_CONTENT_LENGTH = 20000;
+
+function clampEnvelopeMaxLength(maxLength: number | undefined): number {
+  if (maxLength === 0) return 0;
+  if (maxLength === undefined || !Number.isFinite(maxLength)) return 8000;
+  return Math.min(MAX_ENVELOPE_CONTENT_LENGTH, Math.max(1, Math.floor(maxLength)));
+}
+
 export function stampFreshness(
   result: AdapterResult,
   options: ExtractOptions,
@@ -19,7 +27,7 @@ export function stampFreshness(
   );
 
   return {
-    content: result.raw.slice(0, options.maxLength ?? 8000),
+    content: result.raw.slice(0, clampEnvelopeMaxLength(options.maxLength)),
     source_url: options.url,
     content_date,
     retrieved_at,
