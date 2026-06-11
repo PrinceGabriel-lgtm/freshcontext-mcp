@@ -24,6 +24,8 @@ npm run batch:validate -- examples/batches/signal-contract-v1.academic.json
 
 The harness reads caller-provided JSON, evaluates it through Core, summarizes status/date/decision counts, and prints a structured evidence block. It does not add required fields to the Signal Contract and does not fetch, crawl, scan folders, or call reference adapters.
 
+Replay output includes concise decision explanations and small reason-code lists for top results and human-review mismatches. These are reporting aids for auditability: they surface whether relevance, freshness, date confidence, status, utility, score normalization, or Source Profile behavior influenced a treatment label. They do not change Core scoring, ranking, normalization, or decision thresholds, and they do not certify truth.
+
 ## Contract Version
 
 ```ts

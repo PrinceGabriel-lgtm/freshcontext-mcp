@@ -25,6 +25,12 @@ These labels compare FreshContext's decision with an expected human treatment la
 
 The replay datasets are not production-scale benchmarks and do not certify truth. They make agreement, disagreement, missing dates, failed content, and score normalization visible over saved candidate-context batches.
 
+## Decision Explanations
+
+Batch output includes a concise explanation and small `reason_codes` list for top results and human-review mismatches. These explanations are intended to make the decision auditable: they show whether relevance, freshness, date confidence, status, utility, score normalization, or source-profile behavior influenced the treatment label.
+
+The reason codes are validation/reporting aids. They do not change Core scoring, ranking, or decision thresholds.
+
 ## Replay Summary
 
 | Dataset | Profile | Intent | Signals | Notable decisions | Anomalies | Top decision | Command |

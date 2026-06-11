@@ -116,7 +116,18 @@ function assertHumanReviewSummary(structured: any, expectLabels: boolean): void 
     assert.equal(typeof mismatch.expected_decision, "string");
     assert.equal(typeof mismatch.actual_decision, "string");
     assert.equal(typeof mismatch.review_note, "string");
+    assert.ok(Array.isArray(mismatch.reason_codes));
     assert.equal(typeof mismatch.reason, "string");
+  }
+}
+
+function assertTopResultExplanation(structured: any): void {
+  assert.ok(structured.top_results.length > 0);
+  for (const result of structured.top_results) {
+    assert.ok(Array.isArray(result.reason_codes));
+    assert.ok(result.reason_codes.length > 0);
+    assert.equal(typeof result.why, "string");
+    assert.match(result.why, /FreshContext chose this treatment/);
   }
 }
 
@@ -141,6 +152,7 @@ test("all replay fixtures run through the batch harness", () => {
       sumAnomalies(structured.anomaly_counts) > 0 || structured.anomaly_counts.failed_status > 0,
       `${fixture.path} should include at least one intentional anomaly`
     );
+    assertTopResultExplanation(structured);
     assertHumanReviewSummary(structured, true);
   }
 });
@@ -155,6 +167,7 @@ test("batch validation fixture exits 0 and prints a decision-ready summary", () 
   assert.match(result.stdout, /Date confidence counts:/);
   assert.match(result.stdout, /Decision counts:/);
   assert.match(result.stdout, /Anomaly counts:/);
+  assert.match(result.stdout, /Reason codes:/);
   assert.match(result.stdout, /Top decision-ready results:/);
   assert.match(result.stdout, /\[FRESHCONTEXT_BATCH_JSON\]/);
 });
@@ -175,7 +188,115 @@ test("batch validation fixture reports mixed anomaly and decision counts", () =>
   assert.ok(structured.decision_counts.needs_verification >= 1);
   assert.ok(structured.decision_counts.exclude >= 1);
   assert.ok(structured.top_results.length > 0);
+  assertTopResultExplanation(structured);
   assertHumanReviewSummary(structured, true);
+});
+
+test("batch validation explanations surface missing-date limiting factors", () => {
+  const result = runBatch(writeTempJson(baseBatch({
+    signals: [
+      {
+        title: "Undated useful source",
+        content: "Relevant context without a publication date.",
+        source: "https://example.com/undated",
+        source_type: "arxiv",
+        retrieved_at: "2026-06-09T12:00:00.000Z",
+        semantic_score: 0.88,
+      },
+    ],
+  })));
+  assert.equal(result.status, 0, result.stderr);
+
+  const structured = extractStructured(result.stdout);
+  assert.ok(structured.top_results[0].reason_codes.includes("missing_published_at"));
+  assert.ok(structured.top_results[0].reason_codes.includes("low_date_confidence"));
+  assert.match(structured.top_results[0].why, /publication date is missing|date confidence/i);
+});
+
+test("batch validation explanations surface invalid and future timestamps", () => {
+  const invalid = runBatch(writeTempJson(baseBatch({
+    signals: [
+      {
+        title: "Invalid timestamp source",
+        content: "Relevant context with malformed publication metadata.",
+        source: "https://example.com/invalid-date",
+        source_type: "arxiv",
+        published_at: "not-a-date",
+        retrieved_at: "2026-06-09T12:00:00.000Z",
+        semantic_score: 0.84,
+      },
+    ],
+  })));
+  const future = runBatch(writeTempJson(baseBatch({
+    signals: [
+      {
+        title: "Future timestamp source",
+        content: "Relevant context with impossible future publication metadata.",
+        source: "https://example.com/future-date",
+        source_type: "arxiv",
+        published_at: "2026-08-01T12:00:00.000Z",
+        retrieved_at: "2026-06-09T12:00:00.000Z",
+        semantic_score: 0.84,
+      },
+    ],
+  })));
+
+  assert.equal(invalid.status, 0, invalid.stderr);
+  assert.equal(future.status, 0, future.stderr);
+
+  const invalidStructured = extractStructured(invalid.stdout);
+  const futureStructured = extractStructured(future.stdout);
+  assert.ok(invalidStructured.top_results[0].reason_codes.includes("invalid_published_at"));
+  assert.match(invalidStructured.top_results[0].why, /invalid/i);
+  assert.ok(futureStructured.top_results[0].reason_codes.includes("future_published_at_rejected"));
+  assert.match(futureStructured.top_results[0].why, /future-dated timestamp was rejected/i);
+});
+
+test("batch validation explanations surface failed content and clamped semantic scores", () => {
+  const result = runBatch(writeTempJson(baseBatch({
+    signals: [
+      {
+        title: "Blocked upstream response",
+        content: "Error: upstream blocked this request",
+        source: "https://example.com/blocked",
+        source_type: "arxiv",
+        published_at: "2026-06-08T12:00:00.000Z",
+        retrieved_at: "2026-06-09T12:00:00.000Z",
+        semantic_score: 2,
+      },
+    ],
+  })));
+  assert.equal(result.status, 0, result.stderr);
+
+  const structured = extractStructured(result.stdout);
+  assert.ok(structured.top_results[0].reason_codes.includes("status_failed"));
+  assert.ok(structured.top_results[0].reason_codes.includes("failed_content_detected"));
+  assert.ok(structured.top_results[0].reason_codes.includes("semantic_score_clamped"));
+  assert.match(structured.top_results[0].why, /failed or error-looking content|semantic score was clamped/i);
+});
+
+test("batch validation explanations surface stale and low relevance factors", () => {
+  const result = runBatch(writeTempJson(baseBatch({
+    profile: "jobs_opportunities",
+    intent: "job_search",
+    signals: [
+      {
+        title: "Old weak job listing",
+        content: "A weakly related stale listing.",
+        source: "https://example.com/old-weak-job",
+        source_type: "jobs",
+        published_at: "2025-01-01T12:00:00.000Z",
+        retrieved_at: "2026-06-09T12:00:00.000Z",
+        semantic_score: 0.2,
+      },
+    ],
+  })));
+  assert.equal(result.status, 0, result.stderr);
+
+  const structured = extractStructured(result.stdout);
+  assert.ok(structured.top_results[0].reason_codes.includes("stale_for_profile"));
+  assert.ok(structured.top_results[0].reason_codes.includes("low_semantic_match"));
+  assert.match(structured.top_results[0].why, /stale|semantic relevance is weak/i);
 });
 
 test("batch validation rejects unknown source profiles", () => {

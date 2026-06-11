@@ -13,6 +13,7 @@ import type {
   FreshContextSignalInput,
   IntentProfileId,
   SignalDateConfidence,
+  SourceProfile,
 } from "../src/core/index.js";
 
 const SUPPORTED_INTENTS = new Set<IntentProfileId>([
@@ -41,6 +42,25 @@ type ReviewableSignalInput = FreshContextSignalInput & {
   review_note?: string;
 };
 
+type ExplanationReasonCode =
+  | "strong_semantic_match"
+  | "low_semantic_match"
+  | "fresh_for_profile"
+  | "stale_for_profile"
+  | "missing_published_at"
+  | "invalid_published_at"
+  | "future_published_at_rejected"
+  | "low_date_confidence"
+  | "status_partial"
+  | "status_failed"
+  | "utility_reduced"
+  | "failed_content_detected"
+  | "semantic_score_clamped"
+  | "source_profile_applied"
+  | "background_only"
+  | "verification_recommended"
+  | "refresh_recommended";
+
 interface BatchInput {
   profile: string;
   intent: IntentProfileId;
@@ -55,6 +75,7 @@ interface HumanReviewMismatch {
   expected_decision: ContextDecision;
   actual_decision: ContextDecision;
   review_note: string;
+  reason_codes: ExplanationReasonCode[];
   reason: string;
 }
 
@@ -93,6 +114,7 @@ interface BatchReport {
     rank_score: number;
     utility_score: number;
     confidence: string;
+    reason_codes: ExplanationReasonCode[];
     warnings: string[];
     why: string;
   }>;
@@ -204,10 +226,103 @@ function formatScore(value: number): string {
   return value.toFixed(3);
 }
 
+function uniqueReasonCodes(codes: ExplanationReasonCode[]): ExplanationReasonCode[] {
+  return [...new Set(codes)];
+}
+
+function explanationReasonCodes(
+  result: CoreSignalEvaluationResult,
+  decision: ContextDecisionResult,
+  profile: SourceProfile
+): ExplanationReasonCode[] {
+  const codes: ExplanationReasonCode[] = ["source_profile_applied"];
+  const signalReasons = result.signal.reasons.join(" ");
+  const utilityReasons = result.utility.reasons.join(" ");
+
+  if (result.signal.semantic_score >= 0.85) codes.push("strong_semantic_match");
+  if (result.signal.semantic_score <= 0.35) codes.push("low_semantic_match");
+
+  if (result.freshness_score !== null && result.freshness_score >= 70) {
+    codes.push("fresh_for_profile");
+  }
+  if (result.freshness_score !== null && result.freshness_score < 50) {
+    codes.push("stale_for_profile");
+  }
+
+  if (result.signal.published_at === null) codes.push("missing_published_at");
+  if (/invalid; cleared/.test(signalReasons)) codes.push("invalid_published_at");
+  if (/future-dated; cleared/.test(signalReasons)) codes.push("future_published_at_rejected");
+  if (result.signal.date_confidence === "unknown" || result.signal.date_confidence === "low") {
+    codes.push("low_date_confidence");
+  }
+
+  if (result.signal.status === "partial") codes.push("status_partial");
+  if (result.signal.status === "failed") codes.push("status_failed");
+  if (/failed adapter output/.test(signalReasons)) codes.push("failed_content_detected");
+  if (/semantic_score .*clamped/.test(signalReasons)) codes.push("semantic_score_clamped");
+  if (result.utility.score < 30 || /utility reduced/.test(utilityReasons)) codes.push("utility_reduced");
+
+  if (decision.decision === "use_as_background" || decision.decision === "cite_as_supporting") {
+    codes.push("background_only");
+  }
+  if (decision.decision === "needs_verification") codes.push("verification_recommended");
+  if (decision.decision === "needs_refresh") codes.push("refresh_recommended");
+
+  if (profile.profile_id === "jobs_opportunities" && result.freshness_score !== null && result.freshness_score < 70) {
+    codes.push("refresh_recommended");
+  }
+
+  return uniqueReasonCodes(codes);
+}
+
+function buildReadableExplanation(
+  result: CoreSignalEvaluationResult,
+  decision: ContextDecisionResult,
+  profile: SourceProfile,
+  reasonCodes: ExplanationReasonCode[]
+): string {
+  const factors: string[] = [];
+
+  if (reasonCodes.includes("status_failed")) {
+    factors.push("failed or error-looking content was excluded from freshness and utility treatment");
+  } else if (reasonCodes.includes("future_published_at_rejected")) {
+    factors.push("a future-dated timestamp was rejected, reducing date confidence");
+  } else if (reasonCodes.includes("invalid_published_at")) {
+    factors.push("the published timestamp was invalid, so date confidence is reduced");
+  } else if (reasonCodes.includes("missing_published_at")) {
+    factors.push("the publication date is missing, so current-use confidence is limited");
+  } else if (reasonCodes.includes("stale_for_profile")) {
+    factors.push(`the source is stale for the ${profile.profile_id} profile`);
+  } else if (reasonCodes.includes("fresh_for_profile")) {
+    factors.push(`the source is fresh for the ${profile.profile_id} profile`);
+  }
+
+  if (reasonCodes.includes("strong_semantic_match")) {
+    factors.push("semantic relevance is strong");
+  } else if (reasonCodes.includes("low_semantic_match")) {
+    factors.push("semantic relevance is weak");
+  }
+
+  if (reasonCodes.includes("semantic_score_clamped")) {
+    factors.push("the caller-provided semantic score was clamped into the valid 0..1 range");
+  }
+
+  if (reasonCodes.includes("utility_reduced")) {
+    factors.push(`utility is reduced to ${formatScore(result.utility.score)}`);
+  }
+
+  const factorText = factors.length > 0
+    ? factors.join("; ")
+    : result.explanation;
+
+  return `${decision.label}: ${decision.action} FreshContext chose this treatment because ${factorText}.`;
+}
+
 function buildHumanReview(
   input: BatchInput,
   evaluations: CoreSignalEvaluationResult[],
-  decisions: ContextDecisionResult[]
+  decisions: ContextDecisionResult[],
+  profile: SourceProfile
 ): HumanReviewSummary {
   const reviewBySource = new Map<string, {
     index: number;
@@ -238,6 +353,7 @@ function buildHumanReview(
       return;
     }
 
+    const reasonCodes = explanationReasonCodes(result, decisions[index], profile);
     mismatches.push({
       index: review.index,
       title: sourceTitle(result),
@@ -245,7 +361,13 @@ function buildHumanReview(
       expected_decision: review.expected_decision,
       actual_decision: actualDecision,
       review_note: review.review_note,
-      reason: result.explanation,
+      reason_codes: reasonCodes,
+      reason: buildReadableExplanation(
+        result,
+        decisions[index],
+        profile,
+        reasonCodes
+      ),
     });
   });
 
@@ -267,7 +389,8 @@ function buildReport(
   filePath: string,
   input: BatchInput,
   evaluations: CoreSignalEvaluationResult[],
-  decisions: ContextDecisionResult[]
+  decisions: ContextDecisionResult[],
+  profile: SourceProfile
 ): BatchReport {
   const statusCounts: Record<ContextUtilityStatus, number> = {
     success: 0,
@@ -333,20 +456,24 @@ function buildReport(
       clamped_semantic_score: clampedSemanticScore,
       failed_status: statusCounts.failed,
     },
-    human_review: buildHumanReview(input, evaluations, decisions),
-    top_results: evaluations.slice(0, 5).map((result, index) => ({
-      rank: index + 1,
-      title: sourceTitle(result),
-      source: result.signal.source,
-      decision: decisions[index].decision,
-      label: decisions[index].label,
-      freshness_score: result.freshness_score,
-      rank_score: result.ranked.final_score,
-      utility_score: result.utility.score,
-      confidence: result.ranked.confidence,
-      warnings: decisions[index].warnings,
-      why: result.explanation,
-    })),
+    human_review: buildHumanReview(input, evaluations, decisions, profile),
+    top_results: evaluations.slice(0, 5).map((result, index) => {
+      const reasonCodes = explanationReasonCodes(result, decisions[index], profile);
+      return {
+        rank: index + 1,
+        title: sourceTitle(result),
+        source: result.signal.source,
+        decision: decisions[index].decision,
+        label: decisions[index].label,
+        freshness_score: result.freshness_score,
+        rank_score: result.ranked.final_score,
+        utility_score: result.utility.score,
+        confidence: result.ranked.confidence,
+        reason_codes: reasonCodes,
+        warnings: decisions[index].warnings,
+        why: buildReadableExplanation(result, decisions[index], profile, reasonCodes),
+      };
+    }),
   };
 }
 
@@ -387,6 +514,7 @@ function printReport(report: BatchReport): void {
       if (mismatch.review_note) {
         console.log(`  Review note: ${mismatch.review_note}`);
       }
+      console.log(`  Reason codes: ${mismatch.reason_codes.join(", ")}`);
       console.log(`  Why: ${mismatch.reason}`);
     });
   }
@@ -400,6 +528,7 @@ function printReport(report: BatchReport): void {
     console.log(`   Rank score: ${formatScore(result.rank_score)}`);
     console.log(`   Utility: ${formatScore(result.utility_score)}`);
     console.log(`   Confidence: ${result.confidence}`);
+    console.log(`   Reason codes: ${result.reason_codes.join(", ")}`);
     console.log(`   Why: ${result.why}`);
     if (result.warnings.length > 0) {
       console.log(`   Warnings: ${result.warnings.join("; ")}`);
@@ -449,7 +578,7 @@ async function main(): Promise<void> {
     intentProfile: input.intent,
   });
 
-  printReport(buildReport(filePath, input, evaluations, decisions));
+  printReport(buildReport(filePath, input, evaluations, decisions, profile));
 }
 
 main().catch((error: unknown) => {
