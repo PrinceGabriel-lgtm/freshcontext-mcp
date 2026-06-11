@@ -534,7 +534,7 @@ async function withCache(
 // and by the 4 composite tools that aggregate them. Each returns
 // { raw, date, conf } so the caller can stamp consistently.
 //
-// The original 11 tools keep their inline logic — these helpers exist so
+// The legacy reference tools keep their inline logic — these helpers exist so
 // composites do not have to re-inline the same fetches.
 
 interface AdapterHit {

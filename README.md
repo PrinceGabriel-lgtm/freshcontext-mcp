@@ -389,7 +389,7 @@ The reference implementation runs on Cloudflare's global edge:
 | `/` | GET | Service info + endpoint list |
 | `/health` | GET | Liveness check |
 | `/mcp` | POST | MCP JSON-RPC transport |
-| `/demo` | GET | Live before/after demo (no API key required) |
+| `/demo` | GET | Live before/after demo (no auth token required) |
 | `/briefing` | GET | Latest stored briefing |
 | `/v1/intel/feed/:profile_id` | GET | DAR-scored intelligence feed |
 | `/watched-queries` | GET | List all watched queries |

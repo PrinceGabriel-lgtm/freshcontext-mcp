@@ -7,13 +7,17 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@cloudflare/puppeteer": "^1.0.4",
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "zod": "^3.23.0"
+    "@cloudflare/puppeteer": "^1.1.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260414.1",
-    "typescript": "^5.4.0",
-    "wrangler": "^4.87.0"
+    "@cloudflare/workers-types": "^4.20260611.1",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.99.0"
+  },
+  "overrides": {
+    "hono": "^4.12.25",
+    "qs": "^6.15.2"
   }
 }
