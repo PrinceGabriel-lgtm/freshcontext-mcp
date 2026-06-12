@@ -59,7 +59,7 @@ async function fetchStooqQuote(ticker: string): Promise<ParsedQuote> {
   const url = `https://stooq.com/q/l/?s=${encodeURIComponent(stooqSymbol.toLowerCase())}&f=sd2t2ohlcv&h&e=json`;
   const res = await fetch(url, {
     headers: {
-      "User-Agent": "freshcontext-mcp/0.3.19",
+      "User-Agent": "freshcontext-mcp/0.3.20",
       "Accept": "application/json",
     },
   });

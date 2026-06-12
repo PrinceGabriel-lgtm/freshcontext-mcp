@@ -14,7 +14,7 @@ import { AdapterResult, ExtractOptions } from "../types.js";
 
 const HEADERS = {
   "Accept": "application/json",
-  "User-Agent": "freshcontext-mcp/0.3.19 (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)",
+  "User-Agent": "freshcontext-mcp/0.3.20 (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)",
 };
 
 interface GdeltArticle {

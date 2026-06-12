@@ -128,7 +128,11 @@ FreshContext returns decision-first output:
 
 `evaluate_context` does not fetch URLs, crawl, scrape, browse, read folders, or call adapters. It only evaluates candidate context the caller provides.
 
-Current boundary: `evaluate_context` is part of the published npm/local stdio MCP server and has been verified on the hosted Cloudflare Worker MCP endpoint at `0.3.19 / 22 tools`. The Worker remains a separate deployment surface, so future package interfaces should be re-verified remotely before being claimed live.
+Current boundary: `evaluate_context` is part of the published npm/local stdio MCP server and has been verified on the hosted Cloudflare Worker MCP endpoint at `0.3.20 / 22 tools`. The Worker remains a separate deployment surface, so future package interfaces should be re-verified remotely before being claimed live.
+
+### Network Boundary
+
+FreshContext's primary `evaluate_context` path does not fetch, crawl, scrape, browse, read folders, or call adapters. The MCP package also includes read-only reference adapters that use network access only when those adapter tools are invoked. Supply-chain scanners may therefore report package network access; that applies to the optional adapter surface, not to caller-provided context evaluation.
 
 ---
 
@@ -407,7 +411,7 @@ Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 ## Roadmap
 
 - [x] FreshContext Specification v1.2 published (MIT, open standard)
-- [x] DAR engine with source-specific lambda constants (v0.3.19)
+- [x] DAR engine with source-specific lambda constants
 - [x] Ha-Pri v1 provenance signatures on stored signals
 - [x] Semantic deduplication via fingerprinting
 - [x] Live before/after demo at `/demo`

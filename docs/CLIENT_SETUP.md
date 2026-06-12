@@ -6,7 +6,7 @@ Use this guide when connecting Claude Desktop, Codex, or another MCP-compatible 
 
 ## What You Should See
 
-FreshContext `0.3.19` exposes:
+FreshContext `0.3.20` exposes:
 
 ```text
 22 tools = evaluate_context + 21 read-only reference adapters
@@ -105,8 +105,8 @@ Expected smoke result:
 ```json
 {
   "ok": true,
-  "package_version": "0.3.19",
-  "server_version": "0.3.19",
+  "package_version": "0.3.20",
+  "server_version": "0.3.20",
   "tool_count": 22
 }
 ```
@@ -132,7 +132,7 @@ Some clients can use `mcp-remote`:
 }
 ```
 
-The npm/local stdio package remains the safest default client path. The hosted Worker endpoint was verified on 2026-06-11 at `0.3.19 / 22 tools` with `evaluate_context` present and returning decision-first output. Because the Worker is a separate deployment surface, re-run remote verification before claiming future package interfaces are live there.
+The npm/local stdio package remains the safest default client path. The hosted Worker endpoint was verified on 2026-06-12 at `0.3.20 / 22 tools` with `evaluate_context` present and returning decision-first output. Because the Worker is a separate deployment surface, re-run remote verification before claiming future package interfaces are live there.
 
 ## ChatGPT / OpenAI Connector Boundary
 

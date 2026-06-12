@@ -67,7 +67,7 @@ command = "npx"
 args = ["-y", "mcp-remote", "https://freshcontext-mcp.gimmanuel73.workers.dev/mcp"]
 ```
 
-This remote path was verified on 2026-06-11 as a live Worker MCP endpoint exposing `0.3.19 / 22 tools`, including `evaluate_context`. That confirms Worker availability and MCP tool discovery. It does not by itself claim Codex Cloud support or guarantee every MCP client can use the remote bridge without its own client-specific setup check.
+This remote path was verified on 2026-06-12 as a live Worker MCP endpoint exposing `0.3.20 / 22 tools`, including `evaluate_context`. That confirms Worker availability and MCP tool discovery. It does not by itself claim Codex Cloud support or guarantee every MCP client can use the remote bridge without its own client-specific setup check.
 
 ## Verification steps
 
@@ -83,8 +83,8 @@ Expected result:
 ```json
 {
   "ok": true,
-  "package_version": "0.3.19",
-  "server_version": "0.3.19",
+  "package_version": "0.3.20",
+  "server_version": "0.3.20",
   "tool_count": 22
 }
 ```

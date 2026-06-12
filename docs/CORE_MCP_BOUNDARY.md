@@ -50,7 +50,7 @@ Worker/site surfaces own deployment concerns:
 
 Live today:
 
-- npm package: `freshcontext-mcp@0.3.19`
+- npm package: `freshcontext-mcp@0.3.20`
 - MCP stdio server and published binary: `freshcontext-mcp`
 - `evaluate_context` MCP tool for caller-provided candidate context
 - 21 named read-only reference adapters
@@ -61,6 +61,12 @@ Live today:
 - arXiv signal-to-decision proof
 - bring-your-own-context local demos
 - Trust Scanner release gate
+
+Network boundary:
+
+- `evaluate_context` does not fetch, crawl, scrape, browse, read folders, or call adapters.
+- The 21 named reference adapters are optional read-only network tools and use network access only when invoked.
+- FreshContext Core remains the no-network judgment layer.
 
 Not live today:
 
