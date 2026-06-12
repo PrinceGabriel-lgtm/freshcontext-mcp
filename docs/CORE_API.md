@@ -13,13 +13,19 @@ Import stable Core functions from:
 ```ts
 import {
   calculateFreshnessScore,
+  evaluateSignals,
   formatForLLM,
+  getSourceProfile,
+  interpretEvaluations,
   looksLikeFailedAdapterContent,
+  normalizeSignal,
   scoreLabel,
   stampFreshness,
   toStructuredJSON,
-} from "./src/core/index.js";
+} from "freshcontext-mcp/core";
 ```
+
+The `freshcontext-mcp/core` subpath is the direct Core import boundary inside the current MCP package. It does not create a standalone `freshcontext-core` package yet; that remains a future package-split lane.
 
 ### Envelope
 

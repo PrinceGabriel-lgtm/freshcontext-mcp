@@ -52,6 +52,7 @@ Live today:
 
 - npm package: `freshcontext-mcp@0.3.20`
 - MCP stdio server and published binary: `freshcontext-mcp`
+- Core subpath export: `freshcontext-mcp/core`
 - `evaluate_context` MCP tool for caller-provided candidate context
 - 21 named read-only reference adapters
 - Core signal evaluation
@@ -84,7 +85,7 @@ Not live today:
 The safe split path is staged:
 
 1. Keep `freshcontext-mcp` stable for current users.
-2. Maintain Core as a pure internal export surface.
+2. Maintain Core as a pure package subpath export surface.
 3. Audit Core dependencies, Node/browser compatibility, and API stability.
 4. Publish a standalone Core package only after compatibility tests exist.
 5. Make `freshcontext-mcp` depend on the standalone Core package.

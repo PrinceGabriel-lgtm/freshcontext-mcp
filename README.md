@@ -87,6 +87,22 @@ The production Cloudflare Worker now uses Core-backed envelope generation. Worke
 
 See [Core / MCP Boundary](./docs/CORE_MCP_BOUNDARY.md) for the current package boundary and the staged path toward a future standalone Core package.
 
+### Core import path
+
+FreshContext Core is also available directly from the current MCP package:
+
+```ts
+import {
+  evaluateSignals,
+  interpretEvaluations,
+  getSourceProfile,
+  normalizeSignal,
+  calculateHaPriV2,
+} from "freshcontext-mcp/core";
+```
+
+This is a Core subpath export inside `freshcontext-mcp`, not a standalone `freshcontext-core` package yet. The root package and `freshcontext-mcp` binary remain the MCP reference host.
+
 ---
 
 ## Primary MCP interface

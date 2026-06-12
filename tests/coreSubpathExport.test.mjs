@@ -1,0 +1,54 @@
+import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import test from "node:test";
+
+const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const builtCorePath = fileURLToPath(new URL("../dist/core/index.js", import.meta.url));
+
+test("package exposes the Core subpath without changing the MCP root", () => {
+  assert.equal(packageJson.main, "dist/server.js");
+  assert.equal(packageJson.bin["freshcontext-mcp"], "dist/server.js");
+  assert.equal(packageJson.exports["."].import, "./dist/server.js");
+  assert.equal(packageJson.exports["./core"].import, "./dist/core/index.js");
+  assert.equal(packageJson.exports["./core"].types, "./dist/core/index.d.ts");
+});
+
+test(
+  "freshcontext-mcp/core imports the built Core engine",
+  { skip: !existsSync(builtCorePath) },
+  async () => {
+    const core = await import("freshcontext-mcp/core");
+    assert.equal(typeof core.normalizeSignal, "function");
+    assert.equal(typeof core.evaluateSignals, "function");
+    assert.equal(typeof core.interpretEvaluations, "function");
+    assert.equal(typeof core.getSourceProfile, "function");
+    assert.equal(typeof core.calculateHaPriV2, "function");
+
+    const profile = core.getSourceProfile("academic_research");
+    assert.equal(profile?.profile_id, "academic_research");
+
+    const evaluations = core.evaluateSignals(
+      [
+        {
+          title: "Recent paper",
+          content: "A current source with clear provenance.",
+          source: "https://example.com/paper",
+          source_type: "arxiv",
+          published_at: "2026-06-01T00:00:00.000Z",
+          retrieved_at: "2026-06-09T00:00:00.000Z",
+          semantic_score: 0.92,
+        },
+      ],
+      { now: "2026-06-09T00:00:00.000Z" }
+    );
+    const decisions = core.interpretEvaluations(evaluations, {
+      sourceProfile: profile,
+      intentProfile: "citation_check",
+    });
+
+    assert.equal(evaluations.length, 1);
+    assert.equal(decisions.length, 1);
+    assert.ok(["cite_as_primary", "use_first", "cite_as_supporting"].includes(decisions[0].decision));
+  }
+);
