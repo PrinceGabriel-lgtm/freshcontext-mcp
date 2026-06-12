@@ -61,7 +61,7 @@ It does not fetch, cache, write D1, inspect Worker bindings, know MCP tool schem
 
 `evaluateSignals` evaluates each input and returns evaluations sorted by existing `rankSignal` final score, preserving input order when scores tie. Context utility is returned as a sidecar and does not replace `final_score`.
 
-Context utility is returned as sidecar output in the current pipeline; it does not replace or modify the default `rankSignal` / `evaluateSignals` ordering. A future pass may add an explicit utility-weighted ranking mode.
+Context utility is returned as sidecar output in the current pipeline. It does not replace or modify the default `rankSignal` / `evaluateSignals` ordering, and it does not control default decision labels. A future pass may add an explicit utility-weighted ranking or decision-support mode.
 
 Local demo:
 
@@ -181,7 +181,7 @@ Ranking combines semantic relevance and freshness into a deterministic order. It
 
 ## Experimental Utility Primitive
 
-The context-conditioned utility primitive is pure and tested, but it is not production-wired into MCP ranking, Worker feeds, Store scoring, or runtime behavior.
+The context-conditioned utility primitive is pure and tested. It is surfaced in Core evaluation output and decision reasons, but it does not control default ranking or decision labels.
 
 Experimental exports:
 
@@ -190,7 +190,7 @@ Experimental exports:
 - `ContextUtilityInput`
 - `ContextUtilityResult`
 
-These are pure Core math. They are now connected inside `evaluateSignal` as sidecar utility output, but they are not production-wired into MCP ranking, Worker feeds, Store scoring, or runtime behavior.
+These are pure Core math. They are now connected inside `evaluateSignal` as sidecar utility output and explanatory material, but they are not production-wired into MCP ranking, Worker feeds, Store scoring, or default decision thresholds.
 
 ## Provenance Helpers
 

@@ -69,6 +69,78 @@ test("high-quality academic citation check becomes cite_as_primary", () => {
   assert.match(decision.action, /primary citation/i);
 });
 
+test("utility score does not control decision labels", () => {
+  const evaluation = evaluateSignal(baseInput({
+    source: "https://arxiv.org/abs/2605.12345",
+    source_type: "arxiv",
+    semantic_score: 0.94,
+    published_at: "2026-05-20T09:00:00.000Z",
+  }), { now: NOW });
+  const lowUtilityEvaluation: CoreSignalEvaluationResult = {
+    ...evaluation,
+    utility: {
+      ...evaluation.utility,
+      score: 0,
+      reasons: ["utility was forced low for decision-boundary regression coverage"],
+    },
+  };
+
+  const normalDecision = interpretEvaluation(evaluation, {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+  });
+  const lowUtilityDecision = interpretEvaluation(lowUtilityEvaluation, {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+  });
+
+  assert.equal(normalDecision.decision, "cite_as_primary");
+  assert.equal(lowUtilityDecision.decision, "cite_as_primary");
+});
+
+test("high utility does not promote low-ranked signals", () => {
+  const evaluation = evaluateSignal(baseInput({
+    source: "https://news.ycombinator.com/item?id=1",
+    source_type: "hackernews",
+    semantic_score: 0.05,
+    published_at: "2026-05-24T12:00:00.000Z",
+  }), { now: NOW });
+  const highUtilityEvaluation: CoreSignalEvaluationResult = {
+    ...evaluation,
+    utility: {
+      ...evaluation.utility,
+      score: 100,
+      reasons: ["utility was forced high for decision-boundary regression coverage"],
+    },
+  };
+
+  const decision = interpretEvaluation(highUtilityEvaluation, {
+    sourceProfile: "social_pulse",
+    intentProfile: "developer_adoption",
+  });
+
+  assert.ok(evaluation.ranked.final_score < 0.35);
+  assert.equal(decision.decision, "watch_only");
+});
+
+test("utility reasons remain visible without controlling decisions", () => {
+  const evaluation = evaluateSignal(baseInput({
+    source: "https://research.example.org/context-notes",
+    source_type: "google_scholar",
+    semantic_score: 0.62,
+    published_at: null,
+    date_confidence: "unknown",
+  }), { now: NOW });
+
+  const decision = interpretEvaluation(evaluation, {
+    sourceProfile: "academic_research",
+    intentProfile: "student_research",
+  });
+
+  assert.equal(decision.decision, "needs_verification");
+  assert.match(decision.reasons.join(" "), /timestamp confidence is unknown; utility reduced to zero/i);
+});
+
 test("old academic citation source becomes supporting evidence", () => {
   const { decision } = evaluated({
     source: "https://scholar.example.edu/foundational-context-aging",

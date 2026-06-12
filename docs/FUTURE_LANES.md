@@ -146,7 +146,7 @@ Possible inputs include context utility, control signal, future context signal, 
 
 These are optional future metadata upgrades on top of Signal Contract v1. They should only be exposed when they make decisions clearer without making the caller-facing contract harder to use.
 
-Do not make `utility.score` affect ranking by default without a dedicated ranking policy pass.
+Do not make `utility.score` affect ranking or decision labels by default without a dedicated policy pass.
 
 ## Lane 7: Ha-Pri v2 Production Path
 

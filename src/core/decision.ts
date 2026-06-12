@@ -150,7 +150,6 @@ export function interpretEvaluation(
   ]);
   const warnings = [...nonAdviceWarnings(intentProfile)];
   const finalScore = evaluation.ranked.final_score;
-  const utilityScore = evaluation.utility.score;
   const freshnessScore = evaluation.freshness_score;
   const confidence = evaluation.ranked.confidence;
   const isFailed = evaluation.signal.status === "failed"
@@ -186,7 +185,6 @@ export function interpretEvaluation(
     finalScore >= 0.85
     && freshnessScore !== null
     && freshnessScore >= 70
-    && utilityScore >= 60
     && confidence === "high"
   ) {
     if (sourceProfile?.authority_hint === "high" && isCitationIntent(intentProfile)) {
@@ -199,7 +197,7 @@ export function interpretEvaluation(
     return decisionResult(isCitationIntent(intentProfile) ? "cite_as_supporting" : "use_as_background", reasons, warnings);
   }
 
-  if (finalScore < 0.35 && utilityScore < 30) {
+  if (finalScore < 0.35) {
     return decisionResult(confidence === "low" ? "exclude" : "watch_only", reasons, warnings);
   }
 
