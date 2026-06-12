@@ -2,6 +2,7 @@ import {
   evaluateSignals,
   getSourceProfile,
   interpretEvaluations,
+  toReadableContextResult,
 } from "../core/index.js";
 import type {
   ContextDecisionResult,
@@ -200,6 +201,7 @@ export function formatEvaluateContextResult(result: EvaluateContextResult): stri
       utility_score: item.evaluation.utility.score,
       confidence: item.evaluation.ranked.confidence,
       why: item.evaluation.explanation,
+      readable: toReadableContextResult(item.evaluation, item.decision),
     })),
   };
 

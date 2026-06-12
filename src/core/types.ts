@@ -105,6 +105,14 @@ export interface ContextDecisionResult {
   warnings: string[];
 }
 
+export interface HumanReadableContextResult {
+  label: string;
+  summary: string;
+  why: string[];
+  action: string;
+  warnings: string[];
+}
+
 export interface FreshContextSignalInput {
   id?: string;
   source: string;

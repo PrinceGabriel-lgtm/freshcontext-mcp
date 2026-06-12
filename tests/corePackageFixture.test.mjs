@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const fixtureRoot = join(process.cwd(), "tmp", "freshcontext-core-fixture");
 
@@ -79,4 +80,14 @@ test("Core package fixture exposes root and compat import lanes", () => {
   assert.match(compatTypes, /FreshContext/);
   assert.match(compatTypes, /ExtractOptions/);
   assert.match(compatTypes, /AdapterResult/);
+});
+
+test("Core package fixture exports readable helper from the root lane", async () => {
+  runFixtureScript();
+
+  assert.equal(existsSync(join(fixtureRoot, "dist", "readable.js")), true);
+  assert.equal(existsSync(join(fixtureRoot, "dist", "readable.d.ts")), true);
+
+  const core = await import(pathToFileURL(join(fixtureRoot, "dist", "index.js")).href);
+  assert.equal(typeof core.toReadableContextResult, "function");
 });

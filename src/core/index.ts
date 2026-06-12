@@ -7,6 +7,7 @@ export { calculateContextUtility } from "./utility.js";
 export { SIGNAL_CONTRACT_VERSION, normalizeSignal } from "./signal.js";
 export { evaluateSignal, evaluateSignals } from "./pipeline.js";
 export { interpretEvaluation, interpretEvaluations } from "./decision.js";
+export { toReadableContextResult } from "./readable.js";
 export { BUILT_IN_SOURCE_PROFILES, getSourceProfile, listSourceProfiles } from "./sourceProfiles.js";
 export {
   canonicalizeHaPriContent,
@@ -32,6 +33,7 @@ export type {
   IntentProfileId,
   ContextDecisionOptions,
   ContextDecisionResult,
+  HumanReadableContextResult,
   SignalNormalizeOptions,
   FreshContextSignalInput,
   FreshContextSignal,

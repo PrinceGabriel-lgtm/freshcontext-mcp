@@ -160,6 +160,27 @@ FreshContext decisions judge citation readiness, context usefulness, freshness, 
 
 Demo output will be updated separately so presentation stays separate from Core decision logic.
 
+## Human-Readable Output
+
+The human-readable output helper adds a small reader-facing layer on top of existing Core evaluations and decisions.
+
+Public exports:
+
+- `toReadableContextResult(evaluation, decision)`
+- `HumanReadableContextResult`
+
+The helper returns a bounded object with:
+
+- `label`
+- `summary`
+- `why`
+- `action`
+- `warnings`
+
+This is additive. It does not change machine decisions, ranking, freshness math, utility math, Source Profiles, envelopes, provenance, or host behavior. Utility may appear in `why` when it is already part of the decision reasons, but utility still does not control default decision labels.
+
+See [Human-Readable Output Contract](./HUMAN_READABLE_OUTPUT_CONTRACT.md).
+
 ## Public Ranking Primitives
 
 The ranking primitives are public, but consumers should treat their score scales carefully:

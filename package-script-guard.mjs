@@ -112,6 +112,7 @@ const commands = {
       "tests/workerEnvelope.test.ts",
       "tests/packageScriptGuard.test.mjs",
       "tests/corePackageFixture.test.mjs",
+      "tests/readableOutput.test.ts",
       "tests/adapterNetworkBoundary.test.ts",
       "tests/workerRouteSecurity.test.ts",
       "tests/workerCoreEnvelopeParity.test.ts",

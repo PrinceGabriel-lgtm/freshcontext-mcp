@@ -8,6 +8,8 @@ import {
 } from "../src/tools/evaluateContext.js";
 
 const NOW = "2026-05-24T13:00:00.000Z";
+const JSON_START = "[FRESHCONTEXT_EVALUATION_JSON]";
+const JSON_END = "[/FRESHCONTEXT_EVALUATION_JSON]";
 
 function validInput(overrides: Record<string, unknown> = {}) {
   return {
@@ -30,6 +32,14 @@ function validInput(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function structuredOutput(text: string) {
+  const start = text.indexOf(JSON_START);
+  const end = text.indexOf(JSON_END);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  return JSON.parse(text.slice(start + JSON_START.length, end).trim());
+}
+
 test("evaluate_context returns decision-first output for caller-provided signals", () => {
   const result = evaluateContextInput(validInput());
   const text = formatEvaluateContextResult(result);
@@ -48,6 +58,37 @@ test("evaluate_context returns decision-first output for caller-provided signals
   assert.match(text, /Confidence:/);
   assert.match(text, /Why:/);
   assert.match(text, /\[FRESHCONTEXT_EVALUATION_JSON\]/);
+});
+
+test("evaluate_context structured JSON includes additive readable output", () => {
+  const result = evaluateContextInput(validInput());
+  const text = formatEvaluateContextResult(result);
+  const structured = structuredOutput(text);
+  const first = structured.results[0];
+
+  assert.equal(first.decision, "cite_as_primary");
+  assert.equal(first.label, "Cite as primary");
+  assert.equal(first.meaning, result.items[0].decision.meaning);
+  assert.equal(first.action, result.items[0].decision.action);
+  assert.ok(Array.isArray(first.warnings));
+  assert.ok(Array.isArray(first.reasons));
+  assert.equal(typeof first.freshness_score, "number");
+  assert.equal(typeof first.rank_score, "number");
+  assert.equal(typeof first.utility_score, "number");
+  assert.equal(first.confidence, "high");
+  assert.equal(typeof first.why, "string");
+
+  assert.deepEqual(Object.keys(first.readable).sort(), [
+    "action",
+    "label",
+    "summary",
+    "warnings",
+    "why",
+  ]);
+  assert.equal(first.readable.label, "Primary source");
+  assert.notEqual(first.readable.label, first.label);
+  assert.equal(first.readable.why.length <= 5, true);
+  assert.ok(Array.isArray(first.readable.warnings));
 });
 
 test("evaluate_context rejects unknown source profiles", () => {

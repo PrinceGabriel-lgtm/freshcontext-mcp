@@ -22,6 +22,7 @@ test(
     assert.equal(typeof core.normalizeSignal, "function");
     assert.equal(typeof core.evaluateSignals, "function");
     assert.equal(typeof core.interpretEvaluations, "function");
+    assert.equal(typeof core.toReadableContextResult, "function");
     assert.equal(typeof core.getSourceProfile, "function");
     assert.equal(typeof core.calculateHaPriV2, "function");
 
@@ -49,6 +50,8 @@ test(
 
     assert.equal(evaluations.length, 1);
     assert.equal(decisions.length, 1);
+    const readable = core.toReadableContextResult(evaluations[0], decisions[0]);
+    assert.equal(typeof readable.summary, "string");
     assert.ok(["cite_as_primary", "use_first", "cite_as_supporting"].includes(decisions[0].decision));
   }
 );

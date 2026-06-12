@@ -1,8 +1,8 @@
 # Human-Readable Output Contract
 
-Status: proposed design contract.
+Status: implemented MVP contract.
 
-This document describes a future reader-facing output layer over FreshContext Core decisions. It does not change Core behavior, ranking, decision labels, utility math, MCP output, Worker behavior, package version, deployment state, or public site copy.
+This document describes the reader-facing output layer over FreshContext Core decisions. The MVP is implemented as an additive Core helper and `evaluate_context` structured JSON field. It does not change Core behavior, ranking, decision labels, utility math, Worker behavior, package version, deployment state, or public site copy.
 
 FreshContext is not truth itself. FreshContext records why context was trusted, down-ranked, questioned, refreshed, watched, backgrounded, or excluded before an AI system uses it.
 
@@ -81,6 +81,22 @@ Recommended fields:
 - `what_freshcontext_did`
 
 The Reader Card should not lead with raw scores unless a technical user asks for them.
+
+The current MVP is the `readable` object returned inside each structured `evaluate_context` result:
+
+```json
+{
+  "label": "Primary source",
+  "summary": "This source is strong enough to use as main evidence.",
+  "why": [
+    "Strong semantic match and current freshness for arxiv."
+  ],
+  "action": "Use this as main evidence while preserving citation and provenance.",
+  "warnings": []
+}
+```
+
+`readable.why` is capped at five reasons to keep output readable and deterministic.
 
 ## Analyst Evidence Table
 
@@ -260,9 +276,8 @@ FreshContext output must not claim:
 
 Suggested next passes:
 
-- Pass 14-B: review this proposed contract against current Core output.
-- Pass 14-C: add pure formatting helpers for Reader Card and Analyst Evidence Table.
-- Pass 14-D: add JSON contract helpers without changing current `evaluate_context` behavior.
-- Pass 14-E: update MCP `evaluate_context` presentation only after helper tests pass.
+- Pass 14-D: review whether the Analyst Evidence Table should become a helper or stay documentation-only.
+- Pass 14-E: decide whether to add human-readable text lines to `evaluate_context`, or keep the readable layer JSON-only.
+- Later: design Diagnostic Mode on top of `why`, `warnings`, and replay mismatch evidence.
 
-The contract should become implementation only after review confirms the names, fields, and warning language are stable enough for users.
+The MVP is intentionally small: it translates existing judgment into readable output without changing the judgment itself.

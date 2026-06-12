@@ -21,6 +21,7 @@ const coreFiles = [
   "pipeline",
   "provenance",
   "rank",
+  "readable",
   "signal",
   "sourceProfiles",
   "types",
