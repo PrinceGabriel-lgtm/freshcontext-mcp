@@ -81,6 +81,7 @@
     "demo:evaluate": "node package-script-guard.mjs demo:evaluate",
     "demo:evaluate:file": "node package-script-guard.mjs demo:evaluate:file",
     "batch:validate": "node package-script-guard.mjs batch:validate",
+    "core:fixture": "node package-script-guard.mjs core:fixture",
     "smoke:stdio": "node package-script-guard.mjs smoke:stdio",
     "trust:gate": "node package-script-guard.mjs trust:gate",
     "trust:report": "node package-script-guard.mjs trust:report",

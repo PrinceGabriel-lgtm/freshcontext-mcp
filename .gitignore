@@ -53,6 +53,7 @@ private-data-room/
 
 # Local logs and package artifacts
 logs/
+tmp/
 *.log
 npm-debug.log*
 *.tgz

@@ -52,6 +52,11 @@ const commands = {
     args: ["examples/validate-signal-batch.ts"],
     passThroughArgs: true,
   },
+  "core:fixture": {
+    required: ["scripts/pack-core-fixture.mjs", "dist/core/index.js"],
+    command: "node",
+    args: ["scripts/pack-core-fixture.mjs"],
+  },
   "smoke:stdio": {
     required: ["scripts/smoke-stdio.mjs"],
     command: "node",
@@ -106,6 +111,7 @@ const commands = {
       "tests/rank.test.ts",
       "tests/workerEnvelope.test.ts",
       "tests/packageScriptGuard.test.mjs",
+      "tests/corePackageFixture.test.mjs",
       "tests/adapterNetworkBoundary.test.ts",
       "tests/workerRouteSecurity.test.ts",
       "tests/workerCoreEnvelopeParity.test.ts",
