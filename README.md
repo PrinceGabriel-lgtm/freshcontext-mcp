@@ -142,6 +142,32 @@ FreshContext returns decision-first output:
 - Confidence
 - Why
 
+Structured results also include a `readable` object for humans:
+
+```json
+{
+  "decision": "cite_as_primary",
+  "label": "Cite as primary",
+  "readable": {
+    "label": "Primary source",
+    "summary": "This source is strong enough to use as main evidence.",
+    "why": [
+      "Strong semantic match and current freshness for arxiv.",
+      "source profile academic_research uses lenient date policy",
+      "intent profile citation_check selected"
+    ],
+    "action": "Use this as main evidence while preserving citation and provenance.",
+    "warnings": [
+      "FreshContext judges citation readiness and context usefulness; it does not certify truth."
+    ]
+  }
+}
+```
+
+The readable object translates Core decisions into user-facing language. It does not change ranking, decision labels, utility scoring, or source intake. Utility helps explain usefulness for the current question; it remains explanatory and does not control default decision labels or ranking.
+
+FreshContext does not certify truth. It records why context was used, supported, questioned, refreshed, watched, or excluded before it reaches a model.
+
 `evaluate_context` does not fetch URLs, crawl, scrape, browse, read folders, or call adapters. It only evaluates candidate context the caller provides.
 
 Current boundary: `evaluate_context` is part of the published npm/local stdio MCP server and has been verified on the hosted Cloudflare Worker MCP endpoint at `0.3.20 / 22 tools`. The Worker remains a separate deployment surface, so future package interfaces should be re-verified remotely before being claimed live.

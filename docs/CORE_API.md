@@ -179,6 +179,30 @@ The helper returns a bounded object with:
 
 This is additive. It does not change machine decisions, ranking, freshness math, utility math, Source Profiles, envelopes, provenance, or host behavior. Utility may appear in `why` when it is already part of the decision reasons, but utility still does not control default decision labels.
 
+Example structured result fragment:
+
+```json
+{
+  "decision": "cite_as_primary",
+  "label": "Cite as primary",
+  "readable": {
+    "label": "Primary source",
+    "summary": "This source is strong enough to use as main evidence.",
+    "why": [
+      "Strong semantic match and current freshness for arxiv.",
+      "source profile academic_research uses lenient date policy",
+      "intent profile citation_check selected"
+    ],
+    "action": "Use this as main evidence while preserving citation and provenance.",
+    "warnings": [
+      "FreshContext judges citation readiness and context usefulness; it does not certify truth."
+    ]
+  }
+}
+```
+
+FreshContext does not certify truth. It records why context was used, supported, questioned, refreshed, watched, or excluded before it reaches a model.
+
 See [Human-Readable Output Contract](./HUMAN_READABLE_OUTPUT_CONTRACT.md).
 
 ## Public Ranking Primitives

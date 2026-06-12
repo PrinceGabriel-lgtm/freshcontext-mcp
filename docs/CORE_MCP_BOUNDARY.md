@@ -58,6 +58,7 @@ Live today:
 - Core signal evaluation
 - Source Profiles
 - Decision Helper
+- human-readable `readable` output on structured `evaluate_context` results
 - adapter registry metadata
 - arXiv signal-to-decision proof
 - bring-your-own-context local demos

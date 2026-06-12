@@ -86,17 +86,27 @@ The current MVP is the `readable` object returned inside each structured `evalua
 
 ```json
 {
-  "label": "Primary source",
-  "summary": "This source is strong enough to use as main evidence.",
-  "why": [
-    "Strong semantic match and current freshness for arxiv."
-  ],
-  "action": "Use this as main evidence while preserving citation and provenance.",
-  "warnings": []
+  "decision": "cite_as_primary",
+  "label": "Cite as primary",
+  "readable": {
+    "label": "Primary source",
+    "summary": "This source is strong enough to use as main evidence.",
+    "why": [
+      "Strong semantic match and current freshness for arxiv.",
+      "source profile academic_research uses lenient date policy",
+      "intent profile citation_check selected"
+    ],
+    "action": "Use this as main evidence while preserving citation and provenance.",
+    "warnings": [
+      "FreshContext judges citation readiness and context usefulness; it does not certify truth."
+    ]
+  }
 }
 ```
 
 `readable.why` is capped at five reasons to keep output readable and deterministic.
+
+The readable object translates Core decisions into user-facing language. It does not change ranking, decision labels, utility scoring, or source intake.
 
 ## Analyst Evidence Table
 
@@ -235,7 +245,7 @@ Forbidden wording:
 - verified truth
 - claims that accuracy is guaranteed
 - claims that a source has official approval
-- proof of correctness
+- claims that FreshContext has settled the answer
 
 Utility can appear in explanations and reasons, but it must not be described as controlling default decision labels unless a future policy pass explicitly changes that behavior.
 
