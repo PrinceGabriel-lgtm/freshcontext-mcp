@@ -19,6 +19,7 @@ import {
   interpretEvaluations,
   looksLikeFailedAdapterContent,
   normalizeSignal,
+  prepareProvenanceReadiness,
   scoreLabel,
   stampFreshness,
   toStructuredJSON,
@@ -250,6 +251,16 @@ Ha-Pri v2 is available as pure Core helper functionality:
 - `HaPriV2VerificationResult`
 
 `evaluateSignal` can optionally prepare Ha-Pri v2 material when `includeProvenance` is set and required input material is present. Core does not persist provenance, add D1 columns, verify rows on read, reject rows, or replace Worker Ha-Pri v1 behavior.
+
+Provenance readiness is available as a pure Core sidecar:
+
+- `prepareProvenanceReadiness(input, options?)`
+- `ProvenanceReadinessState`
+- `ProvenanceReadinessResult`
+
+It classifies caller-provided signal provenance as `complete`, `partial`, `incomplete`, `unknown`, or `derived`. The result exposes source identity completeness, timing completeness, normalized source and timestamp fields, canonical content hash material, optional semantic fingerprint hash material, optional Ha-Pri v2 identity material when the caller supplies enough inputs, warnings, and reasons.
+
+`provenance_readiness` is included additively on `evaluateSignal` results and in the structured `evaluate_context` JSON result. It does not fetch, crawl, scrape, read folders, call adapters, change ranking, change decisions, certify truth, or enforce rejection policy.
 
 ## Internal, Policy, and Compatibility Exports
 

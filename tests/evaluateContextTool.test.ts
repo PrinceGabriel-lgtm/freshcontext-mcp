@@ -77,6 +77,9 @@ test("evaluate_context structured JSON includes additive readable output", () =>
   assert.equal(typeof first.utility_score, "number");
   assert.equal(first.confidence, "high");
   assert.equal(typeof first.why, "string");
+  assert.equal(first.provenance_readiness.state, "complete");
+  assert.equal(first.provenance_readiness.source_identity.completeness, "complete");
+  assert.match(first.provenance_readiness.canonical_content_sha256, /^[a-f0-9]{64}$/);
 
   assert.deepEqual(Object.keys(first.readable).sort(), [
     "action",

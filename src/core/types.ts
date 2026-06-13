@@ -230,6 +230,39 @@ export interface HaPriV2VerificationResult {
   reasons: string[];
 }
 
+export type ProvenanceReadinessState = "complete" | "partial" | "incomplete" | "unknown" | "derived";
+export type ProvenanceSourceIdentityCompleteness = "complete" | "weak" | "missing" | "unusable";
+export type ProvenanceTimingCompleteness = "complete" | "partial" | "missing" | "unknown";
+export type ProvenanceReadinessInput = Partial<FreshContextSignalInput> | FreshContextSignal;
+
+export interface ProvenanceReadinessOptions extends SignalNormalizeOptions {
+  resultId?: string;
+  semanticFingerprint?: string | null;
+  engineVersion?: string;
+}
+
+export interface ProvenanceSourceIdentityResult {
+  source: string | null;
+  source_type: string | null;
+  result_id: string | null;
+  completeness: ProvenanceSourceIdentityCompleteness;
+}
+
+export interface ProvenanceReadinessResult {
+  state: ProvenanceReadinessState;
+  source_identity: ProvenanceSourceIdentityResult;
+  source_type: string | null;
+  published_at: string | null;
+  retrieved_at: string | null;
+  timing_confidence: SignalDateConfidence;
+  timing_completeness: ProvenanceTimingCompleteness;
+  canonical_content_sha256: string | null;
+  semantic_fingerprint_sha256: string | null;
+  ha_pri_v2: HaPriV2Result | null;
+  warnings: string[];
+  reasons: string[];
+}
+
 export interface CoreSignalProvenanceOptions {
   resultId?: string;
   semanticFingerprint?: string | null;
@@ -258,5 +291,6 @@ export interface CoreSignalEvaluationResult {
   explanation: string;
   envelope?: CoreSignalEnvelopeResult;
   provenance?: HaPriV2Result;
+  provenance_readiness: ProvenanceReadinessResult;
   reasons: string[];
 }

@@ -87,7 +87,10 @@ test("Core package fixture exports readable helper from the root lane", async ()
 
   assert.equal(existsSync(join(fixtureRoot, "dist", "readable.js")), true);
   assert.equal(existsSync(join(fixtureRoot, "dist", "readable.d.ts")), true);
+  assert.equal(existsSync(join(fixtureRoot, "dist", "provenanceReadiness.js")), true);
+  assert.equal(existsSync(join(fixtureRoot, "dist", "provenanceReadiness.d.ts")), true);
 
   const core = await import(pathToFileURL(join(fixtureRoot, "dist", "index.js")).href);
   assert.equal(typeof core.toReadableContextResult, "function");
+  assert.equal(typeof core.prepareProvenanceReadiness, "function");
 });

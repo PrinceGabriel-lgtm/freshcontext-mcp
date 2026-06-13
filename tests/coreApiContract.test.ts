@@ -14,6 +14,7 @@ import {
   listSourceProfiles,
   looksLikeFailedAdapterContent,
   normalizeSignal,
+  prepareProvenanceReadiness,
   rankSignal,
   rankSignals,
   scoreLabel,
@@ -37,6 +38,7 @@ import type {
   FreshSignal,
   HaPriV2Input,
   HaPriV2Result,
+  ProvenanceReadinessResult,
   RankedSignal,
   RankOptions,
   SourceProfile,
@@ -203,4 +205,29 @@ test("public decision helper imports compile and remain callable", () => {
   assert.equal(typeof decision.decision, "string");
   assert.equal(typeof decision.meaning, "string");
   assert.equal(decisions.length, 1);
+});
+
+
+test("public provenance readiness helper imports compile and remains callable", () => {
+  const readiness: ProvenanceReadinessResult = prepareProvenanceReadiness({
+    id: "public_readiness",
+    source: "https://example.com/readiness",
+    source_type: "official_docs",
+    content: "Public Core provenance readiness contract content",
+    published_at: "2026-05-24T12:00:00.000Z",
+    retrieved_at: "2026-05-24T13:00:00.000Z",
+    semantic_score: 0.8,
+    date_confidence: "high",
+  }, {
+    resultId: "public_readiness",
+    semanticFingerprint: "public-readiness-fingerprint",
+    engineVersion: "freshcontext-0.3.20",
+  });
+
+  assert.equal(readiness.state, "complete");
+  assert.equal(readiness.source_identity.completeness, "complete");
+  assert.equal(readiness.timing_completeness, "complete");
+  assert.match(readiness.canonical_content_sha256 ?? "", /^[a-f0-9]{64}$/);
+  assert.match(readiness.semantic_fingerprint_sha256 ?? "", /^[a-f0-9]{64}$/);
+  assert.ok(readiness.ha_pri_v2);
 });

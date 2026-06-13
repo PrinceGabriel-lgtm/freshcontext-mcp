@@ -12,7 +12,7 @@ The REST host should expose the simplest useful path:
 
 1. User has raw retrieved signals.
 2. User sends those signals to FreshContext.
-3. Core evaluates freshness, confidence, ranking, explanation, optional envelope, and optional provenance.
+3. Core evaluates freshness, confidence, ranking, explanation, provenance readiness, optional envelope, and optional provenance.
 4. Host returns ranked context.
 5. Agent or app uses best context first.
 
@@ -122,6 +122,27 @@ Shape: `CoreSignalEvaluationResult`.
     "reason": "Strong semantic match and current freshness for blog."
   },
   "explanation": "Strong semantic match and current freshness for blog.",
+  "provenance_readiness": {
+    "state": "complete",
+    "source_identity": {
+      "source": "https://example.com/article",
+      "source_type": "blog",
+      "result_id": "sig_001",
+      "completeness": "complete"
+    },
+    "source_type": "blog",
+    "published_at": "2026-05-24T12:00:00.000Z",
+    "retrieved_at": "2026-05-24T13:00:00.000Z",
+    "timing_confidence": "high",
+    "timing_completeness": "complete",
+    "canonical_content_sha256": "abc123...",
+    "semantic_fingerprint_sha256": null,
+    "ha_pri_v2": null,
+    "warnings": [],
+    "reasons": [
+      "semantic fingerprint was not provided"
+    ]
+  },
   "envelope": {
     "context": {},
     "text": "[FRESHCONTEXT]...",
@@ -130,6 +151,8 @@ Shape: `CoreSignalEvaluationResult`.
   "reasons": []
 }
 ```
+
+`provenance_readiness` is always a Core judgment sidecar. It classifies source identity and timing completeness. It must not be used by the REST host to fetch, verify truth, reject context by policy, or change ranking.
 
 The REST host must not fetch upstream data, cache results, write D1, enforce Ha-Pri, or alter ranking policy.
 
@@ -181,6 +204,9 @@ Evaluates and ranks multiple signals.
         "final_score": 0.85
       },
       "explanation": "Strong semantic match and current freshness for blog.",
+      "provenance_readiness": {
+        "state": "complete"
+      },
       "reasons": []
     }
   ]
@@ -342,6 +368,7 @@ Core owns:
 - timestamp/future-date/failure guards
 - freshness scoring
 - context utility sidecar
+- provenance readiness sidecar
 - default rank/explain behavior
 - optional envelope generation
 - optional Ha-Pri v2 material preparation

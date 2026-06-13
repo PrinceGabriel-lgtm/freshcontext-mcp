@@ -1,6 +1,7 @@
 import { LAMBDA, calculateFreshnessScore } from "./decay.js";
 import { formatForLLM, toStructuredJSON } from "./envelope.js";
 import { calculateHaPriV2 } from "./provenance.js";
+import { prepareProvenanceReadiness } from "./provenanceReadiness.js";
 import { rankSignal } from "./rank.js";
 import { normalizeSignal } from "./signal.js";
 import { calculateContextUtility } from "./utility.js";
@@ -104,6 +105,12 @@ export function evaluateSignal(
   const reasons = [...signal.reasons, ...utility.reasons];
   const envelope = createEnvelope(signal, freshness_score, options);
   const provenance = createProvenance(signal, options, reasons);
+  const provenance_readiness = prepareProvenanceReadiness(signal, {
+    now: options.now,
+    resultId: options.provenance?.resultId ?? signal.id,
+    semanticFingerprint: options.provenance?.semanticFingerprint ?? null,
+    engineVersion: options.provenance?.engineVersion,
+  });
 
   return {
     signal,
@@ -113,6 +120,7 @@ export function evaluateSignal(
     explanation: ranked.reason,
     envelope,
     provenance,
+    provenance_readiness,
     reasons,
   };
 }

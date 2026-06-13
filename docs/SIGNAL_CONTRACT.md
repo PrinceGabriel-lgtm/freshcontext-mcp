@@ -14,6 +14,8 @@ Do not rename this with future-signal terminology. Future context signals, contr
 
 It is an additive Core API. It does not change MCP tool schemas, Worker runtime behavior, D1 schema, Store scoring, feeds, or deployment behavior.
 
+Provenance readiness is an output-side judgment over this signal material. It can warn about weak source identity or missing timing metadata without adding new required input fields.
+
 ## Batch Validation Harness
 
 Source checkouts include a small validation harness for testing larger Signal Contract v1 batches:

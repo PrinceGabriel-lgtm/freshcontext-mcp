@@ -20,6 +20,7 @@ const coreFiles = [
   "index",
   "pipeline",
   "provenance",
+  "provenanceReadiness",
   "rank",
   "readable",
   "signal",
