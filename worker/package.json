@@ -1,6 +1,6 @@
 {
   "name": "freshcontext-mcp-worker",
-  "version": "0.3.20",
+  "version": "0.3.21",
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
@@ -17,6 +17,7 @@
     "wrangler": "^4.99.0"
   },
   "overrides": {
+    "esbuild": "0.28.1",
     "hono": "^4.12.25",
     "qs": "^6.15.2"
   }
