@@ -3,9 +3,19 @@ import type {
   ContextDecisionResult,
   CoreSignalEvaluationResult,
   HumanReadableContextResult,
+  HumanReadableHandoffResult,
 } from "./types.js";
 
 const MAX_READABLE_REASONS = 5;
+const HANDOFF_SAFE_REASON = "Decision and complete provenance support agent handoff.";
+const HANDOFF_UNSAFE_DECISION_REASON = "Decision does not support agent handoff.";
+const HANDOFF_UNSAFE_PROVENANCE_REASON = "Provenance is not complete enough for agent handoff.";
+const HANDOFF_SAFE_DECISIONS = new Set<ContextDecision>([
+  "use_first",
+  "cite_as_primary",
+  "cite_as_supporting",
+  "use_as_background",
+]);
 
 const READER_LABELS: Record<ContextDecision, string> = {
   use_first: "Use first",
@@ -44,6 +54,30 @@ function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))];
 }
 
+function handoffFor(
+  evaluation: CoreSignalEvaluationResult,
+  decision: ContextDecisionResult
+): HumanReadableHandoffResult {
+  if (!HANDOFF_SAFE_DECISIONS.has(decision.decision)) {
+    return {
+      safe_for_agent_handoff: false,
+      reason: HANDOFF_UNSAFE_DECISION_REASON,
+    };
+  }
+
+  if (evaluation.provenance_readiness.state !== "complete") {
+    return {
+      safe_for_agent_handoff: false,
+      reason: HANDOFF_UNSAFE_PROVENANCE_REASON,
+    };
+  }
+
+  return {
+    safe_for_agent_handoff: true,
+    reason: HANDOFF_SAFE_REASON,
+  };
+}
+
 export function toReadableContextResult(
   evaluation: CoreSignalEvaluationResult,
   decision: ContextDecisionResult
@@ -59,5 +93,6 @@ export function toReadableContextResult(
     why,
     action: ACTIONS[decision.decision],
     warnings: [...decision.warnings],
+    handoff: handoffFor(evaluation, decision),
   };
 }

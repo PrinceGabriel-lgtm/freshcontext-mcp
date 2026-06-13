@@ -31,10 +31,15 @@ const STRUCTURED_RESULT_KEYS = [
 ];
 const READABLE_KEYS = [
   "action",
+  "handoff",
   "label",
   "summary",
   "warnings",
   "why",
+];
+const HANDOFF_KEYS = [
+  "reason",
+  "safe_for_agent_handoff",
 ];
 const PROVENANCE_READINESS_KEYS = [
   "canonical_content_sha256",
@@ -107,6 +112,10 @@ function assertStructuredResultContract(result: Record<string, unknown>): void {
   assert.deepEqual(Object.keys(readable).sort(), READABLE_KEYS);
   assert.ok(Array.isArray(readable.why));
   assert.ok(Array.isArray(readable.warnings));
+  const handoff = readable.handoff as Record<string, unknown>;
+  assert.deepEqual(Object.keys(handoff).sort(), HANDOFF_KEYS);
+  assert.equal(typeof handoff.safe_for_agent_handoff, "boolean");
+  assert.equal(typeof handoff.reason, "string");
 
   const readiness = result.provenance_readiness as Record<string, unknown>;
   assert.deepEqual(Object.keys(readiness).sort(), PROVENANCE_READINESS_KEYS);
@@ -163,10 +172,15 @@ test("evaluate_context structured JSON includes additive readable output", () =>
   assert.equal(first.provenance_readiness.source_identity.completeness, "complete");
   assert.match(first.provenance_readiness.canonical_content_sha256, /^[a-f0-9]{64}$/);
 
+  assert.equal("handoff" in first, false);
   assert.equal(first.readable.label, "Primary source");
   assert.notEqual(first.readable.label, first.label);
   assert.equal(first.readable.why.length <= 5, true);
   assert.ok(Array.isArray(first.readable.warnings));
+  assert.deepEqual(first.readable.handoff, {
+    safe_for_agent_handoff: true,
+    reason: "Decision and complete provenance support agent handoff.",
+  });
 });
 
 test("evaluate_context accepts pre-provenance payloads and adds readiness without changing old fields", () => {

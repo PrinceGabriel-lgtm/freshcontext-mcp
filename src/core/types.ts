@@ -105,12 +105,18 @@ export interface ContextDecisionResult {
   warnings: string[];
 }
 
+export interface HumanReadableHandoffResult {
+  safe_for_agent_handoff: boolean;
+  reason: string;
+}
+
 export interface HumanReadableContextResult {
   label: string;
   summary: string;
   why: string[];
   action: string;
   warnings: string[];
+  handoff: HumanReadableHandoffResult;
 }
 
 export interface FreshContextSignalInput {

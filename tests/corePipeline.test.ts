@@ -11,6 +11,7 @@ import type {
   CoreSignalEvaluationOptions,
   CoreSignalEvaluationResult,
   FreshContextSignalInput,
+  HumanReadableContextResult,
 } from "../src/core/index.js";
 
 const NOW = "2026-05-24T13:00:00.000Z";
@@ -40,6 +41,16 @@ function stableMetrics(result: CoreSignalEvaluationResult) {
     rank_score: result.ranked.final_score,
     rank_confidence: result.ranked.confidence,
     explanation: result.explanation,
+  };
+}
+
+function readableWithoutHandoff(readable: HumanReadableContextResult) {
+  return {
+    label: readable.label,
+    summary: readable.summary,
+    why: readable.why,
+    action: readable.action,
+    warnings: readable.warnings,
   };
 }
 
@@ -264,8 +275,8 @@ test("provenance material is additive to scoring, decisions, and readable output
   assert.deepEqual(stableMetrics(withProvenance), stableMetrics(withoutProvenance));
   assert.deepEqual(withDecision, withoutDecision);
   assert.deepEqual(
-    toReadableContextResult(withProvenance, withDecision),
-    toReadableContextResult(withoutProvenance, withoutDecision)
+    readableWithoutHandoff(toReadableContextResult(withProvenance, withDecision)),
+    readableWithoutHandoff(toReadableContextResult(withoutProvenance, withoutDecision))
   );
 });
 

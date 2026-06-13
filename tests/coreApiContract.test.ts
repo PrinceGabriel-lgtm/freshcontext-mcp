@@ -40,6 +40,7 @@ import type {
   FreshSignal,
   HaPriV2Input,
   HaPriV2Result,
+  HumanReadableHandoffResult,
   ProvenanceReadinessResult,
   RankedSignal,
   RankOptions,
@@ -208,12 +209,15 @@ test("public decision helper imports compile and remain callable", () => {
   const decision: ContextDecisionResult = interpretEvaluation(evaluation, options);
   const decisions: ContextDecisionResult[] = interpretEvaluations([evaluation], options);
   const readable = toReadableContextResult(evaluation, decision);
+  const handoff: HumanReadableHandoffResult = readable.handoff;
 
   assert.equal(typeof decision.decision, "string");
   assert.equal(typeof decision.meaning, "string");
   assert.equal(decisions.length, 1);
   assert.equal(typeof readable.summary, "string");
   assert.ok(Array.isArray(readable.why));
+  assert.equal(typeof handoff.safe_for_agent_handoff, "boolean");
+  assert.equal(typeof handoff.reason, "string");
 });
 
 

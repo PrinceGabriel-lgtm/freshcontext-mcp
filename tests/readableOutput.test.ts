@@ -5,7 +5,31 @@ import {
   type ContextDecision,
   type ContextDecisionResult,
   type CoreSignalEvaluationResult,
+  type HumanReadableContextResult,
+  type ProvenanceReadinessState,
 } from "../src/core/index.js";
+
+const SAFE_HANDOFF_REASON = "Decision and complete provenance support agent handoff.";
+const UNSAFE_DECISION_REASON = "Decision does not support agent handoff.";
+const UNSAFE_PROVENANCE_REASON = "Provenance is not complete enough for agent handoff.";
+const SAFE_HANDOFF_DECISIONS: ContextDecision[] = [
+  "use_first",
+  "cite_as_primary",
+  "cite_as_supporting",
+  "use_as_background",
+];
+const UNSAFE_HANDOFF_DECISIONS: ContextDecision[] = [
+  "needs_verification",
+  "needs_refresh",
+  "watch_only",
+  "exclude",
+];
+const INCOMPLETE_HANDOFF_PROVENANCE: ProvenanceReadinessState[] = [
+  "partial",
+  "incomplete",
+  "unknown",
+  "derived",
+];
 
 const EXPECTED_LABELS: Record<ContextDecision, string> = {
   use_first: "Use first",
@@ -18,8 +42,10 @@ const EXPECTED_LABELS: Record<ContextDecision, string> = {
   exclude: "Excluded",
 };
 
-function provenanceReadiness(): CoreSignalEvaluationResult["provenance_readiness"] {
-  return {
+function provenanceReadiness(
+  overrides: Partial<CoreSignalEvaluationResult["provenance_readiness"]> = {}
+): CoreSignalEvaluationResult["provenance_readiness"] {
+  const base: CoreSignalEvaluationResult["provenance_readiness"] = {
     state: "complete",
     source_identity: {
       source: "https://example.com/source",
@@ -37,6 +63,14 @@ function provenanceReadiness(): CoreSignalEvaluationResult["provenance_readiness
     ha_pri_v2: null,
     warnings: [],
     reasons: ["semantic fingerprint was not provided"],
+  };
+
+  return {
+    ...base,
+    ...overrides,
+    source_identity: overrides.source_identity
+      ? { ...base.source_identity, ...overrides.source_identity }
+      : base.source_identity,
   };
 }
 
@@ -102,12 +136,24 @@ function decision(decision: ContextDecision, reasons: string[] = []): ContextDec
   };
 }
 
+function readableWithoutHandoff(readable: HumanReadableContextResult) {
+  return {
+    label: readable.label,
+    summary: readable.summary,
+    why: readable.why,
+    action: readable.action,
+    warnings: readable.warnings,
+  };
+}
+
 test("toReadableContextResult maps every Core decision to the expected reader label", () => {
   for (const [machineDecision, expectedLabel] of Object.entries(EXPECTED_LABELS) as [ContextDecision, string][]) {
     const readable = toReadableContextResult(evaluation(), decision(machineDecision));
     assert.equal(readable.label, expectedLabel);
     assert.equal(typeof readable.summary, "string");
     assert.equal(typeof readable.action, "string");
+    assert.equal(typeof readable.handoff.safe_for_agent_handoff, "boolean");
+    assert.equal(typeof readable.handoff.reason, "string");
   }
 });
 
@@ -140,6 +186,10 @@ test("readable output includes summary, capped why, action, and warnings", () =>
   assert.deepEqual(readable.why, reasons.slice(0, 5));
   assert.match(readable.action, /selected context/i);
   assert.deepEqual(readable.warnings, ["FreshContext does not certify truth."]);
+  assert.deepEqual(readable.handoff, {
+    safe_for_agent_handoff: true,
+    reason: SAFE_HANDOFF_REASON,
+  });
 });
 
 test("utility reasons can remain visible in readable why without determining the label", () => {
@@ -156,22 +206,64 @@ test("utility reasons can remain visible in readable why without determining the
   assert.ok(readable.why.includes(utilityReason));
 });
 
-test("provenance readiness changes do not change readable output", () => {
+test("readable handoff allows safe decisions with complete provenance", () => {
+  for (const machineDecision of SAFE_HANDOFF_DECISIONS) {
+    const readable = toReadableContextResult(evaluation(), decision(machineDecision));
+    assert.deepEqual(readable.handoff, {
+      safe_for_agent_handoff: true,
+      reason: SAFE_HANDOFF_REASON,
+    });
+  }
+});
+
+test("readable handoff blocks safe decisions when provenance readiness is not complete", () => {
+  for (const readinessState of INCOMPLETE_HANDOFF_PROVENANCE) {
+    const readable = toReadableContextResult(
+      evaluation({
+        provenance_readiness: provenanceReadiness({ state: readinessState }),
+      }),
+      decision("cite_as_primary")
+    );
+
+    assert.deepEqual(readable.handoff, {
+      safe_for_agent_handoff: false,
+      reason: UNSAFE_PROVENANCE_REASON,
+    });
+  }
+});
+
+test("readable handoff blocks unsafe decisions", () => {
+  for (const machineDecision of UNSAFE_HANDOFF_DECISIONS) {
+    const readable = toReadableContextResult(evaluation(), decision(machineDecision));
+    assert.deepEqual(readable.handoff, {
+      safe_for_agent_handoff: false,
+      reason: UNSAFE_DECISION_REASON,
+    });
+  }
+});
+
+test("provenance readiness changes do not change non-handoff readable output", () => {
   const baseEvaluation = evaluation();
   const uncertainReadinessEvaluation = evaluation({
-    provenance_readiness: {
-      ...baseEvaluation.provenance_readiness,
+    provenance_readiness: provenanceReadiness({
       state: "derived",
       warnings: ["context appears copied, local, secondary, or derived; preserve the upstream source chain"],
       reasons: ["provenance readiness was forced derived for readable-output regression coverage"],
-    },
+    }),
   });
   const contextDecision = decision("cite_as_primary", [
     "Strong semantic match and current freshness for arxiv.",
   ]);
+  const completeReadable = toReadableContextResult(baseEvaluation, contextDecision);
+  const derivedReadable = toReadableContextResult(uncertainReadinessEvaluation, contextDecision);
 
-  assert.deepEqual(
-    toReadableContextResult(uncertainReadinessEvaluation, contextDecision),
-    toReadableContextResult(baseEvaluation, contextDecision)
-  );
+  assert.deepEqual(readableWithoutHandoff(derivedReadable), readableWithoutHandoff(completeReadable));
+  assert.deepEqual(completeReadable.handoff, {
+    safe_for_agent_handoff: true,
+    reason: SAFE_HANDOFF_REASON,
+  });
+  assert.deepEqual(derivedReadable.handoff, {
+    safe_for_agent_handoff: false,
+    reason: UNSAFE_PROVENANCE_REASON,
+  });
 });

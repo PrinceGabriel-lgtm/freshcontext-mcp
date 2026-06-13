@@ -34,6 +34,7 @@ export type {
   IntentProfileId,
   ContextDecisionOptions,
   ContextDecisionResult,
+  HumanReadableHandoffResult,
   HumanReadableContextResult,
   SignalNormalizeOptions,
   FreshContextSignalInput,

@@ -62,6 +62,8 @@ test(
     assert.equal(decisions.length, 1);
     const readable = core.toReadableContextResult(evaluations[0], decisions[0]);
     assert.equal(typeof readable.summary, "string");
+    assert.equal(typeof readable.handoff.safe_for_agent_handoff, "boolean");
+    assert.equal(typeof readable.handoff.reason, "string");
     assert.ok(["cite_as_primary", "use_first", "cite_as_supporting"].includes(decisions[0].decision));
 
     const haPriInput = {

@@ -128,6 +128,10 @@ test("Core package fixture exports readable helper from the root lane", async ()
   assert.equal(typeof core.prepareProvenanceReadiness, "function");
   assert.equal(evaluation.provenance_readiness.state, "complete");
   assert.equal(readable.label, "Use first");
+  assert.deepEqual(readable.handoff, {
+    safe_for_agent_handoff: true,
+    reason: "Decision and complete provenance support agent handoff.",
+  });
   assert.equal(readiness.state, "complete");
 });
 
