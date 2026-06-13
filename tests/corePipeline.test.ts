@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 import {
   evaluateSignal,
   evaluateSignals,
+  interpretEvaluation,
+  toReadableContextResult,
 } from "../src/core/index.js";
 import type {
+  ContextDecisionOptions,
   CoreSignalEvaluationOptions,
   CoreSignalEvaluationResult,
   FreshContextSignalInput,
@@ -26,6 +29,17 @@ function baseInput(overrides: Partial<FreshContextSignalInput> = {}): FreshConte
     status: "success",
     metadata: { topic: "core" },
     ...overrides,
+  };
+}
+
+function stableMetrics(result: CoreSignalEvaluationResult) {
+  return {
+    freshness_score: result.freshness_score,
+    utility_score: result.utility.score,
+    utility_reasons: result.utility.reasons,
+    rank_score: result.ranked.final_score,
+    rank_confidence: result.ranked.confidence,
+    explanation: result.explanation,
   };
 }
 
@@ -224,4 +238,94 @@ test("evaluateSignal public option type is usable by callers", () => {
 
   assert.ok(result.envelope);
   assert.ok(result.provenance);
+});
+
+test("provenance material is additive to scoring, decisions, and readable output", () => {
+  const input = baseInput({ id: "sig_provenance_additive" });
+  const withoutProvenance = evaluateSignal(input, { now: NOW });
+  const withProvenance = evaluateSignal(input, {
+    now: NOW,
+    includeProvenance: true,
+    provenance: {
+      resultId: "sig_provenance_additive",
+      semanticFingerprint: "pipeline-additive-fingerprint",
+      engineVersion: "freshcontext-0.3.20",
+    },
+  });
+  const decisionOptions: ContextDecisionOptions = {
+    sourceProfile: "official_docs",
+    intentProfile: "developer_adoption",
+  };
+  const withoutDecision = interpretEvaluation(withoutProvenance, decisionOptions);
+  const withDecision = interpretEvaluation(withProvenance, decisionOptions);
+
+  assert.equal(withoutProvenance.provenance, undefined);
+  assert.ok(withProvenance.provenance);
+  assert.deepEqual(stableMetrics(withProvenance), stableMetrics(withoutProvenance));
+  assert.deepEqual(withDecision, withoutDecision);
+  assert.deepEqual(
+    toReadableContextResult(withProvenance, withDecision),
+    toReadableContextResult(withoutProvenance, withoutDecision)
+  );
+});
+
+test("provenance readiness states do not affect scoring, ranking order, or decisions", () => {
+  const variants: Array<{
+    id: string;
+    expectedState: CoreSignalEvaluationResult["provenance_readiness"]["state"];
+    input: Partial<FreshContextSignalInput>;
+  }> = [
+    {
+      id: "complete-readiness",
+      expectedState: "complete",
+      input: { source: "https://example.com/complete-readiness" },
+    },
+    {
+      id: "partial-readiness",
+      expectedState: "partial",
+      input: { source: "abc" },
+    },
+    {
+      id: "incomplete-readiness",
+      expectedState: "incomplete",
+      input: { source: "" },
+    },
+    {
+      id: "unknown-readiness",
+      expectedState: "unknown",
+      input: { source: "unknown" },
+    },
+    {
+      id: "derived-readiness",
+      expectedState: "derived",
+      input: {
+        source: "https://example.com/derived-readiness",
+        metadata: { is_derived: true },
+      },
+    },
+  ];
+  const inputs = variants.map((variant) => baseInput({
+    id: variant.id,
+    source_type: "official_docs",
+    ...variant.input,
+  }));
+  const evaluations = inputs.map((input) => evaluateSignal(input, { now: NOW }));
+  const baseline = stableMetrics(evaluations[0]);
+  const decisionOptions: ContextDecisionOptions = {
+    sourceProfile: "official_docs",
+    intentProfile: "developer_adoption",
+  };
+  const baselineDecision = interpretEvaluation(evaluations[0], decisionOptions).decision;
+
+  assert.deepEqual(
+    evaluations.map((evaluation) => evaluation.provenance_readiness.state),
+    variants.map((variant) => variant.expectedState)
+  );
+  for (const evaluation of evaluations) {
+    assert.deepEqual(stableMetrics(evaluation), baseline);
+    assert.equal(interpretEvaluation(evaluation, decisionOptions).decision, baselineDecision);
+  }
+
+  const sorted = evaluateSignals(inputs, { now: NOW });
+  assert.deepEqual(sorted.map((evaluation) => evaluation.signal.id), variants.map((variant) => variant.id));
 });

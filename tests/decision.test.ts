@@ -98,6 +98,40 @@ test("utility score does not control decision labels", () => {
   assert.equal(lowUtilityDecision.decision, "cite_as_primary");
 });
 
+test("provenance readiness does not control decision labels", () => {
+  const evaluation = evaluateSignal(baseInput({
+    source: "https://arxiv.org/abs/2605.12345",
+    source_type: "arxiv",
+    semantic_score: 0.94,
+    published_at: "2026-05-20T09:00:00.000Z",
+  }), { now: NOW });
+  const uncertainReadinessEvaluation: CoreSignalEvaluationResult = {
+    ...evaluation,
+    provenance_readiness: {
+      ...evaluation.provenance_readiness,
+      state: "unknown",
+      source_identity: {
+        ...evaluation.provenance_readiness.source_identity,
+        completeness: "unusable",
+      },
+      warnings: ["provenance readiness was forced uncertain for decision-boundary regression coverage"],
+      reasons: ["provenance readiness must remain a sidecar until an explicit policy pass changes it"],
+    },
+  };
+
+  const normalDecision = interpretEvaluation(evaluation, {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+  });
+  const uncertainReadinessDecision = interpretEvaluation(uncertainReadinessEvaluation, {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+  });
+
+  assert.deepEqual(uncertainReadinessDecision, normalDecision);
+  assert.equal(uncertainReadinessDecision.decision, "cite_as_primary");
+});
+
 test("high utility does not promote low-ranked signals", () => {
   const evaluation = evaluateSignal(baseInput({
     source: "https://news.ycombinator.com/item?id=1",

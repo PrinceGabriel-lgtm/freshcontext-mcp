@@ -18,6 +18,28 @@ const EXPECTED_LABELS: Record<ContextDecision, string> = {
   exclude: "Excluded",
 };
 
+function provenanceReadiness(): CoreSignalEvaluationResult["provenance_readiness"] {
+  return {
+    state: "complete",
+    source_identity: {
+      source: "https://example.com/source",
+      source_type: "arxiv",
+      result_id: "https://example.com/source",
+      completeness: "complete",
+    },
+    source_type: "arxiv",
+    published_at: "2026-06-01T00:00:00.000Z",
+    retrieved_at: "2026-06-09T00:00:00.000Z",
+    timing_confidence: "high",
+    timing_completeness: "complete",
+    canonical_content_sha256: "0".repeat(64),
+    semantic_fingerprint_sha256: null,
+    ha_pri_v2: null,
+    warnings: [],
+    reasons: ["semantic fingerprint was not provided"],
+  };
+}
+
 function evaluation(overrides: Partial<CoreSignalEvaluationResult> = {}): CoreSignalEvaluationResult {
   return {
     signal: {
@@ -63,6 +85,7 @@ function evaluation(overrides: Partial<CoreSignalEvaluationResult> = {}): CoreSi
       reason: "Strong semantic match and current freshness for arxiv.",
     },
     explanation: "Strong semantic match and current freshness for arxiv.",
+    provenance_readiness: provenanceReadiness(),
     reasons: [],
     ...overrides,
   };
@@ -131,4 +154,24 @@ test("utility reasons can remain visible in readable why without determining the
 
   assert.equal(readable.label, "Primary source");
   assert.ok(readable.why.includes(utilityReason));
+});
+
+test("provenance readiness changes do not change readable output", () => {
+  const baseEvaluation = evaluation();
+  const uncertainReadinessEvaluation = evaluation({
+    provenance_readiness: {
+      ...baseEvaluation.provenance_readiness,
+      state: "derived",
+      warnings: ["context appears copied, local, secondary, or derived; preserve the upstream source chain"],
+      reasons: ["provenance readiness was forced derived for readable-output regression coverage"],
+    },
+  });
+  const contextDecision = decision("cite_as_primary", [
+    "Strong semantic match and current freshness for arxiv.",
+  ]);
+
+  assert.deepEqual(
+    toReadableContextResult(uncertainReadinessEvaluation, contextDecision),
+    toReadableContextResult(baseEvaluation, contextDecision)
+  );
 });

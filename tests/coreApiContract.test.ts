@@ -225,6 +225,26 @@ test("public provenance readiness helper imports compile and remains callable", 
   });
 
   assert.equal(readiness.state, "complete");
+  assert.deepEqual(Object.keys(readiness).sort(), [
+    "canonical_content_sha256",
+    "ha_pri_v2",
+    "published_at",
+    "reasons",
+    "retrieved_at",
+    "semantic_fingerprint_sha256",
+    "source_identity",
+    "source_type",
+    "state",
+    "timing_completeness",
+    "timing_confidence",
+    "warnings",
+  ]);
+  assert.deepEqual(Object.keys(readiness.source_identity).sort(), [
+    "completeness",
+    "result_id",
+    "source",
+    "source_type",
+  ]);
   assert.equal(readiness.source_identity.completeness, "complete");
   assert.equal(readiness.timing_completeness, "complete");
   assert.match(readiness.canonical_content_sha256 ?? "", /^[a-f0-9]{64}$/);

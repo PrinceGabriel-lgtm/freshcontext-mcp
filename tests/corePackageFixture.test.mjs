@@ -94,3 +94,15 @@ test("Core package fixture exports readable helper from the root lane", async ()
   assert.equal(typeof core.toReadableContextResult, "function");
   assert.equal(typeof core.prepareProvenanceReadiness, "function");
 });
+
+test("Core package fixture keeps provenance readiness free of host runtime surfaces", () => {
+  runFixtureScript();
+
+  const coreIndex = readFileSync(join(fixtureRoot, "dist", "index.js"), "utf8");
+  const readinessJs = readFileSync(join(fixtureRoot, "dist", "provenanceReadiness.js"), "utf8");
+  const combined = `${coreIndex}\n${readinessJs}`;
+
+  assert.match(coreIndex, /prepareProvenanceReadiness/);
+  assert.doesNotMatch(combined, /\.\.\/adapters|\.\.\/tools|\.\.\/rest|\.\.\/server|worker\/src/);
+  assert.doesNotMatch(combined, /\bKV\b|McpServer|fetch\(|createServer|listen\(/);
+});

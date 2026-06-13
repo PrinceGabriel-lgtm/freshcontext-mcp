@@ -67,6 +67,25 @@ test("evaluate_context structured JSON includes additive readable output", () =>
   const first = structured.results[0];
 
   assert.equal(first.decision, "cite_as_primary");
+  assert.deepEqual(Object.keys(first).sort(), [
+    "action",
+    "confidence",
+    "decision",
+    "freshness_score",
+    "index",
+    "label",
+    "meaning",
+    "provenance_readiness",
+    "rank_score",
+    "readable",
+    "reasons",
+    "source",
+    "source_type",
+    "title",
+    "utility_score",
+    "warnings",
+    "why",
+  ]);
   assert.equal(first.label, "Cite as primary");
   assert.equal(first.meaning, result.items[0].decision.meaning);
   assert.equal(first.action, result.items[0].decision.action);
