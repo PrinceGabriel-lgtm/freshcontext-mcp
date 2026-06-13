@@ -124,6 +124,8 @@ function assertHumanReviewSummary(structured: any, expectLabels: boolean): void 
 function assertTopResultExplanation(structured: any): void {
   assert.ok(structured.top_results.length > 0);
   for (const result of structured.top_results) {
+    assert.equal("handoff" in result, false);
+    assert.equal("readable" in result, false);
     assert.ok(Array.isArray(result.reason_codes));
     assert.ok(result.reason_codes.length > 0);
     assert.equal(typeof result.why, "string");
@@ -143,6 +145,7 @@ test("all replay fixtures run through the batch harness", () => {
     assert.equal(sumCounts(structured.decision_counts), fixture.total);
     assert.ok(sumCounts(structured.status_counts) >= fixture.total);
     assert.ok(sumCounts(structured.date_confidence_counts) >= fixture.total);
+    assert.equal("handoff_counts" in structured, false);
     assert.ok(structured.top_results.length > 0);
     assert.ok(
       Object.values(structured.decision_counts).some((count) => Number(count) > 0),
@@ -190,6 +193,50 @@ test("batch validation fixture reports mixed anomaly and decision counts", () =>
   assert.ok(structured.top_results.length > 0);
   assertTopResultExplanation(structured);
   assertHumanReviewSummary(structured, true);
+});
+
+test("batch validation release gate keeps top-result ranking without batch handoff counts", () => {
+  const result = runBatch(writeTempJson(baseBatch({
+    signals: [
+      {
+        title: "Healthy current source",
+        content: "A relevant current source that should remain the top result.",
+        source: "https://example.com/batch-healthy",
+        source_type: "arxiv",
+        published_at: "2026-06-08T12:00:00.000Z",
+        retrieved_at: "2026-06-09T12:00:00.000Z",
+        semantic_score: 0.86,
+      },
+      {
+        title: "Fresh failed source",
+        content: "[ERROR] upstream timeout for fresh-looking source",
+        source: "https://example.com/batch-failed",
+        source_type: "arxiv",
+        published_at: "2026-06-08T12:00:00.000Z",
+        retrieved_at: "2026-06-09T12:00:00.000Z",
+        semantic_score: 1,
+      },
+      {
+        title: "Stale relevant source",
+        content: "A relevant but stale source that should not outrank current evidence.",
+        source: "https://example.com/batch-stale",
+        source_type: "arxiv",
+        published_at: "2022-01-01T12:00:00.000Z",
+        retrieved_at: "2026-06-09T12:00:00.000Z",
+        semantic_score: 0.95,
+      },
+    ],
+  })));
+  assert.equal(result.status, 0, result.stderr);
+
+  const structured = extractStructured(result.stdout);
+  assert.equal(structured.top_results[0].source, "https://example.com/batch-healthy");
+  assert.equal("handoff_counts" in structured, false);
+  assert.equal("handoff" in structured.top_results[0], false);
+  assert.equal("readable" in structured.top_results[0], false);
+  assert.ok(structured.decision_counts.cite_as_primary >= 1);
+  assert.ok(structured.decision_counts.exclude >= 1);
+  assertTopResultExplanation(structured);
 });
 
 test("batch validation explanations surface missing-date limiting factors", () => {

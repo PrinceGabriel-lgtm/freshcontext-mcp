@@ -88,6 +88,38 @@ test("prepareProvenanceReadiness distinguishes missing and unusable source ident
   assert.ok(unusable.warnings.some((warning) => warning.includes("source identity is unusable")));
 });
 
+test("prepareProvenanceReadiness handles minimal legacy input without provenance fields", () => {
+  const readiness = prepareProvenanceReadiness({
+    source: "https://example.com/minimal-legacy",
+    title: "Minimal legacy source",
+  }, { now: NOW });
+
+  assert.equal(readiness.state, "incomplete");
+  assert.equal(readiness.source_identity.completeness, "complete");
+  assert.equal(readiness.source_type, "default");
+  assert.equal(readiness.published_at, null);
+  assert.equal(readiness.canonical_content_sha256, null);
+  assert.ok(readiness.warnings.some((warning) => warning.includes("source_type")));
+  assert.ok(readiness.warnings.some((warning) => warning.includes("published_at")));
+  assert.ok(readiness.warnings.some((warning) => warning.includes("canonical content hash")));
+});
+
+test("prepareProvenanceReadiness does not let conflicting identity material rescue unusable source", () => {
+  const readiness = prepareProvenanceReadiness(baseSignal({
+    id: undefined,
+    source: "unknown",
+    metadata: {
+      result_id: "metadata-result-id",
+      source_id: "conflicting-source-id",
+    },
+  }), { now: NOW });
+
+  assert.equal(readiness.state, "unknown");
+  assert.equal(readiness.source_identity.completeness, "unusable");
+  assert.equal(readiness.source_identity.result_id, "metadata-result-id");
+  assert.ok(readiness.warnings.some((warning) => warning.includes("source identity is unusable")));
+});
+
 test("prepareProvenanceReadiness returns unknown for failed or error-looking content", () => {
   const readiness = prepareProvenanceReadiness(baseSignal({
     content: "[ERROR] upstream timeout",

@@ -4,6 +4,7 @@ import {
   evaluateSignal,
   interpretEvaluation,
   interpretEvaluations,
+  toReadableContextResult,
 } from "../src/core/index.js";
 import type {
   ContextDecisionOptions,
@@ -132,6 +133,36 @@ test("provenance readiness does not control decision labels", () => {
   assert.equal(uncertainReadinessDecision.decision, "cite_as_primary");
 });
 
+test("handoff safety does not control decision-label policy", () => {
+  const evaluation = evaluateSignal(baseInput({
+    source: "https://arxiv.org/abs/2605.12345",
+    source_type: "arxiv",
+    semantic_score: 0.94,
+    published_at: "2026-05-20T09:00:00.000Z",
+  }), { now: NOW });
+  const uncertainReadinessEvaluation: CoreSignalEvaluationResult = {
+    ...evaluation,
+    provenance_readiness: {
+      ...evaluation.provenance_readiness,
+      state: "derived",
+      warnings: ["provenance readiness was forced derived for handoff-policy regression coverage"],
+      reasons: ["handoff safety must remain derived from the decision, not a decision input"],
+    },
+  };
+  const options: ContextDecisionOptions = {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+  };
+
+  const decision = interpretEvaluation(uncertainReadinessEvaluation, options);
+  const readable = toReadableContextResult(uncertainReadinessEvaluation, decision);
+  const decisionAfterReadable = interpretEvaluation(uncertainReadinessEvaluation, options);
+
+  assert.equal(decision.decision, "cite_as_primary");
+  assert.equal(readable.handoff.safe_for_agent_handoff, false);
+  assert.deepEqual(decisionAfterReadable, decision);
+});
+
 test("high utility does not promote low-ranked signals", () => {
   const evaluation = evaluateSignal(baseInput({
     source: "https://news.ycombinator.com/item?id=1",
@@ -188,6 +219,25 @@ test("old academic citation source becomes supporting evidence", () => {
 
   assert.equal(decision.decision, "cite_as_supporting");
   assert.match(decision.meaning, /useful evidence/i);
+});
+
+test("stale but semantically relevant citation source receives supporting caution", () => {
+  const { evaluation, decision } = evaluated({
+    source: "https://scholar.example.edu/stale-relevant-release-gate",
+    source_type: "google_scholar",
+    semantic_score: 0.92,
+    published_at: "2022-01-01T00:00:00.000Z",
+  }, {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+  });
+  const readable = toReadableContextResult(evaluation, decision);
+
+  assert.equal(decision.decision, "cite_as_supporting");
+  assert.ok(evaluation.freshness_score !== null && evaluation.freshness_score < 50);
+  assert.match(decision.action, /supporting evidence/i);
+  assert.equal(readable.label, "Supporting source");
+  assert.equal(readable.handoff.safe_for_agent_handoff, true);
 });
 
 test("missing-date academic source needs verification", () => {

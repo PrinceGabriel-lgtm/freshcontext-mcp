@@ -116,6 +116,7 @@ function assertStructuredResultContract(result: Record<string, unknown>): void {
   assert.deepEqual(Object.keys(handoff).sort(), HANDOFF_KEYS);
   assert.equal(typeof handoff.safe_for_agent_handoff, "boolean");
   assert.equal(typeof handoff.reason, "string");
+  assert.deepEqual(readable.warnings, result.warnings);
 
   const readiness = result.provenance_readiness as Record<string, unknown>;
   assert.deepEqual(Object.keys(readiness).sort(), PROVENANCE_READINESS_KEYS);
@@ -126,6 +127,12 @@ function assertStructuredResultContract(result: Record<string, unknown>): void {
 
   const sourceIdentity = readiness.source_identity as Record<string, unknown>;
   assert.deepEqual(Object.keys(sourceIdentity).sort(), SOURCE_IDENTITY_KEYS);
+}
+
+function resultBySource(structured: any, source: string): any {
+  const result = structured.results.find((item: Record<string, unknown>) => item.source === source);
+  assert.ok(result, `expected structured result for ${source}`);
+  return result;
 }
 
 test("evaluate_context returns decision-first output for caller-provided signals", () => {
@@ -248,6 +255,139 @@ test("evaluate_context accepts pre-provenance payloads and adds readiness withou
   assert.ok(undated);
   assert.equal(undated.freshness_score, null);
   assert.equal(undated.provenance_readiness.state, "partial");
+});
+
+test("evaluate_context stress batch keeps provenance, readable, and handoff coherent", () => {
+  const result = evaluateContextInput(validInput({
+    signals: [
+      {
+        title: "Complete primary source",
+        content: "A strong current academic source with complete provenance.",
+        source: "https://arxiv.org/abs/2605.10001",
+        source_type: "arxiv",
+        published_at: "2026-05-24T12:00:00.000Z",
+        retrieved_at: NOW,
+        semantic_score: 0.94,
+        date_confidence: "high",
+      },
+      {
+        title: "Weak source identity but strong content",
+        content: "A strong current source whose source identity is too weak for handoff.",
+        source: "weaksrc",
+        source_type: "arxiv",
+        published_at: "2026-05-24T12:00:00.000Z",
+        retrieved_at: NOW,
+        semantic_score: 0.94,
+        date_confidence: "high",
+      },
+      {
+        title: "Title-only source with no canonical content",
+        source: "https://example.com/title-only",
+        source_type: "arxiv",
+        published_at: "2026-05-24T12:00:00.000Z",
+        retrieved_at: NOW,
+        semantic_score: 0.94,
+        date_confidence: "high",
+      },
+      {
+        title: "Unusable source identity but strong content",
+        content: "A strong current source whose source identity should remain unknown.",
+        source: "unknown",
+        source_type: "arxiv",
+        published_at: "2026-05-24T12:00:00.000Z",
+        retrieved_at: NOW,
+        semantic_score: 0.94,
+        date_confidence: "high",
+      },
+      {
+        title: "Derived secondary summary",
+        content: "A strong current summary that explicitly derives from another source.",
+        source: "https://example.com/derived-summary",
+        source_type: "secondary",
+        published_at: "2026-05-24T12:00:00.000Z",
+        retrieved_at: NOW,
+        semantic_score: 0.94,
+        date_confidence: "high",
+        metadata: {
+          original_source: "https://example.com/original-source",
+        },
+      },
+      {
+        title: "Failed upstream output",
+        content: "[ERROR] upstream timeout while retrieving context",
+        source: "https://example.com/failed",
+        source_type: "arxiv",
+        published_at: "2026-05-24T12:00:00.000Z",
+        retrieved_at: NOW,
+        semantic_score: 1,
+        date_confidence: "high",
+      },
+      {
+        title: "Missing date but useful context",
+        content: "A useful source whose date is missing and must be treated cautiously.",
+        source: "https://example.com/missing-date",
+        source_type: "arxiv",
+        published_at: null,
+        retrieved_at: NOW,
+        semantic_score: 0.88,
+        date_confidence: "unknown",
+      },
+      {
+        title: "Minimal legacy title-only payload",
+        source: "https://example.com/legacy-title-only",
+      },
+    ],
+  }));
+  const structured = structuredOutput(formatEvaluateContextResult(result));
+
+  assert.equal(result.items.length, 8);
+  assert.equal(structured.results.length, 8);
+  assert.deepEqual(Object.keys(structured).sort(), ["intent", "profile", "results"]);
+  for (const item of structured.results) {
+    assertStructuredResultContract(item);
+    assert.equal("handoff" in item, false);
+  }
+
+  const complete = resultBySource(structured, "https://arxiv.org/abs/2605.10001");
+  assert.equal(complete.decision, "cite_as_primary");
+  assert.equal(complete.provenance_readiness.state, "complete");
+  assert.deepEqual(complete.readable.handoff, {
+    safe_for_agent_handoff: true,
+    reason: "Decision and complete provenance support agent handoff.",
+  });
+
+  for (const [source, state] of [
+    ["weaksrc", "partial"],
+    ["https://example.com/title-only", "incomplete"],
+    ["unknown", "unknown"],
+    ["https://example.com/derived-summary", "derived"],
+  ] as const) {
+    const item = resultBySource(structured, source);
+    assert.equal(item.decision, "cite_as_primary");
+    assert.equal(item.provenance_readiness.state, state);
+    assert.deepEqual(item.readable.handoff, {
+      safe_for_agent_handoff: false,
+      reason: "Provenance is not complete enough for agent handoff.",
+    });
+  }
+
+  const failed = resultBySource(structured, "https://example.com/failed");
+  assert.equal(failed.decision, "exclude");
+  assert.equal(failed.provenance_readiness.state, "unknown");
+  assert.deepEqual(failed.readable.handoff, {
+    safe_for_agent_handoff: false,
+    reason: "Decision does not support agent handoff.",
+  });
+
+  const missingDate = resultBySource(structured, "https://example.com/missing-date");
+  assert.equal(missingDate.decision, "needs_verification");
+  assert.equal(missingDate.provenance_readiness.state, "partial");
+  assert.equal(missingDate.readable.handoff.safe_for_agent_handoff, false);
+
+  const legacy = resultBySource(structured, "https://example.com/legacy-title-only");
+  assert.equal(legacy.decision, "needs_verification");
+  assert.equal(legacy.provenance_readiness.state, "incomplete");
+  assert.equal(legacy.readable.handoff.safe_for_agent_handoff, false);
 });
 
 test("evaluate_context rejects unknown source profiles", () => {

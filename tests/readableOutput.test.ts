@@ -242,6 +242,40 @@ test("readable handoff blocks unsafe decisions", () => {
   }
 });
 
+test("readable handoff follows the full decision and provenance readiness matrix", () => {
+  const readinessStates: ProvenanceReadinessState[] = [
+    "complete",
+    ...INCOMPLETE_HANDOFF_PROVENANCE,
+  ];
+  const decisions = [
+    ...SAFE_HANDOFF_DECISIONS,
+    ...UNSAFE_HANDOFF_DECISIONS,
+  ];
+
+  for (const machineDecision of decisions) {
+    for (const readinessState of readinessStates) {
+      const readable = toReadableContextResult(
+        evaluation({
+          provenance_readiness: provenanceReadiness({ state: readinessState }),
+        }),
+        decision(machineDecision)
+      );
+      const decisionIsSafe = SAFE_HANDOFF_DECISIONS.includes(machineDecision);
+      const expectedSafe = decisionIsSafe && readinessState === "complete";
+      const expectedReason = expectedSafe
+        ? SAFE_HANDOFF_REASON
+        : decisionIsSafe
+          ? UNSAFE_PROVENANCE_REASON
+          : UNSAFE_DECISION_REASON;
+
+      assert.deepEqual(readable.handoff, {
+        safe_for_agent_handoff: expectedSafe,
+        reason: expectedReason,
+      });
+    }
+  }
+});
+
 test("provenance readiness changes do not change non-handoff readable output", () => {
   const baseEvaluation = evaluation();
   const uncertainReadinessEvaluation = evaluation({

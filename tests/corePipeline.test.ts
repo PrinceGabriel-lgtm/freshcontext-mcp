@@ -224,6 +224,40 @@ test("evaluateSignals sorting follows ranked final_score, not utility sidecar sc
   assert.equal(typeof lowerRank.utility.score, "number");
 });
 
+test("failed or low-confidence fresh context cannot win merely by being fresh", () => {
+  const healthyCurrent = baseInput({
+    id: "healthy-current",
+    source: "https://example.com/healthy-current",
+    semantic_score: 0.82,
+    published_at: "2026-05-24T12:00:00.000Z",
+  });
+  const failedFresh = baseInput({
+    id: "failed-fresh",
+    source: "https://example.com/failed-fresh",
+    content: "[ERROR] upstream timeout for fresh-looking context",
+    semantic_score: 1,
+    published_at: "2026-05-24T12:00:00.000Z",
+  });
+  const weakFresh = baseInput({
+    id: "weak-fresh",
+    source: "https://example.com/weak-fresh",
+    semantic_score: 0.05,
+    published_at: "2026-05-24T12:00:00.000Z",
+  });
+
+  const evaluations = evaluateSignals([failedFresh, weakFresh, healthyCurrent], { now: NOW });
+  const failed = evaluations.find((evaluation) => evaluation.signal.id === "failed-fresh");
+  const healthy = evaluations.find((evaluation) => evaluation.signal.id === "healthy-current");
+
+  assert.equal(evaluations[0].signal.id, "healthy-current");
+  assert.ok(failed);
+  assert.ok(healthy);
+  assert.equal(failed.signal.status, "failed");
+  assert.equal(failed.ranked.confidence, "low");
+  assert.equal(failed.freshness_score, null);
+  assert.ok(failed.ranked.final_score < healthy.ranked.final_score);
+});
+
 test("evaluateSignal does not mutate caller-owned inputs", () => {
   const input = baseInput({ metadata: { nested: { value: 1 } } });
   const before = JSON.stringify(input);
@@ -339,4 +373,56 @@ test("provenance readiness states do not affect scoring, ranking order, or decis
 
   const sorted = evaluateSignals(inputs, { now: NOW });
   assert.deepEqual(sorted.map((evaluation) => evaluation.signal.id), variants.map((variant) => variant.id));
+});
+
+test("readable handoff derivation does not affect scoring, ranking, or decisions", () => {
+  const inputs = [
+    baseInput({
+      id: "handoff-complete",
+      source_type: "official_docs",
+      source: "https://example.com/handoff-complete",
+      semantic_score: 0.92,
+    }),
+    baseInput({
+      id: "handoff-derived",
+      source_type: "official_docs",
+      source: "https://example.com/handoff-derived",
+      semantic_score: 0.92,
+      metadata: { is_derived: true },
+    }),
+    baseInput({
+      id: "handoff-unknown",
+      source_type: "official_docs",
+      source: "unknown",
+      semantic_score: 0.92,
+    }),
+  ];
+  const options: ContextDecisionOptions = {
+    sourceProfile: "official_docs",
+    intentProfile: "developer_adoption",
+  };
+  const evaluations = evaluateSignals(inputs, { now: NOW });
+  const decisions = evaluations.map((evaluation) => interpretEvaluation(evaluation, options));
+  const before = evaluations.map((evaluation, index) => ({
+    id: evaluation.signal.id,
+    metrics: stableMetrics(evaluation),
+    readiness: evaluation.provenance_readiness.state,
+    decision: decisions[index].decision,
+  }));
+  const readables = evaluations.map((evaluation, index) => toReadableContextResult(evaluation, decisions[index]));
+  const after = evaluations.map((evaluation, index) => ({
+    id: evaluation.signal.id,
+    metrics: stableMetrics(evaluation),
+    readiness: evaluation.provenance_readiness.state,
+    decision: interpretEvaluation(evaluation, options).decision,
+  }));
+  const rerun = evaluateSignals(inputs, { now: NOW });
+
+  assert.deepEqual(after, before);
+  assert.deepEqual(
+    rerun.map((evaluation) => evaluation.signal.id),
+    evaluations.map((evaluation) => evaluation.signal.id)
+  );
+  assert.equal(readables.some((readable) => readable.handoff.safe_for_agent_handoff), true);
+  assert.equal(readables.some((readable) => !readable.handoff.safe_for_agent_handoff), true);
 });
