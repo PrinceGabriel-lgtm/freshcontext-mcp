@@ -34,7 +34,7 @@ export async function redditAdapter(options: ExtractOptions): Promise<AdapterRes
 
   const res = await fetch(safeUrl, {
     headers: {
-      "User-Agent": "freshcontext-mcp/0.3.20 (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)",
+      "User-Agent": "freshcontext-mcp/0.3.21 (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)",
       "Accept": "application/json",
     },
   });

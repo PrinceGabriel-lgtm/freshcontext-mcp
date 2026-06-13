@@ -6,7 +6,7 @@ Use this guide when connecting Claude Desktop, Codex, or another MCP-compatible 
 
 ## What You Should See
 
-FreshContext `0.3.20` exposes:
+FreshContext `0.3.21` exposes:
 
 ```text
 22 tools = evaluate_context + 21 read-only reference adapters
@@ -105,8 +105,8 @@ Expected smoke result:
 ```json
 {
   "ok": true,
-  "package_version": "0.3.20",
-  "server_version": "0.3.20",
+  "package_version": "0.3.21",
+  "server_version": "0.3.21",
   "tool_count": 22
 }
 ```

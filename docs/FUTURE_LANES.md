@@ -10,7 +10,7 @@ The current package boundary is documented in [Core / MCP Boundary](./CORE_MCP_B
 
 Live today:
 
-- npm package: `freshcontext-mcp@0.3.20`
+- npm package: `freshcontext-mcp@0.3.21`
 - MCP stdio server
 - `evaluate_context` MCP tool for caller-provided candidate context
 - Signal Contract v1 as the stable candidate-context input shape

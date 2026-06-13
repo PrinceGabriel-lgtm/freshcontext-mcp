@@ -50,7 +50,7 @@ Worker/site surfaces own deployment concerns:
 
 Live today:
 
-- npm package: `freshcontext-mcp@0.3.20`
+- npm package: `freshcontext-mcp@0.3.21`
 - MCP stdio server and published binary: `freshcontext-mcp`
 - Core subpath export: `freshcontext-mcp/core`
 - `evaluate_context` MCP tool for caller-provided candidate context
@@ -59,6 +59,7 @@ Live today:
 - Source Profiles
 - Decision Helper
 - human-readable `readable` output on structured `evaluate_context` results
+- provenance readiness and readable handoff safety
 - adapter registry metadata
 - arXiv signal-to-decision proof
 - bring-your-own-context local demos

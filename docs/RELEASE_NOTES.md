@@ -1,5 +1,33 @@
 # FreshContext Release Notes
 
+## 0.3.21
+
+FreshContext 0.3.21 adds provenance readiness and readable handoff safety for judged context.
+
+### Provenance Readiness
+
+- Adds a Core `provenance_readiness` sidecar that classifies caller-provided context as `complete`, `partial`, `incomplete`, `unknown`, or `derived`.
+- Keeps provenance readiness additive: it does not fetch sources, verify truth, change ranking, change utility scoring, or change decision-label policy.
+- Preserves stable structured `evaluate_context` output while adding provenance readiness to each result.
+
+### Public Contract and Boundary Gates
+
+- Adds compatibility coverage for pre-provenance `evaluate_context` payloads.
+- Locks Core public imports, package fixture behavior, and the `freshcontext-mcp/core` subpath surface.
+- Audits the adapter boundary so Core remains the judgment layer, while the 21 reference tools remain optional source-intake adapters.
+
+### Readable Handoff Safety
+
+- Adds `readable.handoff.safe_for_agent_handoff` and `readable.handoff.reason` to structured readable output.
+- Derives handoff safety only from the existing decision and `provenance_readiness`.
+- Does not add multi-agent orchestration, batch handoff counts, new MCP tools, or adapter orchestration.
+
+### Release Gate
+
+- Adds stress coverage for ugly provenance, scoring, decision, readable output, and handoff edge cases.
+- Pins the policy that minimal title-only legacy input is valid but needs verification.
+- Confirms MCP smoke remains at 22 tools and package/server metadata align at 0.3.21 for this release prep.
+
 ## 0.3.19
 
 FreshContext 0.3.19 syncs the public MCP package with the new generic `evaluate_context` interface.
