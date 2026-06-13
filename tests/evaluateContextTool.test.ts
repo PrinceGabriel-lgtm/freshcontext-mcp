@@ -355,6 +355,15 @@ test("evaluate_context requires each signal to carry source plus title or conten
   );
 });
 
+test("evaluate_context remains caller-provided signal judgment without adapter orchestration", () => {
+  const source = readFileSync("src/tools/evaluateContext.ts", "utf8");
+
+  assert.match(source, /evaluateSignals/);
+  assert.match(source, /interpretEvaluations/);
+  assert.doesNotMatch(source, /adapters\/registry|\.\.\/adapters|getAdapterDescriptor|listAdapterDescriptors/);
+  assert.doesNotMatch(source, /extract_[a-z_]+|search_jobs|search_repos|package_trends/);
+});
+
 test("evaluate_context helper does not import host runtime or retrieval modules", () => {
   const source = readFileSync("src/tools/evaluateContext.ts", "utf8");
 

@@ -22,6 +22,14 @@ async function listFixtureEntries() {
   return entries.map((entry) => String(entry).replace(/\\/g, "/"));
 }
 
+async function readFixtureRuntimeOutput() {
+  const entries = await listFixtureEntries();
+  return entries
+    .filter((entry) => entry.startsWith("dist/") && entry.endsWith(".js"))
+    .map((entry) => readFileSync(join(fixtureRoot, entry), "utf8"))
+    .join("\n");
+}
+
 test("Core package fixture harness generates dependency-light package metadata", () => {
   assert.equal(existsSync("dist/core/index.js"), true, "run npm run build before fixture tests");
   runFixtureScript();
@@ -133,4 +141,19 @@ test("Core package fixture keeps provenance readiness free of host runtime surfa
   assert.match(coreIndex, /prepareProvenanceReadiness/);
   assert.doesNotMatch(combined, /\.\.\/adapters|\.\.\/tools|\.\.\/rest|\.\.\/server|worker\/src/);
   assert.doesNotMatch(combined, /\bKV\b|McpServer|fetch\(|createServer|listen\(/);
+});
+
+test("Core package fixture runtime output stays free of host and source-intake imports", async () => {
+  runFixtureScript();
+
+  const entries = await listFixtureEntries();
+  const runtimeOutput = await readFixtureRuntimeOutput();
+
+  assert.equal(entries.some((entry) => entry.startsWith("dist/adapters/")), false);
+  assert.equal(entries.some((entry) => entry.startsWith("dist/tools/")), false);
+  assert.equal(entries.some((entry) => entry.startsWith("dist/rest/")), false);
+  assert.equal(entries.some((entry) => entry === "dist/server.js"), false);
+  assert.doesNotMatch(runtimeOutput, /from\s+["']\.\.\/adapters|from\s+["']\.\.\/tools/);
+  assert.doesNotMatch(runtimeOutput, /@modelcontextprotocol|McpServer|fetch\(|createServer|listen\(/);
+  assert.doesNotMatch(runtimeOutput, /worker\/src|\.\.\/worker|\bKV\b|\bCACHE\b/);
 });

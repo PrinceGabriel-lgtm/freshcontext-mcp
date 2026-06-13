@@ -14,7 +14,16 @@ import type {
   AdapterRuntimeKind,
   FreshContextAdapterDescriptor,
 } from "../src/adapters/registry.js";
-import { getSourceProfile } from "../src/core/index.js";
+import {
+  evaluateSignal,
+  getSourceProfile,
+} from "../src/core/index.js";
+
+function registeredToolNames(): string[] {
+  const serverSource = readFileSync("src/server.ts", "utf8");
+  return [...serverSource.matchAll(/server\.registerTool\(\s*"([^"]+)"/g)]
+    .map((match) => match[1]);
+}
 
 test("registry has 21 descriptors", () => {
   assert.equal(BUILT_IN_ADAPTER_REGISTRY.length, 21);
@@ -30,12 +39,59 @@ test("adapter ids and tool names are unique", () => {
   assert.equal(new Set(toolNames).size, toolNames.length);
 });
 
+test("MCP tool registrations preserve one Core judgment front door and 21 source intake tools", () => {
+  const descriptors = listAdapterDescriptors();
+  const descriptorToolNames = descriptors.map((descriptor) => descriptor.tool_name).sort();
+  const toolNames = registeredToolNames().sort();
+
+  assert.equal(toolNames.length, 22);
+  assert.deepEqual(toolNames.filter((name) => name === "evaluate_context"), ["evaluate_context"]);
+  assert.equal(descriptorToolNames.length, 21);
+  assert.equal(descriptorToolNames.includes("evaluate_context"), false);
+  assert.deepEqual(toolNames, ["evaluate_context", ...descriptorToolNames].sort());
+});
+
 test("every descriptor maps to an existing SourceProfileId", () => {
   for (const descriptor of listAdapterDescriptors()) {
     assert.ok(getSourceProfile(descriptor.source_profile), `${descriptor.adapter_id} should map to a source profile`);
     for (const secondaryProfile of descriptor.secondary_source_profiles ?? []) {
       assert.ok(getSourceProfile(secondaryProfile), `${descriptor.adapter_id} secondary profile should exist`);
     }
+  }
+});
+
+test("every descriptor carries stable source-intake identity for Signal Contract bridging", () => {
+  const outputModes: AdapterOutputMode[] = ["single", "batch", "composite"];
+  const runtimeKinds: AdapterRuntimeKind[] = ["api", "browser", "composite", "mixed", "local"];
+  const risks: AdapterRisk[] = ["low", "medium", "high"];
+
+  for (const descriptor of listAdapterDescriptors()) {
+    assert.match(descriptor.adapter_id, /^[a-z][a-z0-9_]*$/);
+    assert.match(descriptor.tool_name, /^[a-z][a-z0-9_]*$/);
+    assert.ok(outputModes.includes(descriptor.output_mode));
+    assert.ok(runtimeKinds.includes(descriptor.runtime_kind));
+    assert.ok(risks.includes(descriptor.risk));
+    assert.ok(getSourceProfile(descriptor.source_profile));
+  }
+});
+
+test("adapter descriptors can describe judgeable candidate context without invoking adapters", () => {
+  for (const descriptor of listAdapterDescriptors()) {
+    const evaluation = evaluateSignal({
+      source: `freshcontext-adapter://${descriptor.tool_name}`,
+      source_type: descriptor.adapter_id,
+      title: `${descriptor.tool_name} candidate context`,
+      content: `Candidate context prepared by ${descriptor.tool_name}.`,
+      published_at: null,
+      retrieved_at: "2026-05-24T13:00:00.000Z",
+      semantic_score: 0.5,
+      date_confidence: "unknown",
+    }, { now: "2026-05-24T13:00:00.000Z" });
+
+    assert.equal(evaluation.signal.source_type, descriptor.adapter_id);
+    assert.equal(evaluation.signal.source, `freshcontext-adapter://${descriptor.tool_name}`);
+    assert.equal(evaluation.provenance_readiness.source_identity.completeness, "complete");
+    assert.equal(evaluation.provenance_readiness.timing_completeness, "partial");
   }
 });
 
