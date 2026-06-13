@@ -91,8 +91,36 @@ test("Core package fixture exports readable helper from the root lane", async ()
   assert.equal(existsSync(join(fixtureRoot, "dist", "provenanceReadiness.d.ts")), true);
 
   const core = await import(pathToFileURL(join(fixtureRoot, "dist", "index.js")).href);
+  const signal = {
+    source: "https://example.com/core-fixture-contract",
+    source_type: "official_docs",
+    content: "Core fixture contract content.",
+    published_at: "2026-05-24T12:00:00.000Z",
+    retrieved_at: "2026-05-24T13:00:00.000Z",
+    semantic_score: 0.9,
+    date_confidence: "high",
+  };
+  const evaluation = core.evaluateSignal(signal, { now: "2026-05-24T13:00:00.000Z" });
+  const readable = core.toReadableContextResult(evaluation, {
+    decision: "use_first",
+    label: "Use first",
+    meaning: "Fixture helper composition remains available.",
+    action: "Use the generated Core fixture helper.",
+    reasons: [evaluation.explanation],
+    warnings: [],
+  });
+  const readiness = core.prepareProvenanceReadiness(signal, {
+    resultId: "core-fixture-contract",
+    semanticFingerprint: "core-fixture-contract-fingerprint",
+    engineVersion: "freshcontext-0.3.20",
+  });
+
+  assert.equal(typeof core.evaluateSignal, "function");
   assert.equal(typeof core.toReadableContextResult, "function");
   assert.equal(typeof core.prepareProvenanceReadiness, "function");
+  assert.equal(evaluation.provenance_readiness.state, "complete");
+  assert.equal(readable.label, "Use first");
+  assert.equal(readiness.state, "complete");
 });
 
 test("Core package fixture keeps provenance readiness free of host runtime surfaces", () => {

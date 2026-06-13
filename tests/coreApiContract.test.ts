@@ -20,7 +20,9 @@ import {
   scoreLabel,
   SIGNAL_CONTRACT_VERSION,
   stampFreshness,
+  toReadableContextResult,
   toStructuredJSON,
+  verifyHaPriV2,
 } from "../src/core/index.js";
 import type {
   AdapterResult,
@@ -137,8 +139,12 @@ test("public ranking and utility imports compile and remain callable", () => {
     engineVersion: "freshcontext-0.3.17",
   };
   const haPri: HaPriV2Result = calculateHaPriV2(haPriInput);
+  const verified = verifyHaPriV2(haPriInput, haPri.haPriSigV2);
+  const unknown = verifyHaPriV2(haPriInput, null);
 
   assert.match(haPri.haPriSigV2, /^[a-f0-9]{64}$/);
+  assert.equal(verified.status, "valid");
+  assert.equal(unknown.status, "unknown");
 });
 
 test("public Core evaluation pipeline imports compile and remain callable", () => {
@@ -201,10 +207,13 @@ test("public decision helper imports compile and remain callable", () => {
   };
   const decision: ContextDecisionResult = interpretEvaluation(evaluation, options);
   const decisions: ContextDecisionResult[] = interpretEvaluations([evaluation], options);
+  const readable = toReadableContextResult(evaluation, decision);
 
   assert.equal(typeof decision.decision, "string");
   assert.equal(typeof decision.meaning, "string");
   assert.equal(decisions.length, 1);
+  assert.equal(typeof readable.summary, "string");
+  assert.ok(Array.isArray(readable.why));
 });
 
 

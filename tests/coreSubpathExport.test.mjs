@@ -19,13 +19,21 @@ test(
   { skip: !existsSync(builtCorePath) },
   async () => {
     const core = await import("freshcontext-mcp/core");
-    assert.equal(typeof core.normalizeSignal, "function");
-    assert.equal(typeof core.evaluateSignals, "function");
-    assert.equal(typeof core.interpretEvaluations, "function");
-    assert.equal(typeof core.toReadableContextResult, "function");
-    assert.equal(typeof core.prepareProvenanceReadiness, "function");
-    assert.equal(typeof core.getSourceProfile, "function");
-    assert.equal(typeof core.calculateHaPriV2, "function");
+    const expectedFunctions = [
+      "normalizeSignal",
+      "evaluateSignal",
+      "evaluateSignals",
+      "interpretEvaluation",
+      "interpretEvaluations",
+      "toReadableContextResult",
+      "prepareProvenanceReadiness",
+      "getSourceProfile",
+      "calculateHaPriV2",
+      "verifyHaPriV2",
+    ];
+    for (const name of expectedFunctions) {
+      assert.equal(typeof core[name], "function", `${name} should remain exported`);
+    }
 
     const profile = core.getSourceProfile("academic_research");
     assert.equal(profile?.profile_id, "academic_research");
@@ -55,5 +63,17 @@ test(
     const readable = core.toReadableContextResult(evaluations[0], decisions[0]);
     assert.equal(typeof readable.summary, "string");
     assert.ok(["cite_as_primary", "use_first", "cite_as_supporting"].includes(decisions[0].decision));
+
+    const haPriInput = {
+      resultId: "subpath-contract",
+      rawContent: "Subpath provenance contract content",
+      semanticFingerprint: "subpath-contract-fingerprint",
+      adapter: "arxiv",
+      publishedAt: "2026-06-01T00:00:00.000Z",
+      retrievedAt: "2026-06-09T00:00:00.000Z",
+      engineVersion: "freshcontext-0.3.20",
+    };
+    const signature = core.calculateHaPriV2(haPriInput);
+    assert.equal(core.verifyHaPriV2(haPriInput, signature.haPriSigV2).status, "valid");
   }
 );
