@@ -132,7 +132,7 @@ Some clients can use `mcp-remote`:
 }
 ```
 
-The npm/local stdio package remains the safest default client path. The hosted Worker endpoint was last verified on 2026-06-14 at `0.3.21 / 22 tools` with `evaluate_context` present and returning decision-first output, including `provenance_readiness`, `readable`, and `readable.handoff`. Because the Worker is a separate deployment surface, re-run remote verification before claiming future package interfaces are live there.
+The npm/local stdio package remains the safest default client path. The hosted Worker endpoint was last verified on 2026-06-14 at `0.3.22 / 22 tools` with `evaluate_context` present and returning decision-first output, including `provenance_readiness`, `readable`, and `readable.handoff`. Because the Worker is a separate deployment surface, re-run remote verification before claiming future package interfaces are live there.
 
 ## ChatGPT / OpenAI Connector Boundary
 
