@@ -170,7 +170,7 @@ FreshContext does not certify truth. It records why context was used, supported,
 
 `evaluate_context` does not fetch URLs, crawl, scrape, browse, read folders, or call adapters. It only evaluates candidate context the caller provides.
 
-Current boundary: `evaluate_context` is part of the npm/local stdio MCP server prepared for `0.3.21`. The hosted Cloudflare Worker MCP endpoint was last verified separately at `0.3.20 / 22 tools`. The Worker remains a separate deployment surface, so future package interfaces should be re-verified remotely before being claimed live.
+Current boundary: `evaluate_context` is part of the npm/local stdio MCP server prepared for `0.3.22`. The hosted Cloudflare Worker MCP endpoint was last verified separately at `0.3.21 / 22 tools`. The Worker remains a separate deployment surface, so future package interfaces should be re-verified remotely before being claimed live.
 
 ### Network Boundary
 

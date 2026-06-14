@@ -1,5 +1,21 @@
 # FreshContext Release Notes
 
+## 0.3.22
+
+FreshContext 0.3.22 expands Source Profiles as judgment policies without adding adapters or retrieval behavior.
+
+### Source Profile Expansion
+
+- Adds `product_research` for product pages, pricing pages, launch pages, vendor docs, changelogs, and adoption evidence.
+- Adds `multi_agent_handoff` for caller-provided context passed between agents or workflow steps.
+- Preserves `official_docs` as an existing built-in profile with replay coverage.
+
+### Validation Coverage
+
+- Adds saved Signal Contract v1 replay fixtures for product research and multi-agent handoff.
+- Extends batch validation and `evaluate_context` tests so the new profiles return decision-ready, readable output.
+- Keeps the boundary explicit: profiles are judgment policies, not fetching, crawling, adapter selection, Operator mode, or agent orchestration.
+
 ## 0.3.21
 
 FreshContext 0.3.21 adds provenance readiness and readable handoff safety for judged context.
