@@ -101,6 +101,16 @@ export const BUILT_IN_SOURCE_PROFILES: Readonly<Record<SourceProfileId, SourcePr
     failure_policy: "downgrade",
     recommended_surfaces: ["mcp", "rest", "sdk", "operator"],
   }),
+  product_research: profile({
+    profile_id: "product_research",
+    source_types: ["product_page", "pricing_page", "launch_page", "vendor_docs", "changelog", "producthunt"],
+    purpose: "Product pages, launch material, pricing pages, vendor documentation, changelogs, and adoption evidence.",
+    default_decay_lambda: LAMBDA.producthunt,
+    authority_hint: "medium",
+    date_policy: "balanced",
+    failure_policy: "downgrade",
+    recommended_surfaces: ["mcp", "rest", "sdk", "cli", "operator"],
+  }),
   composite_landscape: profile({
     profile_id: "composite_landscape",
     source_types: ["landscape", "idea_landscape", "gov_landscape", "finance_landscape", "company_landscape"],
@@ -110,6 +120,16 @@ export const BUILT_IN_SOURCE_PROFILES: Readonly<Record<SourceProfileId, SourcePr
     date_policy: "balanced",
     failure_policy: "warn",
     recommended_surfaces: ["mcp", "rest", "sdk", "operator"],
+  }),
+  multi_agent_handoff: profile({
+    profile_id: "multi_agent_handoff",
+    source_types: ["agent_handoff", "agent_context", "workflow_context", "user_provided"],
+    purpose: "Caller-provided context passed between agents or workflow steps, with warnings and provenance preserved.",
+    default_decay_lambda: LAMBDA.default,
+    authority_hint: "medium",
+    date_policy: "balanced",
+    failure_policy: "warn",
+    recommended_surfaces: ["mcp", "rest", "sdk", "cli", "operator"],
   }),
   local_custom: profile({
     profile_id: "local_custom",

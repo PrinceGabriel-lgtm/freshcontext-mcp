@@ -54,7 +54,7 @@ server.registerTool(
     description:
       "Evaluate caller-provided candidate context and return decision-ready output. This is the primary FreshContext judgment path: it does not fetch, crawl, scrape, browse, read folders, or call adapters.",
     inputSchema: z.object({
-      profile: z.string().min(1).describe("Source Profile id, e.g. academic_research, jobs_opportunities, market_finance, official_docs, local_custom."),
+      profile: z.string().min(1).describe("Source Profile id, e.g. academic_research, jobs_opportunities, market_finance, official_docs, product_research, multi_agent_handoff, local_custom."),
       intent: z.string().min(1).describe("Intent Profile id, e.g. citation_check, student_research, developer_adoption, job_search, market_watch, business_due_diligence, medical_literature_triage."),
       signals: z.array(signalInputSchema).min(1).max(100).describe("Candidate context items provided by the caller. FreshContext evaluates these; it does not retrieve them."),
       now: z.string().optional().describe("Optional ISO timestamp for deterministic evaluation."),

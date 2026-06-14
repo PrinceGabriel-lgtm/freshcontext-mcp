@@ -121,6 +121,8 @@ Public exports:
 
 They reframe the 21 named adapter tools as reference adapters and source-profile examples instead of the product identity. The MCP server also exposes `evaluate_context` as the generic caller-provided context evaluation path. Source Profiles do not implement `retrieve(...)`, Operator mode, adapter selection, crawling, local file search, or any host/runtime behavior.
 
+Current built-in profiles include canonical docs, code activity, social pulse, academic research, market/finance, jobs, government/regulatory material, company intelligence, product research, composite landscapes, multi-agent handoff context, and local/custom caller-provided context.
+
 ## Decision Helper
 
 The decision helper translates a Core evaluation result into user-facing action meaning.

@@ -26,6 +26,8 @@ test("listSourceProfiles returns all built-in profiles", () => {
 
   assert.equal(profiles.length, Object.keys(BUILT_IN_SOURCE_PROFILES).length);
   assert.ok(profiles.some((profile) => profile.profile_id === "official_docs"));
+  assert.ok(profiles.some((profile) => profile.profile_id === "product_research"));
+  assert.ok(profiles.some((profile) => profile.profile_id === "multi_agent_handoff"));
   assert.ok(profiles.some((profile) => profile.profile_id === "local_custom"));
 });
 
@@ -76,6 +78,33 @@ test("local custom exists as explicit caller-provided context, not filesystem ac
   assert.doesNotMatch(local.purpose, /file search|filesystem|crawler/i);
 });
 
+test("product research exists as product judgment policy, not standalone retrieval", () => {
+  const product = getSourceProfile("product_research");
+
+  assert.ok(product);
+  assert.equal(product.profile_id, "product_research");
+  assert.ok(product.source_types.includes("product_page"));
+  assert.ok(product.source_types.includes("vendor_docs"));
+  assert.equal(product.authority_hint, "medium");
+  assert.equal(product.date_policy, "balanced");
+  assert.equal(product.failure_policy, "downgrade");
+  assert.match(product.purpose, /Product pages/);
+  assert.doesNotMatch(product.purpose, /fetch|crawler|scrape|browser/i);
+});
+
+test("multi-agent handoff exists as caller-provided context policy, not orchestration", () => {
+  const handoff = getSourceProfile("multi_agent_handoff");
+
+  assert.ok(handoff);
+  assert.equal(handoff.profile_id, "multi_agent_handoff");
+  assert.ok(handoff.source_types.includes("agent_handoff"));
+  assert.ok(handoff.source_types.includes("user_provided"));
+  assert.equal(handoff.date_policy, "balanced");
+  assert.equal(handoff.failure_policy, "warn");
+  assert.match(handoff.purpose, /Caller-provided context/);
+  assert.doesNotMatch(handoff.purpose, /retrieve|Operator mode|file search|filesystem|crawler/i);
+});
+
 test("source profile accessors return copies rather than shared mutable arrays", () => {
   const first = getSourceProfile("official_docs");
   const second = getSourceProfile("official_docs");
@@ -91,6 +120,8 @@ test("source profile accessors return copies rather than shared mutable arrays",
 
 test("source profile public types are consumable from src/core/index.ts", () => {
   const profileId: SourceProfileId = "official_docs";
+  const productProfileId: SourceProfileId = "product_research";
+  const handoffProfileId: SourceProfileId = "multi_agent_handoff";
   const authority: SourceAuthorityHint = "high";
   const datePolicy: SourceDatePolicy = "balanced";
   const failurePolicy: SourceFailurePolicy = "warn";
@@ -102,4 +133,6 @@ test("source profile public types are consumable from src/core/index.ts", () => 
   assert.equal(profile.date_policy, datePolicy);
   assert.equal(profile.failure_policy, failurePolicy);
   assert.ok(profile.recommended_surfaces.includes(surface));
+  assert.equal(getSourceProfile(productProfileId)?.profile_id, "product_research");
+  assert.equal(getSourceProfile(handoffProfileId)?.profile_id, "multi_agent_handoff");
 });

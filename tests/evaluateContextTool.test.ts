@@ -190,6 +190,77 @@ test("evaluate_context structured JSON includes additive readable output", () =>
   });
 });
 
+test("evaluate_context accepts product and multi-agent handoff source profiles", () => {
+  const productResult = evaluateContextInput(validInput({
+    profile: "product_research",
+    intent: "developer_adoption",
+    signals: [
+      {
+        title: "Current product docs",
+        content: "The product documentation explains the setup path, supported interface, and adoption boundary.",
+        source: "https://docs.example.org/product/setup",
+        source_type: "vendor_docs",
+        published_at: "2026-05-24T12:00:00.000Z",
+        retrieved_at: NOW,
+        semantic_score: 0.92,
+        date_confidence: "high",
+      },
+    ],
+  }));
+  const handoffResult = evaluateContextInput(validInput({
+    profile: "multi_agent_handoff",
+    intent: "developer_adoption",
+    signals: [
+      {
+        title: "Agent handoff context",
+        content: "A prior agent passed candidate context with warnings and source identity preserved for review.",
+        source: "https://example.com/handoff/context-1",
+        source_type: "agent_handoff",
+        published_at: "2026-05-24T12:00:00.000Z",
+        retrieved_at: NOW,
+        semantic_score: 0.9,
+        date_confidence: "high",
+      },
+    ],
+  }));
+
+  for (const result of [productResult, handoffResult]) {
+    const structured = structuredOutput(formatEvaluateContextResult(result));
+    assert.equal(structured.results.length, 1);
+    assertStructuredResultContract(structured.results[0]);
+    assert.ok(structured.results[0].readable.label.length > 0);
+    assert.ok(Array.isArray(structured.results[0].readable.why));
+    assert.equal("handoff" in structured.results[0], false);
+  }
+
+  assert.equal(productResult.profile.profile_id, "product_research");
+  assert.equal(handoffResult.profile.profile_id, "multi_agent_handoff");
+  assert.match(productResult.items[0].decision.reasons.join(" "), /source profile product_research/);
+  assert.match(handoffResult.items[0].decision.reasons.join(" "), /source profile multi_agent_handoff/);
+});
+
+test("evaluate_context treats multi-agent handoff as caller-provided judgment without orchestration", () => {
+  const result = evaluateContextInput(validInput({
+    profile: "multi_agent_handoff",
+    intent: "developer_adoption",
+    signals: [
+      {
+        title: "Failed handoff payload",
+        content: "Error: upstream agent returned no usable context",
+        source: "https://example.com/handoff/failed",
+        source_type: "agent_handoff",
+        published_at: "2026-05-24T12:00:00.000Z",
+        retrieved_at: NOW,
+        semantic_score: 0.99,
+      },
+    ],
+  }));
+
+  assert.equal(result.items[0].decision.decision, "exclude");
+  assert.equal(result.items[0].evaluation.signal.status, "failed");
+  assert.equal(result.items[0].evaluation.signal.source_type, "agent_handoff");
+});
+
 test("evaluate_context accepts pre-provenance payloads and adds readiness without changing old fields", () => {
   const result = evaluateContextInput(validInput({
     signals: [

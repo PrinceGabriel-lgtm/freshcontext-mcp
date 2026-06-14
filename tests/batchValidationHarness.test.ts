@@ -26,6 +26,12 @@ const REPLAY_FIXTURES = [
     total: 12,
   },
   {
+    path: "examples/batches/signal-contract-v1.product-research.json",
+    profile: "product_research",
+    intent: "developer_adoption",
+    total: 12,
+  },
+  {
     path: "examples/batches/signal-contract-v1.jobs.json",
     profile: "jobs_opportunities",
     intent: "job_search",
@@ -34,6 +40,12 @@ const REPLAY_FIXTURES = [
   {
     path: "examples/batches/signal-contract-v1.mixed-agent-handoff.json",
     profile: "composite_landscape",
+    intent: "developer_adoption",
+    total: 12,
+  },
+  {
+    path: "examples/batches/signal-contract-v1.multi-agent-handoff.json",
+    profile: "multi_agent_handoff",
     intent: "developer_adoption",
     total: 12,
   },

@@ -45,7 +45,9 @@ export type SourceProfileId =
   | "jobs_opportunities"
   | "government_regulatory"
   | "company_intel"
+  | "product_research"
   | "composite_landscape"
+  | "multi_agent_handoff"
   | "local_custom";
 
 export type ContextDecision =

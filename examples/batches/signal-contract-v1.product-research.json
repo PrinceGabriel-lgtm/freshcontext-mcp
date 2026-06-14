@@ -1,0 +1,143 @@
+{
+  "profile": "product_research",
+  "intent": "developer_adoption",
+  "now": "2026-06-09T12:00:00.000Z",
+  "signals": [
+    {
+      "title": "Example Product setup guide",
+      "content": "The official setup guide explains installation, supported interfaces, and current integration boundaries for Example Product.",
+      "source": "https://docs.example.org/product/setup",
+      "source_type": "vendor_docs",
+      "published_at": "2026-06-08T09:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.94,
+      "date_confidence": "high",
+      "expected_decision": "use_first",
+      "review_note": "Current official product docs should be treated as leading adoption evidence."
+    },
+    {
+      "title": "Example Product changelog",
+      "content": "The changelog records a current release with interface updates, migration notes, and compatibility warnings.",
+      "source": "https://docs.example.org/product/changelog",
+      "source_type": "changelog",
+      "published_at": "2026-06-07T10:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.88,
+      "date_confidence": "high",
+      "expected_decision": "use_first",
+      "review_note": "Current changelog material is useful for adoption but should stay tied to its source."
+    },
+    {
+      "title": "Example Product pricing page",
+      "content": "A pricing page lists plans, limits, and a note that enterprise terms require sales contact.",
+      "source": "https://example.com/product/pricing",
+      "source_type": "pricing_page",
+      "published_at": "2026-05-30T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.8,
+      "date_confidence": "medium",
+      "expected_decision": "use_as_background",
+      "review_note": "Useful, but pricing pages should be verified before acting."
+    },
+    {
+      "title": "Example Product launch page",
+      "content": "A launch page describes product positioning and early customer use cases without a visible publication date.",
+      "source": "https://launch.example.net/example-product",
+      "source_type": "launch_page",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.76,
+      "expected_decision": "needs_verification",
+      "review_note": "Relevant product context, but undated launch material needs verification."
+    },
+    {
+      "title": "Example Product invalid timestamp note",
+      "content": "A copied product note includes malformed date metadata while describing a relevant integration.",
+      "source": "https://example.com/product/bad-date",
+      "source_type": "product_page",
+      "published_at": "not-a-date",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.72,
+      "expected_decision": "needs_verification",
+      "review_note": "Malformed date metadata should keep this out of primary evidence."
+    },
+    {
+      "title": "Example Product future-dated roadmap",
+      "content": "A roadmap card claims a feature is generally available with a publication date after retrieval time.",
+      "source": "https://example.com/product/future-roadmap",
+      "source_type": "product_page",
+      "published_at": "2026-08-01T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.81,
+      "expected_decision": "needs_verification",
+      "review_note": "Future-dated product claims should not be trusted as current."
+    },
+    {
+      "title": "Example Product failed vendor fetch",
+      "content": "[ERROR] upstream product page timed out before content could be read",
+      "source": "https://example.com/product/error",
+      "source_type": "product_page",
+      "published_at": "2026-06-08T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 1.0,
+      "expected_decision": "exclude",
+      "review_note": "Failed content should be excluded even when it appears fresh."
+    },
+    {
+      "title": "Example Product unrelated footer",
+      "content": "A generic footer paragraph mentions careers, cookies, and trademarks without product adoption details.",
+      "source": "https://example.com/product/footer",
+      "source_type": "product_page",
+      "published_at": "2026-06-01T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.18,
+      "expected_decision": "watch_only",
+      "review_note": "Low relevance should not become product evidence."
+    },
+    {
+      "title": "Example Product comparison blog",
+      "content": "A vendor-authored comparison post discusses feature differences but mostly uses promotional language.",
+      "source": "https://blog.example.com/product/comparison",
+      "source_type": "vendor_blog",
+      "published_at": "2026-04-15T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.66,
+      "date_confidence": "medium",
+      "expected_decision": "use_as_background",
+      "review_note": "Helpful for framing, but promotional vendor content should not lead."
+    },
+    {
+      "title": "Example Product old API reference",
+      "content": "An older API reference explains a still-supported endpoint and compatibility warning.",
+      "source": "https://docs.example.org/product/api-archive",
+      "source_type": "vendor_docs",
+      "published_at": "2025-03-10T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.91,
+      "date_confidence": "medium",
+      "expected_decision": "use_as_background",
+      "review_note": "Older but still useful documentation should become background unless refreshed."
+    },
+    {
+      "title": "Example Product score above range",
+      "content": "A saved product launch note has an out-of-range semantic score from an upstream ranker.",
+      "source": "https://example.com/product/high-score",
+      "source_type": "launch_page",
+      "published_at": "2026-06-03T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 1.4,
+      "expected_decision": "use_as_background",
+      "review_note": "Out-of-range scores should be clamped and still judged normally."
+    },
+    {
+      "title": "Example Product score below range",
+      "content": "A weak product note carries a negative score from an upstream ranker.",
+      "source": "https://example.com/product/negative-score",
+      "source_type": "product_page",
+      "published_at": "2026-06-04T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": -0.2,
+      "expected_decision": "watch_only",
+      "review_note": "Negative upstream relevance should be clamped and deprioritized."
+    }
+  ]
+}

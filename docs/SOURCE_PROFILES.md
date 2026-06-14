@@ -1,6 +1,6 @@
 # FreshContext Source Profiles
 
-Status: early Core metadata
+Status: current Core metadata
 
 FreshContext is a context gateway for agents and humans before reasoning. It turns raw candidate context into freshness-ranked, explained, provenance-aware context.
 
@@ -42,7 +42,9 @@ They demonstrate that FreshContext can evaluate different information classes:
 - jobs and opportunities
 - government, regulatory, and procurement data
 - competitive and company intelligence
+- product research and adoption evidence
 - composite multi-source landscapes
+- multi-agent handoff context
 
 ## Source Profiles
 
@@ -59,7 +61,7 @@ adapter output
   -> host response
 ```
 
-As of Pass 8-J, Core exports built-in profile presets and a small metadata contract shaped like:
+Core exports built-in profile presets and a small metadata contract shaped like:
 
 ```ts
 type SourceProfile = {
@@ -77,7 +79,7 @@ type SourceProfile = {
 
 The existing Core `LAMBDA` table is the current decay-policy reference. Source Profiles make that policy understandable and product-facing without changing Core behavior.
 
-Pass 8-J adds:
+The current Core API includes:
 
 - `BUILT_IN_SOURCE_PROFILES`
 - `getSourceProfile(profileId)`
@@ -98,7 +100,7 @@ The likely first extraction target remains `extract_arxiv`, because it is a low-
 
 ### Official / Canonical Documentation
 
-Strategic future profile.
+Current built-in profile.
 
 Purpose: official product docs, API docs, standards, changelogs, specifications, legal references, and canonical source material.
 
@@ -273,6 +275,29 @@ Policy intent:
 - should explain whether signal came from official records, market data, community pulse, or repository activity
 - useful for agents and buyer workflows, but not a replacement for due diligence
 
+### Product Research / Adoption Evidence
+
+Purpose: product pages, launch material, pricing pages, vendor documentation, changelogs, and adoption evidence.
+
+Current source types:
+
+- `product_page`
+- `pricing_page`
+- `launch_page`
+- `vendor_docs`
+- `changelog`
+- `producthunt`
+
+Policy intent:
+
+- useful for buyer, developer-adoption, and product-comparison workflows
+- official documentation and changelogs should outrank vague promotional material
+- pricing and roadmap pages should be verified before acting on them
+- missing, invalid, or future-dated timestamps should stay visible
+- failed product pages should be excluded or downgraded, not wrapped as useful context
+
+This profile is a judgment policy for caller-provided candidate context. It does not fetch vendor sites, select adapters, crawl product pages, browse, or implement a product-research agent.
+
 ### Composite Landscape / Validation
 
 Purpose: multi-source validation and idea or market landscape checks.
@@ -300,9 +325,29 @@ Policy intent:
 - partial failures should be visible
 - all-unavailable composites should not be cached or promoted as fresh
 
+### Multi-Agent Handoff Context
+
+Purpose: caller-provided context passed between agents or workflow steps, with warnings and provenance preserved.
+
+Current source types:
+
+- `agent_handoff`
+- `agent_context`
+- `workflow_context`
+- `user_provided`
+
+Policy intent:
+
+- preserve what another agent thought mattered without treating it as automatically trustworthy
+- keep missing dates, failed upstream outputs, weak provenance, and score normalization visible
+- prefer source-preserving handoffs over vague summaries
+- make context safe to pass forward only when the decision and provenance state support handoff
+
+This profile is not Operator mode. It does not orchestrate agents, call tools, browse, crawl, read folders, or retrieve sources. It judges candidate context that a caller or agent already supplied.
+
 ### Local / Custom Context
 
-Strategic future profile.
+Current built-in profile.
 
 Purpose: user-provided files, PDFs, notes, lecture material, source lists, internal docs, research folders, and custom retrieval results.
 

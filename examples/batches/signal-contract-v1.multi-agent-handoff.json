@@ -1,0 +1,144 @@
+{
+  "profile": "multi_agent_handoff",
+  "intent": "developer_adoption",
+  "now": "2026-06-09T12:00:00.000Z",
+  "signals": [
+    {
+      "title": "Agent handoff with complete source trail",
+      "content": "A prior agent passes candidate context with source identity, timing, and warnings preserved for the next reasoning step.",
+      "source": "https://example.com/handoff/complete-source-trail",
+      "source_type": "agent_handoff",
+      "published_at": "2026-06-08T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.92,
+      "date_confidence": "high",
+      "expected_decision": "use_first",
+      "review_note": "Complete, current handoff material can lead if provenance and warning state travel with it."
+    },
+    {
+      "title": "Workflow context summary",
+      "content": "A workflow step summarizes candidate context and includes the original source reference in metadata.",
+      "source": "https://example.com/workflow/context-summary",
+      "source_type": "workflow_context",
+      "published_at": "2026-06-07T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.84,
+      "date_confidence": "medium",
+      "metadata": {
+        "original_source": "https://docs.example.org/source/original"
+      },
+      "expected_decision": "use_as_background",
+      "review_note": "Derived summaries are useful, but should stay behind source-preserving context."
+    },
+    {
+      "title": "Agent handoff missing publication date",
+      "content": "A prior agent passes relevant context but omits publication timing for the underlying source.",
+      "source": "https://example.com/handoff/missing-date",
+      "source_type": "agent_context",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.82,
+      "expected_decision": "needs_verification",
+      "review_note": "Missing timing should force verification before another agent relies on it."
+    },
+    {
+      "title": "Agent handoff invalid timestamp",
+      "content": "A handoff packet includes useful context but malformed source timing.",
+      "source": "https://example.com/handoff/invalid-date",
+      "source_type": "agent_handoff",
+      "published_at": "not-a-date",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.74,
+      "expected_decision": "needs_verification",
+      "review_note": "Malformed timing should be visible in handoff review."
+    },
+    {
+      "title": "Agent handoff future timestamp",
+      "content": "A handoff packet claims source publication after the retrieval time.",
+      "source": "https://example.com/handoff/future-date",
+      "source_type": "agent_handoff",
+      "published_at": "2026-08-01T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.86,
+      "expected_decision": "needs_verification",
+      "review_note": "Future-dated context should not travel as trusted evidence."
+    },
+    {
+      "title": "Agent handoff failed upstream result",
+      "content": "Error: previous agent could not retrieve source evidence",
+      "source": "https://example.com/handoff/failed",
+      "source_type": "agent_handoff",
+      "published_at": "2026-06-08T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 1.0,
+      "expected_decision": "exclude",
+      "review_note": "Failed upstream context should not pass to another agent."
+    },
+    {
+      "title": "Weak agent note",
+      "content": "A short agent note says the source looked interesting, but provides no useful evidence.",
+      "source": "https://example.com/handoff/weak-note",
+      "source_type": "agent_context",
+      "published_at": "2026-06-06T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.21,
+      "expected_decision": "watch_only",
+      "review_note": "Weak handoff notes should not become model context."
+    },
+    {
+      "title": "Older but useful handoff",
+      "content": "A previous workflow run preserved an older source that still explains the historical decision context.",
+      "source": "https://example.com/handoff/old-background",
+      "source_type": "workflow_context",
+      "published_at": "2025-05-01T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.83,
+      "date_confidence": "medium",
+      "expected_decision": "use_as_background",
+      "review_note": "Older handoff context can remain background when the source trail is clear."
+    },
+    {
+      "title": "Conflicting agent summary",
+      "content": "A prior agent summary conflicts with another candidate and says the original source was not checked.",
+      "source": "https://example.com/handoff/conflict",
+      "source_type": "agent_context",
+      "published_at": "2026-06-03T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.63,
+      "expected_decision": "needs_verification",
+      "review_note": "Conflicting unchecked handoff material should require review."
+    },
+    {
+      "title": "User-provided source list",
+      "content": "A user-provided source list gives three candidate URLs and asks the next agent to judge what matters.",
+      "source": "https://example.com/handoff/user-source-list",
+      "source_type": "user_provided",
+      "published_at": "2026-06-05T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 0.69,
+      "expected_decision": "use_as_background",
+      "review_note": "User-provided lists are useful context, not automatic proof."
+    },
+    {
+      "title": "Agent handoff score above range",
+      "content": "A handoff packet from an upstream ranker provides relevant context but an out-of-range score.",
+      "source": "https://example.com/handoff/high-score",
+      "source_type": "agent_handoff",
+      "published_at": "2026-06-04T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": 1.3,
+      "expected_decision": "use_as_background",
+      "review_note": "Score clamping should be visible without overpromoting the source."
+    },
+    {
+      "title": "Agent handoff score below range",
+      "content": "A handoff packet has weak context and a negative upstream relevance score.",
+      "source": "https://example.com/handoff/negative-score",
+      "source_type": "agent_context",
+      "published_at": "2026-06-04T12:00:00.000Z",
+      "retrieved_at": "2026-06-09T12:00:00.000Z",
+      "semantic_score": -0.1,
+      "expected_decision": "watch_only",
+      "review_note": "Negative upstream relevance should be clamped and deprioritized."
+    }
+  ]
+}
