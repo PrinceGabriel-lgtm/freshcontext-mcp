@@ -5,6 +5,7 @@ import {
   interpretEvaluation,
   interpretEvaluations,
   toReadableContextResult,
+  computeVerdictId,
 } from "../src/core/index.js";
 import type {
   ContextDecisionOptions,
@@ -389,4 +390,128 @@ test("regulated intent wording keeps non-advice boundaries visible", () => {
 
   assert.match(medical.decision.warnings.join(" "), /not medical advice/i);
   assert.match(diligence.decision.warnings.join(" "), /not legal, tax, or investment advice/i);
+});
+
+test("decision result includes a verdict_id", () => {
+  const { decision } = evaluated({
+    source: "https://arxiv.org/abs/2605.12345",
+    semantic_score: 0.94,
+    published_at: "2026-05-20T09:00:00.000Z",
+  }, {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+  });
+
+  assert.equal(typeof decision.verdict_id, "string");
+  assert.ok(decision.verdict_id && decision.verdict_id.length > 0);
+});
+
+test("verdict_id is deterministic for identical inputs", () => {
+  const options: ContextDecisionOptions = {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+  };
+  const overrides: Partial<FreshContextSignalInput> = {
+    source: "https://arxiv.org/abs/2605.12345",
+    semantic_score: 0.94,
+    published_at: "2026-05-20T09:00:00.000Z",
+  };
+
+  const first = evaluated(overrides, options);
+  const second = evaluated(overrides, options);
+
+  assert.equal(first.decision.verdict_id, second.decision.verdict_id);
+});
+
+test("verdict_id changes when the source signal changes", () => {
+  const options: ContextDecisionOptions = {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+  };
+
+  const a = evaluated({
+    source: "https://arxiv.org/abs/2605.00001",
+    semantic_score: 0.94,
+    published_at: "2026-05-20T09:00:00.000Z",
+  }, options);
+  const b = evaluated({
+    source: "https://arxiv.org/abs/2605.99999",
+    semantic_score: 0.94,
+    published_at: "2026-05-20T09:00:00.000Z",
+  }, options);
+
+  assert.equal(a.decision.decision, "cite_as_primary");
+  assert.equal(b.decision.decision, "cite_as_primary");
+  assert.notEqual(a.decision.verdict_id, b.decision.verdict_id);
+});
+
+test("verdict_id is not changed by utility, mirroring the decision-label rule", () => {
+  const evaluation = evaluateSignal(baseInput({
+    source: "https://arxiv.org/abs/2605.12345",
+    source_type: "arxiv",
+    semantic_score: 0.94,
+    published_at: "2026-05-20T09:00:00.000Z",
+  }), { now: NOW });
+  const lowUtilityEvaluation: CoreSignalEvaluationResult = {
+    ...evaluation,
+    utility: {
+      ...evaluation.utility,
+      score: 0,
+      reasons: ["utility was forced low for verdict_id regression coverage"],
+    },
+  };
+  const options: ContextDecisionOptions = {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+  };
+
+  const normalDecision = interpretEvaluation(evaluation, options);
+  const lowUtilityDecision = interpretEvaluation(lowUtilityEvaluation, options);
+
+  assert.equal(normalDecision.verdict_id, lowUtilityDecision.verdict_id);
+});
+
+test("verdict_id is not changed by provenance_readiness", () => {
+  const evaluation = evaluateSignal(baseInput({
+    source: "https://arxiv.org/abs/2605.12345",
+    source_type: "arxiv",
+    semantic_score: 0.94,
+    published_at: "2026-05-20T09:00:00.000Z",
+  }), { now: NOW });
+  const uncertainReadinessEvaluation: CoreSignalEvaluationResult = {
+    ...evaluation,
+    provenance_readiness: {
+      ...evaluation.provenance_readiness,
+      state: "unknown",
+      warnings: ["provenance readiness was forced uncertain for verdict_id regression coverage"],
+      reasons: ["provenance readiness must remain a sidecar until an explicit policy pass changes it"],
+    },
+  };
+  const options: ContextDecisionOptions = {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+  };
+
+  const normalDecision = interpretEvaluation(evaluation, options);
+  const uncertainReadinessDecision = interpretEvaluation(uncertainReadinessEvaluation, options);
+
+  assert.equal(normalDecision.verdict_id, uncertainReadinessDecision.verdict_id);
+});
+
+test("computeVerdictId is exported from src/core/index.ts and matches the decision result", () => {
+  const evaluation = evaluateSignal(baseInput({
+    source: "https://arxiv.org/abs/2605.12345",
+    semantic_score: 0.94,
+    published_at: "2026-05-20T09:00:00.000Z",
+  }), { now: NOW });
+  const decision = interpretEvaluation(evaluation, {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+  });
+
+  assert.equal(typeof computeVerdictId, "function");
+  assert.equal(
+    computeVerdictId(evaluation, decision.decision, "academic_research", "citation_check"),
+    decision.verdict_id
+  );
 });

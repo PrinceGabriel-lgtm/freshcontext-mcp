@@ -100,6 +100,14 @@ export interface ContextDecisionOptions {
 
 export interface ContextDecisionResult {
   decision: ContextDecision;
+  /**
+   * Deterministic fingerprint of this verdict (signal identity + decision +
+   * profile selection). Stable across repeated evaluations of the same
+   * input; intentionally NOT derived from utility or provenance_readiness.
+   * This is the id a future verification event would reference when
+   * resolving a needs_verification (or similar) decision.
+   */
+  verdict_id?: string;
   label: string;
   meaning: string;
   action: string;
