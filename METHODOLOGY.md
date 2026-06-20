@@ -356,7 +356,7 @@ For technical integrators, auditors, and future platform partners:
 
 5. **The Store / Ledger design** — support for recurring watched queries, historical signal accumulation, D1-backed storage, and time-series auditability.
 
-6. **The Reference Implementation** — `freshcontext-mcp@0.3.19`, the `evaluate_context` MCP interface, and 21 read-only reference adapters, listed on npm and the MCP Registry. The hosted Worker endpoint is a separate deployment surface.
+6. **The Reference Implementation** — `freshcontext-mcp@0.3.23`, the `evaluate_context` MCP interface, and 21 read-only reference adapters, listed on npm and the MCP Registry. The hosted Worker endpoint is a separate deployment surface.
 
 ---
 

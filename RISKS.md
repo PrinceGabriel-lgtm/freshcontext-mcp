@@ -1,6 +1,6 @@
 # RISKS — FreshContext DAR engine and ingestion pipeline
 
-Known algorithmic and data-integrity edge cases in `worker/src/intelligence.ts` and the cron ingestion path. Last reviewed: 2026-05-01.
+Known algorithmic and data-integrity edge cases in `worker/src/intelligence.ts` and the cron ingestion path. Last reviewed: 2026-06-19.
 
 ---
 
@@ -8,27 +8,14 @@ Known algorithmic and data-integrity edge cases in `worker/src/intelligence.ts` 
 
 These are real and unguarded. Tracked in CLAUDE.md "Things Pending".
 
-### 1. Frozen signal paradox
-
-When `publishedAt` is `null`, `applyDecay` falls back to `t = halfLifeHours`. The result is `R_t = R_0 · e^(−ln 2) = R_0 / 2` exactly — half the base score, deterministically. Such signals are pinned at half their base score forever, even after cron recompute. Permanent "stable" entropy.
-
-- **Where:** `applyDecay`, intelligence.ts:172
-- **Impact:** Signals without an extractable publication date accumulate as permanent middle-tier results.
-- **Mitigation pending:** Hard floor (`R_t < 5` → mark expired) plus lazy decay at read time.
-
-### 2. No hard floor on R_t
-
-`is_relevant` uses `R_t >= 35`. Below 35, signals stay in the DB. Below 5 they're effectively dead but unflagged. Storage grows monotonically.
-
-- **Where:** intelligence.ts:255, feed query at worker.ts:942
-- **Mitigation pending:** Add `R_t < 5 → is_expired = 1` and exclude expired signals from the feed query.
-
 ### 3. Lazy decay missing
 
 `rt_score` is computed at ingest, then recomputed by the cron every 6h. Reads return the stored value, so feed responses can be up to 6h stale.
 
 - **Where:** Feed query reads `sr.rt_score` directly, no recompute.
-- **Mitigation pending:** Recompute decay at read time, or shorten the cron interval.
+- **Mitigation pending:** Read-path mitigation shipped (lazy decay at read time now wired).
+  Cron recompute-vs-lazy-decay status unconfirmed as of 2026-06-19.
+  Monitoring pending.
 
 ### 4. Re-ignition gap
 
@@ -135,3 +122,22 @@ The probe script is not committed (deleted after each run to keep the working tr
 4. Delete the probe script after.
 
 A live load test was also run on 2026-05-01: 755 requests across `/health`, `/debug/db`, `/v1/intel/feed/default`. Zero errors. p50 latencies: `/health` 180ms, `/debug/db` 0.8–1.2s, `/v1/intel/feed/` 0.6–0.9s at concurrency 10–20. No cliffs found at tested loads; the bottleneck for finding real cliffs is a faster client than `xargs + curl.exe` on Windows.
+
+---
+
+## Resolved 2026-06
+
+### 1. Frozen signal paradox
+
+When `publishedAt` is `null`, `applyDecay` falls back to `t = halfLifeHours`. The result is `R_t = R_0 · e^(−ln 2) = R_0 / 2` exactly — half the base score, deterministically. Such signals were pinned at half their base score forever, even after cron recompute. Permanent "stable" entropy.
+
+- **Where:** `applyDecay`, intelligence.ts:172
+- **Impact:** Signals without an extractable publication date accumulated as permanent middle-tier results.
+- Resolved: implemented at intelligence.ts:180-225 per investor-readiness audit 2026-06-19.
+
+### 2. No hard floor on R_t
+
+`is_relevant` used `R_t >= 35`. Below 35, signals stayed in the DB. Below 5 they were effectively dead but unflagged. Storage grew monotonically.
+
+- **Where:** intelligence.ts:255, feed query at worker.ts:942
+- Resolved: implemented at intelligence.ts:180-225 per investor-readiness audit 2026-06-19.

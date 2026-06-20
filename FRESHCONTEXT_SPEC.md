@@ -248,7 +248,7 @@ Claude Desktop is a supported MCP client, but FreshContext Core is not Claude-de
 
 The canonical reference implementation of this specification is:
 
-**freshcontext-mcp@0.3.19** — an MCP server with `evaluate_context` for caller-provided candidate context plus 21 read-only reference adapters covering:
+**freshcontext-mcp@0.3.23** — an MCP server with `evaluate_context` for caller-provided candidate context plus 21 read-only reference adapters covering:
 
 **Intelligence:** GitHub, Hacker News, Google Scholar, arXiv, Reddit
 

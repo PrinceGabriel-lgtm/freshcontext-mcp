@@ -1,5 +1,25 @@
 # FreshContext Release Notes
 
+## 0.3.23
+
+FreshContext 0.3.23 adds deterministic verdict identity for evaluated context results.
+
+### Deterministic Verdict ID
+
+- Adds `verdict_id` to structured `evaluate_context` output.
+- `verdict_id` is deterministic: the same input signal and evaluation context always
+  produce the same identifier, enabling audit trails, caching, and downstream
+  deduplication.
+- Keeps `verdict_id` additive: it does not change ranking, decision labels, utility
+  scoring, or existing structured output fields.
+- Preserves full backward compatibility with 0.3.22 evaluate_context output shapes.
+
+### Release Gate
+
+- MCP smoke confirmed at 22 tools / 0.3.23.
+- Trust Scanner gate: effective fail 0.
+- Package and server metadata aligned at 0.3.23.
+
 ## 0.3.22
 
 FreshContext 0.3.22 expands Source Profiles as judgment policies without adding adapters or retrieval behavior.

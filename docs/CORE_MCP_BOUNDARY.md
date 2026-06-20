@@ -50,7 +50,7 @@ Worker/site surfaces own deployment concerns:
 
 Live today:
 
-- npm package: `freshcontext-mcp@0.3.22`
+- npm package: `freshcontext-mcp@0.3.23`
 - MCP stdio server and published binary: `freshcontext-mcp`
 - Core subpath export: `freshcontext-mcp/core`
 - `evaluate_context` MCP tool for caller-provided candidate context
