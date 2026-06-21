@@ -127,6 +127,8 @@ const commands = {
       "tests/restHandler.test.ts",
       "tests/sourceProfiles.test.ts",
       "tests/adapterRegistry.test.ts",
+      "tests/coreEdgeBoundary.test.ts",
+      "tests/workerCoreLambdaParity.test.ts",
       "tests/trustScan.test.mjs",
     ],
   },

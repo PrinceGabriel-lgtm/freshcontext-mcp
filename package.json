@@ -39,6 +39,10 @@
       "types": "./dist/core/index.d.ts",
       "import": "./dist/core/index.js"
     },
+    "./core/edge": {
+      "types": "./dist/core/edge.d.ts",
+      "import": "./dist/core/edge.js"
+    },
     "./package.json": "./package.json"
   },
   "bin": {
