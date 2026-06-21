@@ -297,9 +297,13 @@ test("provenance material is additive to scoring, decisions, and readable output
       engineVersion: "freshcontext-0.3.20",
     },
   });
+  // Pin now so back-to-back decisions share the same evaluated_at — without
+  // this the Pass 21 time fields would differ by sub-ms wall-clock advance and
+  // break the deepEqual that asserts provenance is additive.
   const decisionOptions: ContextDecisionOptions = {
     sourceProfile: "official_docs",
     intentProfile: "developer_adoption",
+    now: NOW,
   };
   const withoutDecision = interpretEvaluation(withoutProvenance, decisionOptions);
   const withDecision = interpretEvaluation(withProvenance, decisionOptions);

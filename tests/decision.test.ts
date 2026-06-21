@@ -6,6 +6,7 @@ import {
   interpretEvaluations,
   toReadableContextResult,
   computeVerdictId,
+  getSourceProfile,
 } from "../src/core/index.js";
 import type {
   ContextDecisionOptions,
@@ -514,4 +515,101 @@ test("computeVerdictId is exported from src/core/index.ts and matches the decisi
     computeVerdictId(evaluation, decision.decision, "academic_research", "citation_check"),
     decision.verdict_id
   );
+});
+
+// ─── Pass 21: evaluated_at + revalidate_after ─────────────────────────────────
+
+test("decision result includes evaluated_at honoring the now option", () => {
+  const { decision } = evaluated({
+    source: "https://arxiv.org/abs/2605.12345",
+    semantic_score: 0.94,
+    published_at: "2026-05-20T09:00:00.000Z",
+  }, {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+    now: NOW,
+  });
+
+  assert.equal(decision.evaluated_at, NOW);
+});
+
+test("evaluated_at defaults to wall-clock ISO when now is omitted", () => {
+  const before = Date.now();
+  const { decision } = evaluated({
+    source: "https://arxiv.org/abs/2605.12345",
+    semantic_score: 0.94,
+    published_at: "2026-05-20T09:00:00.000Z",
+  }, {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+  });
+  const after = Date.now();
+
+  assert.equal(typeof decision.evaluated_at, "string");
+  const ms = new Date(decision.evaluated_at!).getTime();
+  assert.ok(
+    ms >= before && ms <= after,
+    `evaluated_at ${decision.evaluated_at} should fall between ${before} and ${after}`
+  );
+});
+
+test("revalidate_after is evaluated_at + 1.0 × source profile half-life", () => {
+  const { decision } = evaluated({
+    source: "https://arxiv.org/abs/2605.12345",
+    semantic_score: 0.94,
+    published_at: "2026-05-20T09:00:00.000Z",
+  }, {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+    now: NOW,
+  });
+
+  assert.equal(typeof decision.revalidate_after, "string");
+  const profile = getSourceProfile("academic_research");
+  assert.ok(profile, "academic_research source profile must exist");
+  const expected = new Date(
+    new Date(NOW).getTime() + profile!.half_life_hours * 60 * 60 * 1000
+  ).toISOString();
+  assert.equal(decision.revalidate_after, expected);
+});
+
+test("revalidate_after is explicit null when no source profile is provided", () => {
+  const { decision } = evaluated({
+    source: "https://arxiv.org/abs/2605.12345",
+    semantic_score: 0.94,
+    published_at: "2026-05-20T09:00:00.000Z",
+  }, {
+    intentProfile: "citation_check",
+    now: NOW,
+  });
+
+  // Honest null, not undefined, not omitted, not a fabricated timestamp.
+  assert.equal(decision.revalidate_after, null);
+  assert.ok(
+    "revalidate_after" in decision,
+    "revalidate_after must be a present key, not omitted"
+  );
+  // evaluated_at is still populated regardless of profile presence.
+  assert.equal(decision.evaluated_at, NOW);
+});
+
+test("verdict_id is not changed by now / evaluated_at / revalidate_after", () => {
+  const options: ContextDecisionOptions = {
+    sourceProfile: "academic_research",
+    intentProfile: "citation_check",
+  };
+  const evaluation = evaluateSignal(baseInput({
+    source: "https://arxiv.org/abs/2605.12345",
+    semantic_score: 0.94,
+    published_at: "2026-05-20T09:00:00.000Z",
+  }), { now: NOW });
+  const earlier = interpretEvaluation(evaluation, { ...options, now: "2026-01-01T00:00:00.000Z" });
+  const later = interpretEvaluation(evaluation, { ...options, now: "2026-12-31T23:59:59.999Z" });
+
+  // verdict_id stays stable across now changes — mirrors the existing
+  // utility/provenance_readiness rule. Time fields are not in verdict_id's basis.
+  assert.equal(earlier.verdict_id, later.verdict_id);
+  // But evaluated_at and revalidate_after DO move with now (they are time-bound by design).
+  assert.notEqual(earlier.evaluated_at, later.evaluated_at);
+  assert.notEqual(earlier.revalidate_after, later.revalidate_after);
 });

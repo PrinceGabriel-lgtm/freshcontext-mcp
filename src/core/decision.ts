@@ -35,6 +35,29 @@ function isCitationIntent(intent: IntentProfileId | undefined): boolean {
   return intent !== undefined && CITATION_INTENTS.has(intent);
 }
 
+// Pass 21: decision-time clock. Honors options.now for deterministic verdicts,
+// falls back to wall time. Never recomputed at read.
+function computeEvaluatedAt(now: ContextDecisionOptions["now"]): string {
+  if (now === undefined) return new Date().toISOString();
+  const date = typeof now === "string" ? new Date(now) : now;
+  return date.toISOString();
+}
+
+// Pass 21: revalidate_after = evaluated_at + 1.0 × source profile half-life.
+// The half-life is the literal inflection where the source has lost half its
+// freshness signal value, the one number on the decay curve the source profile
+// is calibrated to express. Explicit null when no source profile basis exists
+// — never a fabricated timestamp.
+function computeRevalidateAfter(
+  evaluatedAt: string,
+  sourceProfile: SourceProfile | undefined
+): string | null {
+  if (!sourceProfile) return null;
+  const baseMs = new Date(evaluatedAt).getTime();
+  const halfLifeMs = sourceProfile.half_life_hours * 60 * 60 * 1000;
+  return new Date(baseMs + halfLifeMs).toISOString();
+}
+
 function nonAdviceWarnings(intent: IntentProfileId | undefined): string[] {
   switch (intent) {
     case "citation_check":
@@ -94,7 +117,9 @@ function decisionResult(
   warnings: string[],
   evaluation: CoreSignalEvaluationResult,
   sourceProfileId: SourceProfileId | undefined,
-  intentProfile: IntentProfileId | undefined
+  intentProfile: IntentProfileId | undefined,
+  evaluatedAt: string,
+  revalidateAfter: string | null
 ): ContextDecisionResult {
   const copyReasons = unique(reasons);
   const copyWarnings = unique(warnings);
@@ -105,6 +130,8 @@ function decisionResult(
       return {
         decision,
         verdict_id,
+        evaluated_at: evaluatedAt,
+        revalidate_after: revalidateAfter,
         label: "Use first",
         meaning: "This is strong, current context for the task.",
         action: "Use this near the top of the context bundle.",
@@ -115,6 +142,8 @@ function decisionResult(
       return {
         decision,
         verdict_id,
+        evaluated_at: evaluatedAt,
+        revalidate_after: revalidateAfter,
         label: "Cite as primary",
         meaning: "This source is relevant, current, and traceable enough to use as main evidence.",
         action: "Use it as primary citation evidence, while keeping normal source-review standards.",
@@ -125,6 +154,8 @@ function decisionResult(
       return {
         decision,
         verdict_id,
+        evaluated_at: evaluatedAt,
+        revalidate_after: revalidateAfter,
         label: "Cite as supporting",
         meaning: "This source is useful evidence, but should not be the only or latest support.",
         action: "Use it as supporting evidence and pair it with stronger or newer sources.",
@@ -135,6 +166,8 @@ function decisionResult(
       return {
         decision,
         verdict_id,
+        evaluated_at: evaluatedAt,
+        revalidate_after: revalidateAfter,
         label: "Use as background",
         meaning: "This source is relevant context, but not strong enough for latest-evidence claims.",
         action: "Use it for framing, history, or background rather than as the main current source.",
@@ -145,6 +178,8 @@ function decisionResult(
       return {
         decision,
         verdict_id,
+        evaluated_at: evaluatedAt,
+        revalidate_after: revalidateAfter,
         label: "Needs verification",
         meaning: "This source may be useful, but its date, confidence, or traceability is uncertain.",
         action: "Verify the source details before citing it, acting on it, or sending it to a model as trusted context.",
@@ -155,6 +190,8 @@ function decisionResult(
       return {
         decision,
         verdict_id,
+        evaluated_at: evaluatedAt,
+        revalidate_after: revalidateAfter,
         label: "Needs refresh",
         meaning: "This source may be useful, but it is too stale or date-uncertain for this source type.",
         action: "Refresh or re-query this source before relying on it as current context.",
@@ -165,6 +202,8 @@ function decisionResult(
       return {
         decision,
         verdict_id,
+        evaluated_at: evaluatedAt,
+        revalidate_after: revalidateAfter,
         label: "Watch only",
         meaning: "This is an interesting signal, but not strong enough to prioritize.",
         action: "Monitor it or keep it as a weak signal; do not use it as main evidence.",
@@ -175,6 +214,8 @@ function decisionResult(
       return {
         decision,
         verdict_id,
+        evaluated_at: evaluatedAt,
+        revalidate_after: revalidateAfter,
         label: "Exclude",
         meaning: "This source is failed, too weak, or unsafe to include as useful context.",
         action: "Keep it out of the final context bundle unless a human explicitly reviews it.",
@@ -191,6 +232,11 @@ export function interpretEvaluation(
   const sourceProfile = resolveSourceProfile(options.sourceProfile);
   const sourceProfileId = profileId(sourceProfile);
   const intentProfile = options.intentProfile;
+  // Pass 21: decision-time clock. Computed once here and passed through to the
+  // factory — never recomputed at read time. revalidate_after is explicit null
+  // when no source profile is available (no decay basis = no honest hint).
+  const evaluatedAt = computeEvaluatedAt(options.now);
+  const revalidateAfter = computeRevalidateAfter(evaluatedAt, sourceProfile);
   const reasons = unique([
     evaluation.explanation,
     ...evaluation.signal.reasons,
@@ -212,7 +258,7 @@ export function interpretEvaluation(
   }
 
   if (isFailed) {
-    return decisionResult("exclude", reasons, warnings, evaluation, sourceProfileId, intentProfile);
+    return decisionResult("exclude", reasons, warnings, evaluation, sourceProfileId, intentProfile, evaluatedAt, revalidateAfter);
   }
 
   if (
@@ -220,7 +266,7 @@ export function interpretEvaluation(
     && STRICT_REFRESH_PROFILES.has(sourceProfileId)
     && (freshnessScore === null || freshnessScore < 50)
   ) {
-    return decisionResult("needs_refresh", reasons, warnings, evaluation, sourceProfileId, intentProfile);
+    return decisionResult("needs_refresh", reasons, warnings, evaluation, sourceProfileId, intentProfile, evaluatedAt, revalidateAfter);
   }
 
   if (evaluation.signal.date_confidence === "unknown") {
@@ -231,10 +277,12 @@ export function interpretEvaluation(
         warnings,
         evaluation,
         sourceProfileId,
-        intentProfile
+        intentProfile,
+        evaluatedAt,
+        revalidateAfter
       );
     }
-    return decisionResult("needs_verification", reasons, warnings, evaluation, sourceProfileId, intentProfile);
+    return decisionResult("needs_verification", reasons, warnings, evaluation, sourceProfileId, intentProfile, evaluatedAt, revalidateAfter);
   }
 
   if (
@@ -244,9 +292,9 @@ export function interpretEvaluation(
     && confidence === "high"
   ) {
     if (sourceProfile?.authority_hint === "high" && isCitationIntent(intentProfile)) {
-      return decisionResult("cite_as_primary", reasons, warnings, evaluation, sourceProfileId, intentProfile);
+      return decisionResult("cite_as_primary", reasons, warnings, evaluation, sourceProfileId, intentProfile, evaluatedAt, revalidateAfter);
     }
-    return decisionResult("use_first", reasons, warnings, evaluation, sourceProfileId, intentProfile);
+    return decisionResult("use_first", reasons, warnings, evaluation, sourceProfileId, intentProfile, evaluatedAt, revalidateAfter);
   }
 
   if (finalScore >= 0.55 && freshnessScore !== null && freshnessScore < 50) {
@@ -256,7 +304,9 @@ export function interpretEvaluation(
       warnings,
       evaluation,
       sourceProfileId,
-      intentProfile
+      intentProfile,
+      evaluatedAt,
+      revalidateAfter
     );
   }
 
@@ -267,15 +317,17 @@ export function interpretEvaluation(
       warnings,
       evaluation,
       sourceProfileId,
-      intentProfile
+      intentProfile,
+      evaluatedAt,
+      revalidateAfter
     );
   }
 
   if (finalScore >= 0.55) {
-    return decisionResult("use_as_background", reasons, warnings, evaluation, sourceProfileId, intentProfile);
+    return decisionResult("use_as_background", reasons, warnings, evaluation, sourceProfileId, intentProfile, evaluatedAt, revalidateAfter);
   }
 
-  return decisionResult("watch_only", reasons, warnings, evaluation, sourceProfileId, intentProfile);
+  return decisionResult("watch_only", reasons, warnings, evaluation, sourceProfileId, intentProfile, evaluatedAt, revalidateAfter);
 }
 
 export function interpretEvaluations(

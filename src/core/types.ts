@@ -96,6 +96,13 @@ export interface SourceProfile {
 export interface ContextDecisionOptions {
   sourceProfile?: SourceProfile | SourceProfileId;
   intentProfile?: IntentProfileId;
+  /**
+   * Optional decision-time clock override. Controls the evaluated_at field
+   * on the returned ContextDecisionResult. Defaults to new Date() when
+   * omitted. Pass a deterministic value in tests or any caller that needs
+   * reproducible verdicts.
+   */
+  now?: string | Date;
 }
 
 export interface ContextDecisionResult {
@@ -108,6 +115,21 @@ export interface ContextDecisionResult {
    * resolving a needs_verification (or similar) decision.
    */
   verdict_id?: string;
+  /**
+   * ISO timestamp recording when this decision was computed. Always
+   * populated at runtime by the decision factory; optional in the type for
+   * backward compatibility with existing consumers that construct results
+   * manually — same convention as verdict_id. This is the stored decision-
+   * time clock — it is NOT recomputed at read time.
+   */
+  evaluated_at?: string;
+  /**
+   * Advisory hint for when this verdict is worth re-checking, derived from
+   * the source profile's half_life_hours (evaluated_at + 1.0 × half-life).
+   * Explicit null when no source profile basis is available — never a
+   * fabricated timestamp. NOT enforcement; consumers decide what to do.
+   */
+  revalidate_after?: string | null;
   label: string;
   meaning: string;
   action: string;
