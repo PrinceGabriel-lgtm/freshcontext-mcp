@@ -129,6 +129,7 @@ const commands = {
       "tests/adapterRegistry.test.ts",
       "tests/coreEdgeBoundary.test.ts",
       "tests/workerCoreLambdaParity.test.ts",
+      "tests/workerDarGoldenVectors.test.ts",
       "tests/trustScan.test.mjs",
     ],
   },

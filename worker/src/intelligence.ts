@@ -19,6 +19,15 @@
  * Author: Immanuel Gabriel (Prince Gabriel) · Grootfontein, Namibia
  */
 
+// Pass 20-C: the LAMBDA table is sourced from the edge-safe Core math boundary
+// (src/core/edge.ts → decay.ts) — one source of truth shared by Core and Worker.
+// Same crypto-free relative-import mechanism the envelope path already uses in
+// the live bundle (see freshcontextEnvelope.ts → ../../src/core/index.js).
+import { LAMBDA } from "../../src/core/edge.js";
+// Re-export to preserve intelligence.ts's prior public surface — LAMBDA was an
+// `export const` here before 20-C. applyDecay below uses the imported binding.
+export { LAMBDA };
+
 // ─── User Profile ─────────────────────────────────────────────────────────────
 
 export interface ScoringProfile {
@@ -32,44 +41,11 @@ export interface ScoringProfile {
 
 // ─── Decay Constants (λ per hour) ────────────────────────────────────────────
 //
-// These are the proprietary values that determine how fast each source's
-// signal expires. Derived from empirical analysis of information half-lives
-// across source types.
-//
+// The LAMBDA table moved to src/core/decay.ts and is imported above via the
+// core/edge boundary, so Core and Worker share one source of truth. Two tests
+// guard it: tests/workerCoreLambdaParity.test.ts (table key-for-key equality)
+// and tests/workerDarGoldenVectors.test.ts (applyDecay output unchanged).
 // Half-life formula: t½ = ln(2) / λ  (in hours)
-
-export const LAMBDA: Record<string, number> = {
-  // ── Existing base adapters ─────────────────────────────────────────────────
-  hackernews:        0.050,   // t½ ≈ 14h  — HN front page dies fast
-  reddit:            0.010,   // t½ ≈ 3d   — community posts
-  producthunt:       0.010,   // t½ ≈ 3d   — launch noise fades quickly
-  jobs:              0.005,   // t½ ≈ 6d   — listings stale within a week
-  finance:           0.001,   // t½ ≈ 29d  — market context
-  yc:                0.001,   // t½ ≈ 29d  — company listings
-  packagetrends:     0.0005,  // t½ ≈ 58d  — ecosystem activity
-  github:            0.0002,  // t½ ≈ 5mo  — repos are long-lived assets
-  reposearch:        0.0002,  // t½ ≈ 5mo
-  google_scholar:    0.00005, // t½ ≈ 1.6y — academic work
-  arxiv:             0.00005, // t½ ≈ 1.6y
-
-  // ── Pass 4 base adapters (added in Pass 5 alongside envelope parity) ──────
-  changelog:         0.0005,  // t½ ≈ 58d  — release cadence, similar to package activity
-  gdelt:             0.020,   // t½ ≈ 35h  — news cycle, between HN and Reddit
-  gebiz:             0.003,   // t½ ≈ 10d  — gov tender open windows
-  govcontracts:      0.001,   // t½ ≈ 29d  — federal awards data
-  sec_filings:       0.005,   // t½ ≈ 6d   — material event freshness, market absorbs fast
-
-  // ── Composites (anchor-component policy) ──────────────────────────────────
-  // Each composite inherits the rate of its primary/named source so the
-  // envelope freshness reflects the dominant signal in the report.
-  landscape:         0.050,   // = hackernews (HN drives the time signal)
-  gov_landscape:     0.001,   // = govcontracts
-  finance_landscape: 0.001,   // = finance
-  company_landscape: 0.005,   // = sec_filings (8-K disclosure cadence)
-  idea_landscape:    0.050,   // = hackernews (pain-signal lead)
-
-  default:           0.001,   // fallback = finance/yc tier
-};
 
 // ─── Published Date Extraction ────────────────────────────────────────────────
 
