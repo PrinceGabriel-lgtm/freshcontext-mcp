@@ -370,32 +370,3 @@ export async function isDuplicate(
   `).bind(fingerprint, withinHours).first<{ n: number }>();
   return (result?.n ?? 0) > 0;
 }
-
-// ─── Envelope freshness score ─────────────────────────────────────────────────
-//
-// Per-tool envelope number (0-100) emitted in [FRESHCONTEXT] blocks.
-// Spec: R = 100 · e^(−λ · hoursSincePublished). Same exponential model as the
-// DAR engine — sole difference is starting from a fixed 100 (purity-of-freshness)
-// rather than R₀ (semantic relevance). Returns null when content_date is unknown.
-
-export function calculateFreshnessScore(
-  contentDate: string | null,
-  retrievedAt: string,
-  adapter: string
-): number | null {
-  if (!contentDate) return null;
-  const published = new Date(contentDate).getTime();
-  const retrieved = new Date(retrievedAt).getTime();
-  if (isNaN(published) || isNaN(retrieved)) return null;
-  const hours = Math.max(0, (retrieved - published) / (1000 * 60 * 60));
-  const lambda = LAMBDA[adapter] ?? LAMBDA.default;
-  return Math.max(0, Math.round(100 * Math.exp(-lambda * hours)));
-}
-
-export function freshnessLabel(score: number | null): string {
-  if (score === null) return "unknown";
-  if (score >= 90) return "current";
-  if (score >= 70) return "reliable";
-  if (score >= 50) return "verify before acting";
-  return "use with caution";
-}
