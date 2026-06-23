@@ -4,10 +4,10 @@
 //
 // CANONICAL SOURCE OF DECAY POLICY. This is the single definition of LAMBDA in the
 // codebase. Core (pipeline, sourceProfiles, freshness scoring) and the Worker
-// (worker/src/intelligence.ts, via the core/edge boundary) both derive from it —
-// neither keeps its own copy. To tune a source's decay, change it here and only
-// here. The single-source guard (tests/lambdaSingleSource.test.ts) goes red if a
-// second `const LAMBDA` table is ever reintroduced anywhere in runtime source.
+// intelligence module (via the core/edge boundary) both derive from it — neither
+// keeps its own copy. To tune a source's decay, change it here and only here. The
+// single-source guard (tests/lambdaSingleSource.test.ts) goes red if a second
+// `const LAMBDA` table is ever reintroduced anywhere in runtime source.
 export const LAMBDA: Record<string, number> = {
   hackernews:        0.050,
   reddit:            0.010,

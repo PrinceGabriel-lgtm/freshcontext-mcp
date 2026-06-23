@@ -91,10 +91,12 @@ test("utility score does not control decision labels", () => {
   const normalDecision = interpretEvaluation(evaluation, {
     sourceProfile: "academic_research",
     intentProfile: "citation_check",
+    now: NOW,
   });
   const lowUtilityDecision = interpretEvaluation(lowUtilityEvaluation, {
     sourceProfile: "academic_research",
     intentProfile: "citation_check",
+    now: NOW,
   });
 
   assert.equal(normalDecision.decision, "cite_as_primary");
@@ -125,10 +127,12 @@ test("provenance readiness does not control decision labels", () => {
   const normalDecision = interpretEvaluation(evaluation, {
     sourceProfile: "academic_research",
     intentProfile: "citation_check",
+    now: NOW,
   });
   const uncertainReadinessDecision = interpretEvaluation(uncertainReadinessEvaluation, {
     sourceProfile: "academic_research",
     intentProfile: "citation_check",
+    now: NOW,
   });
 
   assert.deepEqual(uncertainReadinessDecision, normalDecision);
