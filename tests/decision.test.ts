@@ -158,6 +158,7 @@ test("handoff safety does not control decision-label policy", () => {
   const options: ContextDecisionOptions = {
     sourceProfile: "academic_research",
     intentProfile: "citation_check",
+    now: NOW,
   };
 
   const decision = interpretEvaluation(uncertainReadinessEvaluation, options);
