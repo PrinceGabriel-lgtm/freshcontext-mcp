@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   calculateHaPriV2,
+  buildHaPriPayload,
   canonicalizeHaPriContent,
   sha256Hex,
   verifyHaPriV2,
@@ -133,5 +134,16 @@ test("Ha-Pri v2 stored signature vectors keep unknown and invalid behavior stabl
       assert.equal(verification.expected, base.expected.haPriSigV2);
       assert.match(verification.reasons.join(" "), /did not match/);
     }
+  }
+});
+
+test("buildHaPriPayload is byte-identical to calculateHaPriV2 signingPayload (parity guard)", () => {
+  for (const vector of fixture.validVectors) {
+    const fromBuilder = buildHaPriPayload(vector.input);
+    // Ground truth: the hardcoded fixture value, captured from calculateHaPriV2 before
+    // buildHaPriPayload existed. If either drifts, this test catches it.
+    assert.equal(fromBuilder, vector.expected.signingPayload, `fixture parity: ${vector.name}`);
+    // Belt-and-suspenders: also matches the live calculateHaPriV2 path.
+    assert.equal(fromBuilder, calculateHaPriV2(vector.input).signingPayload, `calculate parity: ${vector.name}`);
   }
 });

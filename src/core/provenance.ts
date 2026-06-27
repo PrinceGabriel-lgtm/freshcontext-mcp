@@ -59,6 +59,30 @@ export function calculateHaPriV2(input: HaPriV2Input): HaPriV2Result {
   };
 }
 
+// Returns the canonical signing payload string only — no hash, no HMAC.
+// The Worker reads this and signs it with Web Crypto. calculateHaPriV2
+// additionally SHA-256-hashes the same string for the existing provenance path.
+export function buildHaPriPayload(input: HaPriV2Input): string {
+  const canonicalContentSha256 = sha256Hex(canonicalizeHaPriContent(input.rawContent));
+  const semanticFingerprintSha256 = sha256Hex(fieldValue(input.semanticFingerprint));
+  const resultId = fieldValue(input.resultId);
+  const adapter = fieldValue(input.adapter);
+  const publishedAt = fieldValue(input.publishedAt);
+  const retrievedAt = fieldValue(input.retrievedAt);
+  const engineVersion = fieldValue(input.engineVersion);
+
+  return [
+    HA_PRI_V2_VERSION,
+    `result_id=${resultId}`,
+    `canonical_content_sha256=${canonicalContentSha256}`,
+    `semantic_fingerprint_sha256=${semanticFingerprintSha256}`,
+    `adapter=${adapter}`,
+    `published_at=${publishedAt}`,
+    `retrieved_at=${retrievedAt}`,
+    `engine_version=${engineVersion}`,
+  ].join("\n");
+}
+
 export function verifyHaPriV2(
   input: HaPriV2Input,
   actualSig: string | null | undefined

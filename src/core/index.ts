@@ -14,6 +14,7 @@ export {
   canonicalizeHaPriContent,
   sha256Hex,
   calculateHaPriV2,
+  buildHaPriPayload,
   verifyHaPriV2,
 } from "./provenance.js";
 export type {
