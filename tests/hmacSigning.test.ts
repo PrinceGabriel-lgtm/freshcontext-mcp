@@ -169,3 +169,49 @@ test("evaluate_context signing: title-only signal (no content) → no sig, no cr
   const sigBlock = await buildSigBlock(result, TEST_KEY);
   assert.equal(sigBlock, null, "title-only signal must produce no sig block (graceful skip)");
 });
+
+// ─── 22-D: end-to-end golden vector ──────────────────────────────────────────
+//
+// Pins the EXACT [FRESHCONTEXT_SIG_V1] block serialization for a fully-fixed input.
+// The runtime cross-check in 22-C proves the sig is correct; this test proves the
+// serialization is stable — block delimiters, algo line, item format.
+//
+// PINNED_SIG computed once via Node createHmac before this test was written:
+//   node -e "const {createHash,createHmac}=require('crypto');
+//     const sha256=s=>createHash('sha256').update(s,'utf8').digest('hex');
+//     const canonical=s=>s.replace(/\r\n/g,'\n').replace(/\r/g,'\n')
+//       .split('\n').map(l=>l.replace(/[ \t]+$/,'')).join('\n');
+//     const payload=[
+//       'FRESHCONTEXT_HA_PRI_V2','result_id=fc-golden-001',
+//       'canonical_content_sha256='+sha256(canonical('<content>')),
+//       'semantic_fingerprint_sha256='+sha256('null'),
+//       'adapter=arxiv','published_at=2026-06-01T00:00:00.000Z',
+//       'retrieved_at=2026-06-27T00:00:00.000Z','engine_version=0.3.23'
+//     ].join('\n');
+//     console.log(createHmac('sha256','<TEST_KEY>').update(payload,'utf8').digest('hex'))"
+const GOLDEN_PINNED_SIG = "fcc491b32f799ba81603bffe9e52292c098e7e1a941ad64e8d0a834cb808e41b";
+const GOLDEN_EXPECTED_BLOCK = [
+  "[FRESHCONTEXT_SIG_V1]",
+  "algo=HMAC-SHA256",
+  `item=1 result_id=fc-golden-001 sig=${GOLDEN_PINNED_SIG}`,
+  "[/FRESHCONTEXT_SIG_V1]",
+].join("\n");
+
+test("evaluate_context signing: end-to-end golden vector freezes [FRESHCONTEXT_SIG_V1] serialization", async () => {
+  const result = evaluateContextInput({
+    profile: "academic_research",
+    intent: "citation_check",
+    signals: [{
+      id: "fc-golden-001",
+      source: "https://arxiv.org/abs/2026.golden001",
+      source_type: "arxiv",
+      content: "FreshContext golden-vector signal: stable content for pinned sig test.",
+      published_at: "2026-06-01T00:00:00.000Z",
+      retrieved_at: "2026-06-27T00:00:00.000Z",
+    }],
+    now: "2026-06-27T12:00:00.000Z",
+  });
+
+  const sigBlock = await buildSigBlock(result, TEST_KEY);
+  assert.equal(sigBlock, GOLDEN_EXPECTED_BLOCK);
+});
