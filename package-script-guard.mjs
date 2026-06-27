@@ -106,6 +106,7 @@ const commands = {
       "tests/arxivDecisionIntegration.test.ts",
       "tests/core.test.ts",
       "tests/haPriV2GoldenVectors.test.ts",
+      "tests/hmacSigning.test.ts",
       "tests/signalContractExamples.test.ts",
       "tests/batchValidationHarness.test.ts",
       "tests/rank.test.ts",

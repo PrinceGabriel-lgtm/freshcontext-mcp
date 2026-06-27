@@ -225,6 +225,20 @@ export async function generateAuditSig(
     .join("");
 }
 
+export async function hmacSha256(key: string, payload: string): Promise<string> {
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(key),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(payload));
+  return Array.from(new Uint8Array(sig))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 // ─── Main Scoring Entry Point ─────────────────────────────────────────────────
 
 export interface SignalScore {
