@@ -16,7 +16,8 @@
     {
       "binding": "DB",
       "database_name": "freshcontext-db",
-      "database_id": "d9898d65-f67e-4dcb-abdc-7f7b53f2d444"
+      "database_id": "d9898d65-f67e-4dcb-abdc-7f7b53f2d444",
+      "migrations_dir": "migrations"
     }
   ],
   "kv_namespaces": [
