@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import workerIntelligence from "../worker/src/intelligence.ts";
+import {
+  evaluateContextInput,
+  formatEvaluateContextResult,
+} from "../src/tools/evaluateContext.js";
+import type { EvaluateContextResult } from "../src/tools/evaluateContext.js";
+import { buildHaPriPayload } from "../src/core/index.js";
 
 const { hmacSha256 } = workerIntelligence;
 
@@ -46,4 +52,120 @@ test("hmacSha256 with a different key produces a different signature (unforgeabi
   const correct = await hmacSha256(TEST_KEY, TEST_PAYLOAD);
   const wrong = await hmacSha256("wrong-key", TEST_PAYLOAD);
   assert.notEqual(correct, wrong);
+});
+
+// ─── 22-C: evaluate_context signing integration ───────────────────────────────
+
+// ENGINE_VERSION must match SERVICE_VERSION in worker/src/worker.ts. If the version
+// bumps, update this constant so the signing path stays coherent.
+const ENGINE_VERSION = "0.3.23";
+const SIGN_NOW = "2026-06-27T00:00:00.000Z";
+
+// Mirrors the handler's per-item signing loop. Used to test the logic contract —
+// not the same code path, but the same algorithm over the same inputs.
+async function buildSigBlock(
+  result: EvaluateContextResult,
+  secret: string
+): Promise<string | null> {
+  const sigLines: string[] = [];
+  for (let i = 0; i < result.items.length; i++) {
+    const { signal, provenance_readiness } = result.items[i].evaluation;
+    const resultId = provenance_readiness.source_identity.result_id;
+    if (!signal.content || !resultId) continue;
+    const payload = buildHaPriPayload({
+      resultId,
+      rawContent: signal.content,
+      semanticFingerprint: null,
+      adapter: signal.source_type,
+      publishedAt: signal.published_at,
+      retrievedAt: signal.retrieved_at,
+      engineVersion: ENGINE_VERSION,
+    });
+    const sig = await hmacSha256(secret, payload);
+    sigLines.push(`item=${i + 1} result_id=${resultId} sig=${sig}`);
+  }
+  if (sigLines.length === 0) return null;
+  return [
+    "[FRESHCONTEXT_SIG_V1]",
+    "algo=HMAC-SHA256",
+    ...sigLines,
+    "[/FRESHCONTEXT_SIG_V1]",
+  ].join("\n");
+}
+
+test("evaluate_context signing: FC_HMAC_SECRET set → [FRESHCONTEXT_SIG_V1] block with independently recomputed sig", async () => {
+  const result = evaluateContextInput({
+    profile: "academic_research",
+    intent: "citation_check",
+    signals: [{
+      id: "fc-sign-test-001",
+      source: "https://arxiv.org/abs/2026.sign001",
+      content: "Signing integration test: content used to construct ha-pri payload.",
+    }],
+    now: SIGN_NOW,
+  });
+  const formatted = formatEvaluateContextResult(result);
+  const sigBlock = await buildSigBlock(result, TEST_KEY);
+
+  assert.ok(sigBlock !== null, "signal with content and usable source must produce a sig block");
+  const signedOutput = formatted + "\n" + sigBlock;
+
+  assert.ok(signedOutput.includes("[FRESHCONTEXT_SIG_V1]"), "must contain sig block open tag");
+  assert.ok(signedOutput.includes("[/FRESHCONTEXT_SIG_V1]"), "must contain sig block close tag");
+  assert.ok(signedOutput.includes("algo=HMAC-SHA256"), "must declare signing algorithm");
+
+  // Independent recompute: build the payload directly and sign it. This is independent
+  // of buildSigBlock — if either has a bug the assertion catches it.
+  const { signal, provenance_readiness } = result.items[0].evaluation;
+  const resultId = provenance_readiness.source_identity.result_id;
+  assert.ok(resultId, "test signal with URL source must resolve a result_id");
+  assert.ok(signal.content, "test signal must carry content through evaluation");
+
+  const expectedPayload = buildHaPriPayload({
+    resultId,
+    rawContent: signal.content!,
+    semanticFingerprint: null,
+    adapter: signal.source_type,
+    publishedAt: signal.published_at,
+    retrievedAt: signal.retrieved_at,
+    engineVersion: ENGINE_VERSION,
+  });
+  const expectedSig = await hmacSha256(TEST_KEY, expectedPayload);
+
+  assert.match(expectedSig, /^[a-f0-9]{64}$/, "independently recomputed sig must be 64 hex chars");
+  assert.ok(
+    signedOutput.includes(`result_id=${resultId} sig=${expectedSig}`),
+    "block must contain independently recomputed HMAC for the test signal"
+  );
+});
+
+test("evaluate_context signing: FC_HMAC_SECRET unset → base output has no sig block (graceful omit)", () => {
+  const result = evaluateContextInput({
+    profile: "academic_research",
+    intent: "citation_check",
+    signals: [{ source: "https://example.com/doc", content: "Content for no-sign path." }],
+    now: SIGN_NOW,
+  });
+  const baseFormatted = formatEvaluateContextResult(result);
+
+  // The handler returns ok(formatted) when no secret — this verifies that base output
+  // is a clean, non-extended string with no sig block artifacts.
+  assert.ok(!baseFormatted.includes("[FRESHCONTEXT_SIG_V1]"), "base output must contain no sig block");
+  assert.ok(!baseFormatted.includes("[/FRESHCONTEXT_SIG_V1]"), "base output must contain no sig block close tag");
+  assert.ok(baseFormatted.includes("[FRESHCONTEXT_EVALUATION_JSON]"), "base output must still contain evaluation JSON block");
+});
+
+test("evaluate_context signing: title-only signal (no content) → no sig, no crash", async () => {
+  const result = evaluateContextInput({
+    profile: "academic_research",
+    intent: "citation_check",
+    signals: [{ source: "https://example.com/title-only", title: "Title-only with no content" }],
+    now: SIGN_NOW,
+  });
+
+  const { signal } = result.items[0].evaluation;
+  assert.ok(!signal.content, "title-only signal must carry no content through evaluation");
+
+  const sigBlock = await buildSigBlock(result, TEST_KEY);
+  assert.equal(sigBlock, null, "title-only signal must produce no sig block (graceful skip)");
 });

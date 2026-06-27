@@ -8,7 +8,8 @@ import {
   formatEvaluateContextResult,
 } from "../../src/tools/evaluateContext.js";
 import { synthesizeBriefing as generateAIBriefing } from "./synthesize.js";
-import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate, applyDecay, RT_EXPIRY_FLOOR } from "./intelligence.js";
+import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate, applyDecay, RT_EXPIRY_FLOOR, hmacSha256 } from "./intelligence.js";
+import { buildHaPriPayload } from "../../src/core/index.js";
 import {
   analyzeCompositeContent,
   isUncacheableContent,
@@ -48,6 +49,7 @@ interface Env {
   ANTHROPIC_KEY?: string;
   GITHUB_TOKEN?: string;
   PH_TOKEN?: string;
+  FC_HMAC_SECRET?: string;
 }
 
 type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error" | "cache_error";
@@ -1224,7 +1226,42 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
   }, async ({ profile, intent, signals, now }) => {
     try {
       const result = evaluateContextInput({ profile, intent, signals, now });
-      return ok(formatEvaluateContextResult(result));
+      const formatted = formatEvaluateContextResult(result);
+
+      if (!env.FC_HMAC_SECRET) {
+        return ok(formatted);
+      }
+
+      const sigLines: string[] = [];
+      for (let i = 0; i < result.items.length; i++) {
+        const { signal, provenance_readiness } = result.items[i].evaluation;
+        const resultId = provenance_readiness.source_identity.result_id;
+        if (!signal.content || !resultId) continue;
+        const payload = buildHaPriPayload({
+          resultId,
+          rawContent: signal.content,
+          semanticFingerprint: null,
+          adapter: signal.source_type,
+          publishedAt: signal.published_at,
+          retrievedAt: signal.retrieved_at,
+          engineVersion: SERVICE_VERSION,
+        });
+        const sig = await hmacSha256(env.FC_HMAC_SECRET, payload);
+        sigLines.push(`item=${i + 1} result_id=${resultId} sig=${sig}`);
+      }
+
+      if (sigLines.length === 0) {
+        return ok(formatted);
+      }
+
+      const sigBlock = [
+        "[FRESHCONTEXT_SIG_V1]",
+        "algo=HMAC-SHA256",
+        ...sigLines,
+        "[/FRESHCONTEXT_SIG_V1]",
+      ].join("\n");
+
+      return ok(formatted + "\n" + sigBlock);
     } catch (err) {
       if (err instanceof EvaluateContextInputError) {
         return ok(`[FreshContext evaluate_context error]\n${err.message}`);

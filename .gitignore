@@ -5,6 +5,7 @@ node_modules/
 .env
 .env.*
 !.env.example
+.dev.vars
 
 # Local secrets — never commit
 .api-key.local.txt
