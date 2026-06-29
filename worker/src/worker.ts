@@ -9,7 +9,7 @@ import {
 } from "../../src/tools/evaluateContext.js";
 import { synthesizeBriefing as generateAIBriefing } from "./synthesize.js";
 import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate, applyDecay, RT_EXPIRY_FLOOR, hmacSha256 } from "./intelligence.js";
-import { buildHaPriPayload } from "../../src/core/index.js";
+import { buildHaPriPayload, buildHaPriPayloadV3, sha256Hex, canonicalizeHaPriContent } from "../../src/core/index.js";
 import {
   analyzeCompositeContent,
   isUncacheableContent,
@@ -52,7 +52,7 @@ interface Env {
   FC_HMAC_SECRET?: string;
 }
 
-type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error" | "cache_error";
+type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error" | "cache_error" | "snapshot_write_error";
 
 type LogFields = {
   request_id?: string;
@@ -1233,10 +1233,34 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
       }
 
       const sigLines: string[] = [];
+      const snapshotRows: Array<{
+        id: string;
+        verdict_id: string;
+        result_id: string;
+        signal_source: string;
+        signal_source_type: string;
+        signal_published_at: string | null;
+        decision: string;
+        decision_label: string;
+        source_profile_id: string;
+        intent_profile_id: string;
+        evaluated_at: string;
+        revalidate_after: string | null;
+        engine_version: string;
+        canonical_content_sha256: string;
+        signing_payload: string;
+        signature: string;
+        signature_version: string;
+        created_at: string;
+      }> = [];
+
       for (let i = 0; i < result.items.length; i++) {
         const { signal, provenance_readiness } = result.items[i].evaluation;
+        const decision = result.items[i].decision;
         const resultId = provenance_readiness.source_identity.result_id;
         if (!signal.content || !resultId) continue;
+
+        // v2 payload — emitted [FRESHCONTEXT_SIG_V1] block is UNCHANGED.
         const payload = buildHaPriPayload({
           resultId,
           rawContent: signal.content,
@@ -1248,6 +1272,44 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
         });
         const sig = await hmacSha256(env.FC_HMAC_SECRET, payload);
         sigLines.push(`item=${i + 1} result_id=${resultId} sig=${sig}`);
+
+        // v3 snapshot row — verdict-bound, stored in ledger only, never emitted.
+        // Guard: skip if decision fields needed for the row are missing (type allows optional).
+        if (decision.evaluated_at && decision.verdict_id) {
+          const contentHash = sha256Hex(canonicalizeHaPriContent(signal.content));
+          const v3Payload = buildHaPriPayloadV3({
+            resultId,
+            rawContent: signal.content,
+            semanticFingerprint: null,
+            adapter: signal.source_type,
+            publishedAt: signal.published_at,
+            retrievedAt: signal.retrieved_at,
+            engineVersion: SERVICE_VERSION,
+            verdictId: decision.verdict_id,
+            decision: decision.decision,
+          });
+          const v3Sig = await hmacSha256(env.FC_HMAC_SECRET, v3Payload);
+          snapshotRows.push({
+            id: crypto.randomUUID(),
+            verdict_id: decision.verdict_id,
+            result_id: resultId,
+            signal_source: signal.source,
+            signal_source_type: signal.source_type ?? "unknown",
+            signal_published_at: signal.published_at ?? null,
+            decision: decision.decision,
+            decision_label: decision.label,
+            source_profile_id: result.profile.profile_id,
+            intent_profile_id: result.intent,
+            evaluated_at: decision.evaluated_at,
+            revalidate_after: decision.revalidate_after ?? null,
+            engine_version: SERVICE_VERSION,
+            canonical_content_sha256: contentHash,
+            signing_payload: v3Payload,
+            signature: v3Sig,
+            signature_version: "FRESHCONTEXT_HA_PRI_V3",
+            created_at: new Date().toISOString(),
+          });
+        }
       }
 
       if (sigLines.length === 0) {
@@ -1260,6 +1322,34 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
         ...sigLines,
         "[/FRESHCONTEXT_SIG_V1]",
       ].join("\n");
+
+      // Write snapshot rows to the append-only ledger — non-fatal, non-blocking.
+      // A D1 failure MUST NOT affect the user's formatted+signed response.
+      if (snapshotRows.length > 0) {
+        const statements = snapshotRows.map((row) =>
+          env.DB.prepare(
+            "INSERT INTO evaluation_snapshots " +
+            "(id, verdict_id, result_id, signal_source, signal_source_type, " +
+            "signal_published_at, decision, decision_label, source_profile_id, " +
+            "intent_profile_id, evaluated_at, revalidate_after, engine_version, " +
+            "canonical_content_sha256, signing_payload, signature, signature_version, created_at) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          ).bind(
+            row.id, row.verdict_id, row.result_id, row.signal_source, row.signal_source_type,
+            row.signal_published_at, row.decision, row.decision_label, row.source_profile_id,
+            row.intent_profile_id, row.evaluated_at, row.revalidate_after, row.engine_version,
+            row.canonical_content_sha256, row.signing_payload, row.signature, row.signature_version, row.created_at
+          )
+        );
+        const writePromise = env.DB.batch(statements).catch((err: unknown) =>
+          logEvent("snapshot_write_error", {}, err)
+        );
+        if (ctx) {
+          ctx.waitUntil(writePromise);
+        } else {
+          writePromise.catch(() => {});
+        }
+      }
 
       return ok(formatted + "\n" + sigBlock);
     } catch (err) {
