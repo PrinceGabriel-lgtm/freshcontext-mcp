@@ -243,6 +243,22 @@ export interface HaPriV2Input {
   engineVersion: string;
 }
 
+export interface HaPriV3Input extends HaPriV2Input {
+  /**
+   * Deterministic verdict fingerprint (SHA-256 of decision basis fields).
+   * Computed by computeVerdictId in decision.ts at evaluation time.
+   */
+  verdictId: string;
+  /**
+   * The ContextDecision enum value (e.g., "use_first", "exclude").
+   * Typed as string so the signing layer stays free of decision-module imports.
+   * Including both verdictId and decision in the payload is intentional: the pair
+   * forms a mutual cross-check — either field tampered independently breaks the HMAC,
+   * and a verifier can read the decision without recomputing verdictId.
+   */
+  decision: string;
+}
+
 export interface HaPriV2Material {
   version: "FRESHCONTEXT_HA_PRI_V2";
   resultId: string;

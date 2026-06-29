@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
 import type {
   HaPriV2Input,
+  HaPriV3Input,
   HaPriV2Result,
   HaPriV2VerificationResult,
 } from "./types.js";
 
 const HA_PRI_V2_VERSION = "FRESHCONTEXT_HA_PRI_V2" as const;
+const HA_PRI_V3_VERSION = "FRESHCONTEXT_HA_PRI_V3" as const;
 const NULL_SENTINEL = "null";
 
 function fieldValue(value: string | null | undefined): string {
@@ -80,6 +82,32 @@ export function buildHaPriPayload(input: HaPriV2Input): string {
     `published_at=${publishedAt}`,
     `retrieved_at=${retrievedAt}`,
     `engine_version=${engineVersion}`,
+  ].join("\n");
+}
+
+// v3 payload = same 8 v2 fields + verdict_id + decision, under the V3 header.
+// This signs the apple, not just the tree: the HMAC covers what content was seen
+// AND what verdict was reached. Alongside v2 — does NOT replace buildHaPriPayload.
+export function buildHaPriPayloadV3(input: HaPriV3Input): string {
+  const canonicalContentSha256 = sha256Hex(canonicalizeHaPriContent(input.rawContent));
+  const semanticFingerprintSha256 = sha256Hex(fieldValue(input.semanticFingerprint));
+  const resultId = fieldValue(input.resultId);
+  const adapter = fieldValue(input.adapter);
+  const publishedAt = fieldValue(input.publishedAt);
+  const retrievedAt = fieldValue(input.retrievedAt);
+  const engineVersion = fieldValue(input.engineVersion);
+
+  return [
+    HA_PRI_V3_VERSION,
+    `result_id=${resultId}`,
+    `canonical_content_sha256=${canonicalContentSha256}`,
+    `semantic_fingerprint_sha256=${semanticFingerprintSha256}`,
+    `adapter=${adapter}`,
+    `published_at=${publishedAt}`,
+    `retrieved_at=${retrievedAt}`,
+    `engine_version=${engineVersion}`,
+    `verdict_id=${input.verdictId}`,
+    `decision=${input.decision}`,
   ].join("\n");
 }
 

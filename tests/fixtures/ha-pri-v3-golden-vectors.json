@@ -1,0 +1,52 @@
+{
+  "schema": "freshcontext.ha_pri_v3.golden.v1",
+  "description": "Deterministic Ha-Pri v3 Core signing payload vectors. v3 extends v2 with verdict_id + decision, binding the verdict itself to the signed bytes. These prove stable field order, header distinction, and that both new fields are covered by the payload. The HMAC is performed by the Worker; Core produces only the payload string.",
+  "validVectors": [
+    {
+      "name": "v3 full fields use_first",
+      "input": {
+        "resultId": "fc-v3-001",
+        "rawContent": "Canonical test content for FreshContext.\nSecond line with evidence.",
+        "semanticFingerprint": "academic retrieval evaluation context",
+        "adapter": "arxiv",
+        "publishedAt": "2026-05-20T00:00:00.000Z",
+        "retrievedAt": "2026-06-09T12:00:00.000Z",
+        "engineVersion": "0.3.23",
+        "verdictId": "cb1a2b1e64fc1814de0b4c4c8bf7c33c36f8da2aa0a06d0088baf23d98ee2a85",
+        "decision": "use_first"
+      },
+      "verdictIdBasis": {
+        "note": "SHA-256 of the newline-joined basis string below, computed independently via Node createHash before this fixture was written.",
+        "basis": "FRESHCONTEXT_VERDICT_V1\nsignal_id=fc-v3-001\nsource=https://arxiv.org/abs/2026.v3gv001\nsource_type=arxiv\npublished_at=2026-05-20T00:00:00.000Z\ndecision=use_first\nsource_profile=academic_research\nintent_profile=citation_check"
+      },
+      "expected": {
+        "canonicalContentSha256": "9f4e132a2f45f5694e782f3f6bfcd6f5234f718e398100392244ae260f803a07",
+        "semanticFingerprintSha256": "6f8ba42b67507f500f2b88e3aa740e88d8db696e93430f31eb7d76525a37844c",
+        "signingPayload": "FRESHCONTEXT_HA_PRI_V3\nresult_id=fc-v3-001\ncanonical_content_sha256=9f4e132a2f45f5694e782f3f6bfcd6f5234f718e398100392244ae260f803a07\nsemantic_fingerprint_sha256=6f8ba42b67507f500f2b88e3aa740e88d8db696e93430f31eb7d76525a37844c\nadapter=arxiv\npublished_at=2026-05-20T00:00:00.000Z\nretrieved_at=2026-06-09T12:00:00.000Z\nengine_version=0.3.23\nverdict_id=cb1a2b1e64fc1814de0b4c4c8bf7c33c36f8da2aa0a06d0088baf23d98ee2a85\ndecision=use_first"
+      }
+    },
+    {
+      "name": "v3 null optional fields exclude",
+      "input": {
+        "resultId": "fc-v3-002",
+        "rawContent": "  \r\n\t",
+        "semanticFingerprint": null,
+        "adapter": "local_custom",
+        "publishedAt": null,
+        "retrievedAt": null,
+        "engineVersion": "0.3.23",
+        "verdictId": "9d197a6333daeb9415dbd95acd2d98a57c1ae471919393d1519307020446c618",
+        "decision": "exclude"
+      },
+      "verdictIdBasis": {
+        "note": "SHA-256 of the newline-joined basis string below, computed independently via Node createHash before this fixture was written.",
+        "basis": "FRESHCONTEXT_VERDICT_V1\nsignal_id=null\nsource=https://example.com/v3-null-test\nsource_type=local_custom\npublished_at=null\ndecision=exclude\nsource_profile=null\nintent_profile=null"
+      },
+      "expected": {
+        "canonicalContentSha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+        "semanticFingerprintSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "signingPayload": "FRESHCONTEXT_HA_PRI_V3\nresult_id=fc-v3-002\ncanonical_content_sha256=01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b\nsemantic_fingerprint_sha256=74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b\nadapter=local_custom\npublished_at=null\nretrieved_at=null\nengine_version=0.3.23\nverdict_id=9d197a6333daeb9415dbd95acd2d98a57c1ae471919393d1519307020446c618\ndecision=exclude"
+      }
+    }
+  ]
+}

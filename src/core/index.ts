@@ -15,6 +15,7 @@ export {
   sha256Hex,
   calculateHaPriV2,
   buildHaPriPayload,
+  buildHaPriPayloadV3,
   verifyHaPriV2,
 } from "./provenance.js";
 export type {
@@ -47,6 +48,7 @@ export type {
   ContextUtilityInput,
   ContextUtilityResult,
   HaPriV2Input,
+  HaPriV3Input,
   HaPriV2Material,
   HaPriV2Result,
   HaPriVerificationStatus,
