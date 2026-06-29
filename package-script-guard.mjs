@@ -127,6 +127,7 @@ const commands = {
       "tests/decision.test.ts",
       "tests/evaluateContextTool.test.ts",
       "tests/restHandler.test.ts",
+      "tests/verifyEndpoint.test.ts",
       "tests/sourceProfiles.test.ts",
       "tests/adapterRegistry.test.ts",
       "tests/coreEdgeBoundary.test.ts",

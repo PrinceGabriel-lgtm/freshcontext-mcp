@@ -146,13 +146,79 @@ function handleHealth(request: Request): Response {
   });
 }
 
-export async function handleRestRequest(request: Request): Promise<Response> {
+async function hmacHex(key: string, payload: string): Promise<string> {
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(key),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const buf = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(payload));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function handleVerify(request: Request, hmacSecret: string | undefined): Promise<Response> {
+  if (request.method !== "POST") return methodNotAllowed("POST");
+
+  if (!hmacSecret) {
+    return jsonResponse({
+      status: "unknown",
+      reasons: ["signing secret not configured on this host; cannot verify"],
+    });
+  }
+
+  const parsed = await readJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+
+  const { signing_payload, signature } = parsed.body;
+
+  if (typeof signing_payload !== "string" || signing_payload.trim() === "") {
+    return errorResponse("invalid_request", "signing_payload must be a non-empty string.", 400);
+  }
+
+  // Unknown (not invalid): caller has no signature to present.
+  // Mirrors verifyHaPriV2's three-state contract: missing/empty → unknown, not invalid.
+  if (signature === undefined || signature === null) {
+    return jsonResponse({
+      status: "unknown",
+      reasons: ["signature missing or empty; verification status unknown"],
+    });
+  }
+
+  if (typeof signature !== "string") {
+    return errorResponse("invalid_request", "signature must be a string.", 400);
+  }
+
+  if (signature.trim() === "") {
+    return jsonResponse({
+      status: "unknown",
+      reasons: ["signature missing or empty; verification status unknown"],
+    });
+  }
+
+  const expected = await hmacHex(hmacSecret, signing_payload);
+
+  if (signature === expected) {
+    return jsonResponse({ status: "valid", reasons: [] });
+  }
+
+  return jsonResponse({ status: "invalid", reasons: ["HMAC does not match recomputed signature"] });
+}
+
+// hmacSecret is injected by the Worker from env.FC_HMAC_SECRET when mounted.
+// handler.ts never imports or holds the secret — it arrives as a call-scoped
+// parameter. Existing callers that omit it continue to work; other routes ignore it.
+export async function handleRestRequest(request: Request, hmacSecret?: string): Promise<Response> {
   const url = new URL(request.url);
 
   try {
     if (url.pathname === "/v1/health") return handleHealth(request);
     if (url.pathname === "/v1/evaluate") return handleEvaluate(request);
     if (url.pathname === "/v1/evaluate-batch") return handleEvaluateBatch(request);
+    if (url.pathname === "/v1/verify") return handleVerify(request, hmacSecret);
 
     return errorResponse("not_found", `Not found: ${url.pathname}.`, 404);
   } catch {
