@@ -1,6 +1,12 @@
 # FreshContext Data Intelligence Methodology
-**Version 1.2 — May 2026**
-*Authored by Immanuel Gabriel (Prince Gabriel) — Grootfontein, Namibia*
+**Version 1.3 — June 2026**
+*Authored by Immanuel Gabriel (Prince Gabriel) — Grootfontein / Tsumeb, Namibia*
+
+> v1.3 updates the provenance/integrity layer to document the SHIPPED, LIVE Ha-Pri v2/v3
+> signed-verdict loop (HMAC, append-only ledger, stateless verify endpoint) which is in
+> production as of 2026-06-30, and records the honest Flag A decay validation against 1,219
+> rows of real data. See the Changelog and Section 3 for the v3 detail; see the companion
+> FRESHCONTEXT_FLAG_A_THESIS for the full decay audit.
 
 ---
 
@@ -195,6 +201,20 @@ These constants are reference/default calibration values for how quickly signals
 
 These constants are reference defaults used by the FreshContext methodology and may be tuned by implementation. Hosted or private deployments may use calibrated variants per source, query type, or user profile. The calibration process and production tuning may be proprietary, even when public reference defaults are documented.
 
+**Validation note (Flag A, 2026-06-30).** The decay model was tested against 1,219 rows of
+real production data across 6 active sources. Findings, stated honestly: (1) the pure
+per-source exponential `freshness_score` is clean and correctly implemented — measured
+half-lives match design intent (Hacker News ~0.6 days, GitHub ~144 days, arXiv ~578 days);
+(2) age predicts SOURCE-LEVEL decay *rate* (the volatility ordering HN-fastest →
+code-search-slowest is stable and real in the data), but does NOT predict any individual
+item's retained value — within a single age bin, retained relevance varies widely because it
+is driven by per-item content, not age alone; (3) the λ values remain reasoned reference
+defaults, not yet outcome-calibrated. Conclusion: λ is a correct source-volatility-ranking
+primitive, not a per-item validity oracle, and the clean exponential is the right floor model
+(Weibull did not beat it on the data). Per-item validity and λ calibration are staged future
+work (the latter data-gated on the signed-verdict ledger accumulating). Full audit:
+companion FRESHCONTEXT_FLAG_A_THESIS.
+
 ### 2.6 Entropy Classification
 
 Each signal is classified into one of three entropy states based on its position on the decay curve:
@@ -242,6 +262,45 @@ Ha-Pri v1 is not hard tamper enforcement. It is not recomputed on read, it signs
 Future Ha-Pri v2 may add canonical content SHA-256, stronger canonicalization, and explicit verification/rejection on read. That hardening is separate from the current v1 provenance stamp.
 
 Ha-Pri v1 is the provenance layer and the foundation for a stronger integrity layer, while DAR and context-conditioned utility are the ranking/scoring layer.
+
+### 3.1a The Ha-Pri v2 / v3 Signed-Verdict Loop (SHIPPED, LIVE 2026-06-30)
+
+Ha-Pri v1 (above) was the provenance *stamp*. The hardening it anticipated is now built,
+tested, and running in production. This subsection documents the live integrity layer.
+
+**v2 — HMAC-signed content provenance.** The signing payload binds the canonical content
+SHA-256, semantic fingerprint, adapter, published/retrieved timestamps, and the version-scoped
+engine version, signed with HMAC-SHA256 under a server-held secret (`FC_HMAC_SECRET`, never
+shipped in Core, never logged). The secret is injected at the edge, not imported into Core.
+
+**v3 — verdict-bound signing.** v3 extends the v2 payload with the `verdict_id` and the
+`decision` itself, under the header `FRESHCONTEXT_HA_PRI_V3`. Because the decision is inside
+the signed bytes, the signature is **tamper-evident at the verdict level**: changing the
+decision after signing breaks the HMAC, and a new valid signature cannot be forged without the
+secret. v3 runs alongside v2 (additive, non-breaking).
+
+**The append-only ledger.** Every signed verdict is written to an append-only D1 table
+(`evaluation_snapshots`) storing the full signing payload, signature, version-scoped engine
+version, decision, verdict_id, and the decision-time `evaluated_at` (the stored decision time,
+not a fresh clock read — the now-per-pull invariant). Rows are never updated or deleted;
+integrity rests on immutability. The write is non-fatal and non-blocking: a ledger failure can
+never break the consumer's evaluation response.
+
+**Trustless verification.** A stateless `/v1/verify` endpoint recomputes the HMAC and returns
+`valid` / `invalid` / `unknown`. A third party verifies a verdict by recompute-and-compare
+*without holding the secret*. Verification reads the STORED engine_version (version-scoped),
+never a live constant, so a verdict signed under any version remains verifiable forever.
+
+**Why this matters (the trust-layer claim):** v1 could say "this is what we stored." v3 can
+say "this verdict was reached at this time, signed, and you can prove it was not altered —
+without trusting us." That is an audit primitive, not a dashboard. It is the difference
+between a freshness *feature* and context-integrity *infrastructure*.
+
+**Honest status line:** the signed evaluate → store → verify loop is live in production
+(first real signed row landed 2026-06-30, verified byte-correct). The emitted `[FRESHCONTEXT_SIG_V1]`
+block in tool output remains v2 for now; v3 is stored in the ledger (the verdict-bound record).
+Mounting the full public REST surface and an enforcement wrapper that *acts* on verdicts are
+staged future work.
 
 ### 3.2 D1 Historical Ledger
 
@@ -352,7 +411,11 @@ For technical integrators, auditors, and future platform partners:
 
 3. **The Semantic Fingerprinting Method** — the three-field normalisation and SHA-256 fingerprinting approach for cross-adapter deduplication.
 
-4. **The Ha-Pri Audit Signature scheme** — the provenance stamp and audit reference that binds stored row material to the current v1 formula; stronger tamper-evidence is the future additive v2 path.
+4. **The Ha-Pri Audit Signature scheme** — a layered integrity system: v1 is the provenance
+   stamp; **v2/v3 is the live, shipped, HMAC-signed, verdict-bound, tamper-evident loop** with
+   an append-only ledger and a stateless trustless `/v1/verify` endpoint (in production as of
+   2026-06-30). This is the defensible core: a signed verdict a third party can verify without
+   trusting the issuer.
 
 5. **The Store / Ledger design** — support for recurring watched queries, historical signal accumulation, D1-backed storage, and time-series auditability.
 
@@ -361,6 +424,17 @@ For technical integrators, auditors, and future platform partners:
 ---
 
 ## Changelog
+
+### Version 1.3 — June 2026
+- Documented the shipped, live Ha-Pri v2/v3 signed-verdict loop (§3.1a): HMAC signing,
+  verdict-bound v3 payload, append-only `evaluation_snapshots` ledger, stateless trustless
+  `/v1/verify`, version-scoped verification, non-fatal ledger writes. Live in production
+  2026-06-30 (first signed row verified byte-correct).
+- Added the Flag A decay validation note (§2.5): tested against 1,219 real rows; pure
+  exponential `freshness_score` confirmed clean; honest boundary stated (source-level rate,
+  not per-item oracle; λ reasoned-not-calibrated). Full audit in companion FLAG_A_THESIS.
+- Updated asset summary (§5.4) to reflect the live signed-verdict integrity layer as the
+  defensible core.
 
 ### Version 1.2 — May 2026
 - Clarified Core methodology vs Store/Ledger methodology.
