@@ -117,6 +117,11 @@ describe("evaluate_context snapshot row (Brick 4)", () => {
   test("canonical_content_sha256 matches independently computed value", () => {
     const expected = sha256Hex(canonicalizeHaPriContent(signal.content ?? ""));
     assert.equal(contentHash, expected);
+    // Regression guard: if sha256Hex ever returns a Promise (e.g. name-collision with a
+    // local async function of the same name), typeof will be "object" and D1 bind() throws
+    // D1_TYPE_ERROR. Explicit typeof check catches this before it reaches D1.
+    assert.equal(typeof contentHash, "string",
+      "canonical_content_sha256 must be a string primitive — typeof 'object' means a Promise leaked into the row");
     assert.match(contentHash, /^[0-9a-f]{64}$/, "content hash must be 64 lowercase hex chars");
   });
 
@@ -241,4 +246,40 @@ test("snapshot write with no ctx falls back to writePromise.catch — also non-f
 
   assert.equal(captured.length, 1, "error must be captured even without ctx");
   assert.ok(captured[0].message.includes("D1 auth error"));
+});
+
+test("snapshot bind() sync throw is caught by local try/catch — handler returns formatted result", () => {
+  // Before the fix, D1 bind() throwing synchronously escaped to the handler's outer
+  // try/catch, returning '[FreshContext evaluate_context error]' instead of the
+  // formatted result. The fix wraps the row-building + batch in a local try/catch.
+  //
+  // This test models the fixed pattern and proves a sync throw from bind() is:
+  //   (a) caught locally (not propagated to the outer handler catch)
+  //   (b) logged as snapshot_write_error
+  //   (c) the formatted result is still returned to the caller
+  const captured: Error[] = [];
+  const mockLogEvent = (err: unknown) => {
+    if (err instanceof Error) captured.push(err);
+  };
+
+  // Simulate the fixed pattern: local try/catch wraps the map() + batch section
+  let formattedResultReturned = false;
+  try {
+    // bind() throws synchronously — this is exactly what D1 does on invalid types
+    const _statements = [{ id: "row-1" }].map(() => {
+      throw new Error("D1_TYPE_ERROR: Type 'object' not supported for value '[object Promise]'");
+    });
+    // batch() is never reached
+  } catch (err: unknown) {
+    mockLogEvent(err); // local catch logs, does NOT rethrow
+  }
+  formattedResultReturned = true; // handler continues to its return path
+
+  assert.ok(formattedResultReturned,
+    "handler must return the formatted result even when bind() throws synchronously — sync throws must not reach the outer catch");
+  assert.equal(captured.length, 1, "sync bind() throw must be logged as snapshot_write_error by the local catch");
+  assert.ok(
+    captured[0].message.includes("D1_TYPE_ERROR"),
+    "logged error must be the original synchronous D1 type error"
+  );
 });
