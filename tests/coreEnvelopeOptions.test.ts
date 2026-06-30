@@ -85,6 +85,8 @@ test("Core JSON shape remains unchanged when envelope formatting options are use
     "freshness_confidence",
     "freshness_score",
     "adapter",
+    "staleness",
+    "revalidate_after",
   ]);
 });
 

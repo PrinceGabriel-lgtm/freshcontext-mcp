@@ -75,3 +75,43 @@ export function scoreLabel(score: number | null): string {
   if (score >= 50)   return "verify before acting";
   return "use with caution";
 }
+
+// Brick 6 — "the eyes". The pure decay signal (freshness_score) is computed but
+// was only ever emitted as a 0-100 number the consumer must interpret. These two
+// functions make the staleness verdict and the revalidate-by boundary explicit.
+
+export type StalenessVerdict = "fresh" | "aging" | "stale" | "unknown";
+
+// Derived from the SAME score buckets as scoreLabel, not a second decay system.
+// "fresh" merges scoreLabel's "current"/"reliable" (score >= 70); "aging" matches
+// "verify before acting" (>= 50); "stale" matches "use with caution" (< 50). The
+// 50-point line is also where computeRevalidateAfter is anchored below — crossing
+// 50 is the one staleness boundary, expressed two ways (a verdict and a timestamp).
+export function stalenessVerdict(score: number | null): StalenessVerdict {
+  if (score === null) return "unknown";
+  if (score >= 70) return "fresh";
+  if (score >= 50) return "aging";
+  return "stale";
+}
+
+// The timestamp at which this content's freshness_score would cross the staleness
+// boundary (score = 50). Since 100 * e^(-lambda*t) = 50 solves to t = ln(2)/lambda
+// — exactly one half-life — revalidate_after is always content_date + half-life.
+// Uses the same null/future-date guards as calculateFreshnessScore so the two
+// stay in lockstep: staleness === "unknown" if and only if revalidate_after === null.
+export function computeRevalidateAfter(
+  content_date: string | null,
+  retrieved_at: string,
+  adapter: string
+): string | null {
+  if (!content_date) return null;
+
+  const published = new Date(content_date).getTime();
+  const retrieved = new Date(retrieved_at).getTime();
+  if (isNaN(published) || isNaN(retrieved)) return null;
+  if (published - retrieved > FUTURE_CLOCK_SKEW_TOLERANCE_MS) return null;
+
+  const lambda = LAMBDA[adapter] ?? LAMBDA.default;
+  const halfLifeHours = Math.log(2) / lambda;
+  return new Date(published + halfLifeHours * 60 * 60 * 1000).toISOString();
+}

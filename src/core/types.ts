@@ -1,3 +1,5 @@
+import type { StalenessVerdict } from "./decay.js";
+
 export interface FreshContext {
   content: string;
   source_url: string;
@@ -6,6 +8,8 @@ export interface FreshContext {
   freshness_confidence: "high" | "medium" | "low";
   freshness_score: number | null;
   adapter: string;
+  staleness: StalenessVerdict;
+  revalidate_after: string | null;
 }
 
 export interface ExtractOptions {

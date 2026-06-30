@@ -1,4 +1,4 @@
-import { LAMBDA, calculateFreshnessScore } from "./decay.js";
+import { LAMBDA, calculateFreshnessScore, computeRevalidateAfter, stalenessVerdict } from "./decay.js";
 import { formatForLLM, toStructuredJSON } from "./envelope.js";
 import { calculateHaPriV2 } from "./provenance.js";
 import { prepareProvenanceReadiness } from "./provenanceReadiness.js";
@@ -36,6 +36,14 @@ function createEnvelope(
 ): CoreSignalEnvelopeResult | undefined {
   if (!options.includeEnvelope || signal.content === undefined) return undefined;
 
+  // Mirrors the same failed/unknown override applied to freshnessScore at the
+  // call site, so staleness === "unknown" iff revalidate_after === null holds
+  // here too (computeRevalidateAfter's own date guard alone wouldn't catch a
+  // failed-status signal that still carries a parseable published_at).
+  const revalidate_after = signal.status === "failed" || signal.date_confidence === "unknown"
+    ? null
+    : computeRevalidateAfter(signal.published_at, signal.retrieved_at, signal.source_type);
+
   const ctx: FreshContext = {
     content: signal.content.slice(0, options.envelopeMaxLength ?? 8000),
     source_url: signal.source,
@@ -44,6 +52,8 @@ function createEnvelope(
     freshness_confidence: envelopeConfidence(signal),
     freshness_score: freshnessScore,
     adapter: signal.source_type,
+    staleness: stalenessVerdict(freshnessScore),
+    revalidate_after,
   };
 
   return {

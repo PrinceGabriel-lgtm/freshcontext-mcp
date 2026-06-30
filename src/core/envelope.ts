@@ -1,5 +1,5 @@
 import type { FreshContext, AdapterResult, ExtractOptions, EnvelopeFormatOptions } from "./types.js";
-import { calculateFreshnessScore, isMeaningfullyFutureDate, scoreLabel } from "./decay.js";
+import { calculateFreshnessScore, computeRevalidateAfter, isMeaningfullyFutureDate, scoreLabel, stalenessVerdict } from "./decay.js";
 import { looksLikeFailedAdapterContent } from "./guards.js";
 
 export const MAX_ENVELOPE_CONTENT_LENGTH = 20000;
@@ -25,6 +25,8 @@ export function stampFreshness(
     retrieved_at,
     adapter
   );
+  const staleness = stalenessVerdict(freshness_score);
+  const revalidate_after = computeRevalidateAfter(content_date, retrieved_at, adapter);
 
   return {
     content: result.raw.slice(0, clampEnvelopeMaxLength(options.maxLength)),
@@ -34,6 +36,8 @@ export function stampFreshness(
     freshness_confidence,
     freshness_score,
     adapter,
+    staleness,
+    revalidate_after,
   };
 }
 
@@ -46,6 +50,8 @@ export function toStructuredJSON(ctx: FreshContext): object {
       freshness_confidence: ctx.freshness_confidence,
       freshness_score:      ctx.freshness_score,
       adapter:              ctx.adapter,
+      staleness:            ctx.staleness,
+      revalidate_after:     ctx.revalidate_after,
     },
     content: ctx.content,
   };
@@ -62,6 +68,10 @@ export function formatForLLM(ctx: FreshContext, options: EnvelopeFormatOptions =
     ? `Score: ${ctx.freshness_score}/100 (${scoreLabel(ctx.freshness_score)})`
     : `Score: unknown`;
 
+  const stalenessLine = ctx.revalidate_after !== null
+    ? `Staleness: ${ctx.staleness} (revalidate by ${ctx.revalidate_after})`
+    : `Staleness: ${ctx.staleness}`;
+
   const textEnvelope = [
     `[FRESHCONTEXT]`,
     `Source: ${ctx.source_url}`,
@@ -69,6 +79,7 @@ export function formatForLLM(ctx: FreshContext, options: EnvelopeFormatOptions =
     `Retrieved: ${ctx.retrieved_at}`,
     `Confidence: ${ctx.freshness_confidence}`,
     `${scoreLine}`,
+    `${stalenessLine}`,
     `---`,
     ctx.content,
     `[/FRESHCONTEXT]`,

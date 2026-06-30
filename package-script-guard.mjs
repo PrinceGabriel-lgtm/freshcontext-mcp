@@ -130,6 +130,7 @@ const commands = {
       "tests/verifyEndpoint.test.ts",
       "tests/evaluateContextSnapshot.test.ts",
       "tests/evaluateVerifyLoop.test.ts",
+      "tests/stalenessEnvelope.test.ts",
       "tests/sourceProfiles.test.ts",
       "tests/adapterRegistry.test.ts",
       "tests/coreEdgeBoundary.test.ts",

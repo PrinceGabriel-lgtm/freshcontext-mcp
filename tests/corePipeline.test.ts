@@ -129,6 +129,8 @@ test("evaluateSignal can emit a FreshContext-compatible envelope without host co
       freshness_confidence: result.envelope.context.freshness_confidence,
       freshness_score: result.envelope.context.freshness_score,
       adapter: result.envelope.context.adapter,
+      staleness: result.envelope.context.staleness,
+      revalidate_after: result.envelope.context.revalidate_after,
     },
     content: result.envelope.context.content,
   });
