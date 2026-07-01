@@ -1,5 +1,64 @@
 # FreshContext Release Notes
 
+## 0.4.0
+
+FreshContext 0.4.0 ships the signed-verdict integrity loop and the staleness envelope live in
+production, closing the near-term arc toward context-integrity infrastructure: a judgment that
+is not just scored, but signed, stored, verifiable, and legible as a staleness signal.
+
+### Ha-Pri v2 / v3 Signed-Verdict Loop (live in production)
+
+- Adds HMAC-SHA256 signing of the `evaluate_context` verdict path (v2): canonical content
+  hash, semantic fingerprint, adapter, timestamps, and version-scoped engine version, signed
+  under a server-held secret never present in Core, never logged.
+- Adds Ha-Pri v3: extends the signed payload with `verdict_id` and the `decision` itself, so
+  the signature is tamper-evident at the verdict level. v3 runs additively alongside v2.
+- Adds an append-only `evaluation_snapshots` ledger. Every signed verdict is stored; rows are
+  never updated or deleted. Ledger writes are non-fatal and non-blocking — a storage failure
+  can never break the caller's evaluation response.
+- Adds a stateless `/v1/verify` endpoint: recompute-and-compare HMAC verification returning
+  `valid` / `invalid` / `unknown`, callable by any third party without holding the signing
+  secret. Verification reads the stored, version-scoped engine version, never a live constant.
+- Live-verified in production 2026-06-30: first signed row confirmed byte-correct end to end
+  (content hash, signature, verdict_id, decision, all fields consistent across independent
+  computation paths).
+
+### The Staleness Envelope ("the eyes")
+
+- Adds an explicit `staleness` verdict (`fresh` / `aging` / `stale` / `unknown`) and a
+  `revalidate_after` timestamp to the FreshContext envelope (`stampFreshness` /
+  `toStructuredJSON` / `formatForLLM`), derived from the existing per-source freshness score —
+  no second decay computation, no new tunable.
+- `revalidate_after` solves the existing exponential decay function at its "verify before
+  acting" threshold (one half-life from the content date); null when the content date is
+  unknown, in lockstep with `freshness_score`.
+- Surfaces both the human-readable line (`Staleness: fresh (revalidate by ...)`) and the
+  structured JSON fields, so a consuming model sees staleness directly rather than having to
+  interpret a bare score.
+- Available via the adapter/extract tools' FreshContext envelope path. Not present in
+  `evaluate_context` output, which uses a separate evaluation-result format by design.
+- Live-verified in production 2026-07-01 via a real adapter call against the deployed Worker.
+
+### Decay Model Validation
+
+- Validated the per-source exponential decay model against 1,219 rows of real production data
+  across 6 active source types. Confirmed the pure freshness function is clean and correctly
+  calibrated (measured half-lives match design intent). Documented the honest scope boundary:
+  age predicts source-level decay rate, not per-item validity; per-item variance is driven by
+  content, not age alone. Full audit: `docs/FRESHCONTEXT_FLAG_A_THESIS_2026-06-30.md`.
+
+### Methodology and Defensibility
+
+- `METHODOLOGY.md` updated to v1.3, documenting the live signed-verdict integrity layer and
+  the decay validation, so the authored specification matches the shipped engine.
+
+### Release Gate
+
+- Full test suite: 344 pass / 0 fail.
+- MCP smoke confirmed at 22 tools / 0.4.0.
+- Trust Scanner gate: effective fail 0.
+- Package and server metadata aligned at 0.4.0.
+
 ## 0.3.23
 
 FreshContext 0.3.23 adds deterministic verdict identity for evaluated context results.

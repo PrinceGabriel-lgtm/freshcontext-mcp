@@ -1,7 +1,7 @@
 {
   "name": "freshcontext-mcp",
   "mcpName": "io.github.PrinceGabriel-lgtm/freshcontext",
-  "version": "0.3.23",
+  "version": "0.4.0",
   "description": "Context integrity infrastructure for AI agents and retrieval systems. Score, explain, and wrap candidate context before it reaches the model.",
   "keywords": [
     "mcp",
