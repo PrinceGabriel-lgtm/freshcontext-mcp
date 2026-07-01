@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS evaluation_snapshots (
 
   -- Signing metadata
   engine_version TEXT NOT NULL,
-  -- ^ SERVICE_VERSION at sign time (e.g., '0.3.23'). CRITICAL — signatures are
+  -- ^ SERVICE_VERSION at sign time (e.g., '0.4.0'). CRITICAL — signatures are
   --   VERSION-SCOPED. The verify endpoint MUST feed the stored value back into payload
   --   recompute, never the current SERVICE_VERSION constant. A version bump changes
   --   every signature; this is the anchor that keeps old rows verifiable.

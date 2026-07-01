@@ -47,7 +47,7 @@ test("GET /v1/health returns REST health payload", async () => {
   assert.deepEqual(body, {
     ok: true,
     service: "freshcontext-rest",
-    version: "0.3.23",
+    version: "0.4.0",
     core_available: true,
   });
 });

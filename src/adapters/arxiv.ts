@@ -19,7 +19,7 @@ type ParsedArxivEntry = {
   category: string;
 };
 
-const USER_AGENT = "freshcontext-mcp/0.3.21 (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)";
+const USER_AGENT = "freshcontext-mcp/0.4.0 (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)";
 const DEFAULT_ARXIV_SIGNAL_SCORE = 0.8;
 
 function buildArxivApiUrl(input: string, maxResults = 10): string {

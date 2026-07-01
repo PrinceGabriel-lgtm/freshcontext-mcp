@@ -154,7 +154,7 @@ async function fetchRemotive(
 ): Promise<{ listings: Listing[] }> {
   const url = `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(query)}&limit=15`;
   const res = await fetch(url, {
-    headers: { "User-Agent": "freshcontext-mcp/0.3.21", "Accept": "application/json" },
+    headers: { "User-Agent": "freshcontext-mcp/0.4.0", "Accept": "application/json" },
   });
   if (!res.ok) throw new Error(`Remotive ${res.status}`);
 
@@ -195,7 +195,7 @@ async function fetchRemoteOK(
   const tag = query.toLowerCase().replace(/\s+/g, "-");
   const url = `https://remoteok.com/api?tag=${encodeURIComponent(tag)}`;
   const res = await fetch(url, {
-    headers: { "User-Agent": "freshcontext-mcp/0.3.21", "Accept": "application/json" },
+    headers: { "User-Agent": "freshcontext-mcp/0.4.0", "Accept": "application/json" },
   });
   if (!res.ok) throw new Error(`RemoteOK ${res.status}`);
 
@@ -244,7 +244,7 @@ async function fetchArbeitnow(
 
   const url = `https://arbeitnow.com/api/job-board-api?${params.toString()}`;
   const res = await fetch(url, {
-    headers: { "User-Agent": "freshcontext-mcp/0.3.21", "Accept": "application/json" },
+    headers: { "User-Agent": "freshcontext-mcp/0.4.0", "Accept": "application/json" },
   });
   if (!res.ok) throw new Error(`Arbeitnow ${res.status}`);
 
@@ -292,7 +292,7 @@ async function fetchMuse(
 
   const url = `https://www.themuse.com/api/public/jobs?name=${encodeURIComponent(query)}${locParam}&page=0&descending=true`;
   const res = await fetch(url, {
-    headers: { "User-Agent": "freshcontext-mcp/0.3.21", "Accept": "application/json" },
+    headers: { "User-Agent": "freshcontext-mcp/0.4.0", "Accept": "application/json" },
   });
   if (!res.ok) throw new Error(`The Muse ${res.status}`);
 
@@ -337,7 +337,7 @@ async function fetchHNHiring(
   // Step 1: Find the most recent "Ask HN: Who is hiring?" thread
   const threadRes = await fetch(
     `https://hn.algolia.com/api/v1/search?query=Ask+HN+Who+is+hiring&tags=story&hitsPerPage=5`,
-    { headers: { "User-Agent": "freshcontext-mcp/0.3.21" } }
+    { headers: { "User-Agent": "freshcontext-mcp/0.4.0" } }
   );
   if (!threadRes.ok) throw new Error(`HN thread search ${threadRes.status}`);
 
@@ -355,7 +355,7 @@ async function fetchHNHiring(
   const searchTerms = [query, location].filter(Boolean).join(" ");
   const commentsRes = await fetch(
     `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(searchTerms)}&tags=comment,story_${hiringThread.objectID}&hitsPerPage=10`,
-    { headers: { "User-Agent": "freshcontext-mcp/0.3.21" } }
+    { headers: { "User-Agent": "freshcontext-mcp/0.4.0" } }
   );
   if (!commentsRes.ok) throw new Error(`HN comments ${commentsRes.status}`);
 
