@@ -302,11 +302,17 @@ between a freshness *feature* and context-integrity *infrastructure*.
 
 **Honest status line:** the signed evaluate → store loop is live in production (first real
 signed row landed 2026-06-30, verified byte-correct). The `/v1/verify` and `/v1/health`
-endpoints are mounted on the Worker (verify in both stateless and ledger-backed modes) and are
-verified over the real Worker route in the integration harness; the production live-date is
-stamped at deploy. `/v1/evaluate` (public evaluate) stays unmounted pending a separate security
-decision. The emitted `[FRESHCONTEXT_SIG_V1]` block in tool output remains v2 for now; v3 is
-stored in the ledger and is what the ledger-backed verify checks (the verdict-bound record). An
+endpoints are mounted on the Worker (verify in both stateless and ledger-backed modes),
+deployed 2026-07-06 (Worker Version `c1128e3c-1e10-4ba5-b9d7-ef117d97f06a`), and verified
+over the real Worker route in the integration harness. **The production live-date is
+confirmed, not just stamped at deploy:** on 2026-07-06 a real `curl` against the live
+deployed URL returned `{"ok":true,...,"version":"0.4.0"}` from `/v1/health`, and both
+verify modes returned `valid` for the real ledger row signed 2026-06-30 — ledger-backed
+verify correctly returned that row's *stored* `engine_version: "0.3.23"` (not the current
+`0.4.0` constant), demonstrating the version-scoping invariant live, not just in tests.
+`/v1/evaluate` (public evaluate) stays unmounted pending a separate security decision. The
+emitted `[FRESHCONTEXT_SIG_V1]` block in tool output remains v2 for now; v3 is stored in the
+ledger and is what the ledger-backed verify checks (the verdict-bound record). An
 enforcement wrapper that *acts* on verdicts is staged future work.
 
 ### 3.2 D1 Historical Ledger
@@ -426,7 +432,10 @@ For technical integrators, auditors, and future platform partners:
 
 5. **The Store / Ledger design** — support for recurring watched queries, historical signal accumulation, D1-backed storage, and time-series auditability.
 
-6. **The Reference Implementation** — `freshcontext-mcp@0.3.23`, the `evaluate_context` MCP interface, and 21 read-only reference adapters, listed on npm and the MCP Registry. The hosted Worker endpoint is a separate deployment surface.
+6. **The Reference Implementation** — `freshcontext-mcp@0.4.0`, the `evaluate_context` MCP
+   interface, and 21 read-only reference adapters, listed on npm and the MCP Registry. The
+   hosted Worker endpoint (including the mounted, verified-live `/v1/verify` and `/v1/health`)
+   is a separate deployment surface.
 
 ---
 

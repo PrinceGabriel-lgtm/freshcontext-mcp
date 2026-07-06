@@ -26,8 +26,13 @@ is not just scored, but signed, stored, verifiable, and legible as a staleness s
 - Live-verified in production 2026-06-30: first signed row confirmed byte-correct end to end
   (content hash, signature, verdict_id, decision, all fields consistent across independent
   computation paths). The mounted `/v1/verify` route is covered by an integration test that
-  drives the real Worker fetch handler over a real local D1 ledger; production live-date for the
-  mount itself is stamped at deploy.
+  drives the real Worker fetch handler over a real local D1 ledger. **The mount itself was
+  deployed 2026-07-06 (Worker Version `c1128e3c-1e10-4ba5-b9d7-ef117d97f06a`) and confirmed
+  live the same day**: a real `curl` against the live URL's `/v1/health` returned
+  `{"ok":true,...,"version":"0.4.0"}`, and both verify modes returned `valid` for a real
+  ledger row signed 2026-06-30 — the ledger-backed mode correctly returned that row's stored
+  `engine_version: "0.3.23"` rather than the current constant, confirming the
+  version-scoping guarantee live, not only in tests.
 
 ### The Staleness Envelope ("the eyes")
 
