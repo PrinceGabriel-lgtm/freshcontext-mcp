@@ -10,6 +10,7 @@ import {
 import { synthesizeBriefing as generateAIBriefing } from "./synthesize.js";
 import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate, applyDecay, RT_EXPIRY_FLOOR, hmacSha256 } from "./intelligence.js";
 import { buildHaPriPayload, buildHaPriPayloadV3, sha256Hex as coreSha256Hex, canonicalizeHaPriContent } from "../../src/core/index.js";
+import { handleRestRequest } from "../../src/rest/handler.js";
 import {
   analyzeCompositeContent,
   isUncacheableContent,
@@ -165,6 +166,8 @@ function isAllowedRoute(pathname: string): boolean {
     || pathname.startsWith("/demo/")
     || pathname === "/mcp"
     || pathname === "/mcp/"
+    || pathname === "/v1/health"
+    || pathname === "/v1/verify"
     || pathname === "/watched-queries"
     || pathname === "/briefing"
     || pathname === "/briefing/now"
@@ -178,6 +181,7 @@ function routeName(pathname: string): string {
   if (pathname === "/demo" || pathname.startsWith("/demo/")) return "/demo";
   if (pathname === "/mcp" || pathname === "/mcp/") return "/mcp";
   if (pathname.startsWith("/v1/intel/feed/")) return "/v1/intel/feed/:profile_id";
+  if (pathname === "/v1/health" || pathname === "/v1/verify") return pathname;
   return pathname;
 }
 
@@ -2379,6 +2383,21 @@ export default {
         return new Response(null, { headers: { "Content-Type": "application/json" } });
       }
       return jsonResponse(health);
+    }
+
+    // ── /v1/health + /v1/verify — mounted REST surface (F1) ─────────────────────
+    // Delegated to src/rest/handler.ts. The HMAC secret (env.FC_HMAC_SECRET) and the
+    // ledger reader (env.DB) are injected call-scoped — handler.ts imports neither.
+    // env.DB is structurally compatible with handler's LedgerReader interface, so no
+    // cast is needed. /v1/evaluate and /v1/evaluate-batch are deliberately NOT mounted
+    // (not in isAllowedRoute) — public evaluate is a separate security decision, so a
+    // call to them 404s at the allow-route gate above, never reaching the engine.
+    if (url.pathname === "/v1/health" || url.pathname === "/v1/verify") {
+      try {
+        return await handleRestRequest(request, env.FC_HMAC_SECRET, env.DB);
+      } catch (err: unknown) {
+        return routeError(err);
+      }
     }
 
     // ── GET /watched-queries ─────────────────────────────────────────────────
