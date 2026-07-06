@@ -16,12 +16,18 @@ is not just scored, but signed, stored, verifiable, and legible as a staleness s
 - Adds an append-only `evaluation_snapshots` ledger. Every signed verdict is stored; rows are
   never updated or deleted. Ledger writes are non-fatal and non-blocking — a storage failure
   can never break the caller's evaluation response.
-- Adds a stateless `/v1/verify` endpoint: recompute-and-compare HMAC verification returning
-  `valid` / `invalid` / `unknown`, callable by any third party without holding the signing
-  secret. Verification reads the stored, version-scoped engine version, never a live constant.
+- Adds a `/v1/verify` endpoint, mounted on the Worker, in two modes: stateless
+  (recompute-and-compare HMAC over a caller-presented payload + signature — no state read) and
+  ledger-backed (caller presents a `verdict_id` or row `id`; the endpoint reads the STORED
+  signing payload + signature from the append-only ledger and verifies those). Either mode is
+  callable by any third party without holding the signing secret. The ledger-backed mode is what
+  makes verification read the stored, version-scoped engine version rather than a live constant.
+  `/v1/evaluate` (public evaluate) stays unmounted pending a separate security decision.
 - Live-verified in production 2026-06-30: first signed row confirmed byte-correct end to end
   (content hash, signature, verdict_id, decision, all fields consistent across independent
-  computation paths).
+  computation paths). The mounted `/v1/verify` route is covered by an integration test that
+  drives the real Worker fetch handler over a real local D1 ledger; production live-date for the
+  mount itself is stamped at deploy.
 
 ### The Staleness Envelope ("the eyes")
 

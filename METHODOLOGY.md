@@ -286,21 +286,28 @@ not a fresh clock read — the now-per-pull invariant). Rows are never updated o
 integrity rests on immutability. The write is non-fatal and non-blocking: a ledger failure can
 never break the consumer's evaluation response.
 
-**Trustless verification.** A stateless `/v1/verify` endpoint recomputes the HMAC and returns
-`valid` / `invalid` / `unknown`. A third party verifies a verdict by recompute-and-compare
-*without holding the secret*. Verification reads the STORED engine_version (version-scoped),
-never a live constant, so a verdict signed under any version remains verifiable forever.
+**Trustless verification.** A `/v1/verify` endpoint (mounted on the Worker) returns
+`valid` / `invalid` / `unknown` and offers two modes. Stateless: the caller presents the
+signing payload and signature, and the endpoint recomputes the HMAC and compares — no state
+read. Ledger-backed: the caller presents a `verdict_id` (or row `id`), and the endpoint reads
+the STORED signing payload and signature from the append-only ledger and verifies those — so
+verification uses the stored, version-scoped engine version, never a live constant, and a
+verdict stays verifiable against its ledger row under any version. Either mode lets a third
+party verify *without holding the secret*.
 
 **Why this matters (the trust-layer claim):** v1 could say "this is what we stored." v3 can
 say "this verdict was reached at this time, signed, and you can prove it was not altered —
 without trusting us." That is an audit primitive, not a dashboard. It is the difference
 between a freshness *feature* and context-integrity *infrastructure*.
 
-**Honest status line:** the signed evaluate → store → verify loop is live in production
-(first real signed row landed 2026-06-30, verified byte-correct). The emitted `[FRESHCONTEXT_SIG_V1]`
-block in tool output remains v2 for now; v3 is stored in the ledger (the verdict-bound record).
-Mounting the full public REST surface and an enforcement wrapper that *acts* on verdicts are
-staged future work.
+**Honest status line:** the signed evaluate → store loop is live in production (first real
+signed row landed 2026-06-30, verified byte-correct). The `/v1/verify` and `/v1/health`
+endpoints are mounted on the Worker (verify in both stateless and ledger-backed modes) and are
+verified over the real Worker route in the integration harness; the production live-date is
+stamped at deploy. `/v1/evaluate` (public evaluate) stays unmounted pending a separate security
+decision. The emitted `[FRESHCONTEXT_SIG_V1]` block in tool output remains v2 for now; v3 is
+stored in the ledger and is what the ledger-backed verify checks (the verdict-bound record). An
+enforcement wrapper that *acts* on verdicts is staged future work.
 
 ### 3.2 D1 Historical Ledger
 
