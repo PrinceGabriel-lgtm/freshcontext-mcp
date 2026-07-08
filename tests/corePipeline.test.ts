@@ -131,6 +131,7 @@ test("evaluateSignal can emit a FreshContext-compatible envelope without host co
       adapter: result.envelope.context.adapter,
       staleness: result.envelope.context.staleness,
       revalidate_after: result.envelope.context.revalidate_after,
+      content_is_external: true,
     },
     content: result.envelope.context.content,
   });
