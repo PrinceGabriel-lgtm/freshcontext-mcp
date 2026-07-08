@@ -186,6 +186,34 @@ async function hmacHex(key: string, payload: string): Promise<string> {
     .join("");
 }
 
+// Timing-safe equality for the signature compare. Instead of comparing the two hex
+// strings directly (=== short-circuits at the first differing byte → a timing oracle
+// an attacker could walk one byte at a time), we HMAC BOTH sides under the same secret
+// already in scope and compare the resulting MAC bytes in a fixed-time XOR loop. The
+// compare runs over unpredictable MAC bytes, so byte-position leakage reveals nothing
+// about the real signature. Kept Web-Crypto-only so handler.ts stays edge-safe and free
+// of the npm/edge boundary (worker.ts has its own constantTimeEqual for the API-key path;
+// importing it here would drag in a Worker-only module this file deliberately avoids).
+async function timingSafeEqualHex(hmacSecret: string, a: string, b: string): Promise<boolean> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(hmacSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const enc = new TextEncoder();
+  const [macA, macB] = await Promise.all([
+    crypto.subtle.sign("HMAC", key, enc.encode(a)),
+    crypto.subtle.sign("HMAC", key, enc.encode(b)),
+  ]);
+  const ua = new Uint8Array(macA);
+  const ub = new Uint8Array(macB);
+  let diff = ua.length ^ ub.length;
+  for (let i = 0; i < ua.length; i++) diff |= ua[i] ^ (ub[i] ?? 0);
+  return diff === 0;
+}
+
 // Recompute HMAC over a stored/presented payload and compare to the presented/stored
 // signature. Shared by both verify modes so the compare logic exists in exactly one place.
 async function verifyRow(
@@ -194,7 +222,7 @@ async function verifyRow(
   extra: JsonRecord
 ): Promise<Response> {
   const expected = await hmacHex(hmacSecret, row.signing_payload);
-  const valid = row.signature === expected;
+  const valid = await timingSafeEqualHex(hmacSecret, row.signature, expected);
   return jsonResponse({
     status: valid ? "valid" : "invalid",
     ...extra,
@@ -325,7 +353,7 @@ async function handleVerifyStateless(body: JsonRecord, hmacSecret: string): Prom
 
   const expected = await hmacHex(hmacSecret, signing_payload);
 
-  if (signature === expected) {
+  if (await timingSafeEqualHex(hmacSecret, signature, expected)) {
     return jsonResponse({ status: "valid", reasons: [] });
   }
 
