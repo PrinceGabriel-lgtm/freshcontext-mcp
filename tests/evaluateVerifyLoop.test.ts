@@ -11,7 +11,7 @@ const { hmacSha256 } = workerIntelligence;
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
-const SERVICE_VERSION = "0.3.23";
+const SERVICE_VERSION = "0.4.0";
 // Test key: obviously fake. The only thing faked in this end-to-end test.
 const TEST_KEY = "freshcontext-test-integration-key-do-not-use";
 

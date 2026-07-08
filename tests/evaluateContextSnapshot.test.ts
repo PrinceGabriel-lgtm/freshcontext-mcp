@@ -17,7 +17,7 @@ const { hmacSha256 } = workerIntelligence;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SERVICE_VERSION = "0.3.23";
+const SERVICE_VERSION = "0.4.0";
 const TEST_KEY = "freshcontext-test-hmac-key-do-not-use-in-production";
 const NOW = "2026-06-29T10:00:00.000Z";
 
