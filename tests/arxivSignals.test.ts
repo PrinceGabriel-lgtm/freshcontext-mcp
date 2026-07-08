@@ -65,7 +65,7 @@ test("searchArxivSignals maps arXiv XML entries to FreshContextSignalInput", asy
     assert.equal(signals[0].content, "A paper about freshness-ranked context selection for agent systems.");
     assert.equal(signals[0].source, "https://arxiv.org/abs/2605.12345v1");
     assert.equal(signals[0].source_type, "arxiv");
-    assert.equal(signals[0].published_at, "2026-05-10T09:30:00Z");
+    assert.equal(signals[0].published_at, "2026-05-12T13:45:00Z"); // updated beats published
     assert.equal(signals[0].retrieved_at, "2026-06-02T10:00:00.000Z");
     assert.equal(signals[0].semantic_score, 0.93);
     assert.deepEqual(signals[0].metadata?.authors, ["Ada Lovelace", "Grace Hopper"]);
@@ -176,7 +176,7 @@ test("arxivAdapter still returns aggregate AdapterResult shape from the same fix
     assert.match(result.raw, /Published: 2026-05-10 \(updated 2026-05-12\)/);
     assert.match(result.raw, /Category: cs.AI/);
     assert.match(result.raw, /Link: https:\/\/arxiv\.org\/abs\/2605\.12345v1/);
-    assert.equal(result.content_date, "2026-05-10");
+    assert.equal(result.content_date, "2026-05-12"); // updated date, not published
     assert.equal(result.freshness_confidence, "high");
   } finally {
     restoreFetch();
@@ -192,6 +192,93 @@ test("arxivAdapter keeps no-results AdapterResult behavior", async () => {
     assert.equal(result.raw, "No results found for this query.");
     assert.equal(result.content_date, null);
     assert.equal(result.freshness_confidence, "low");
+  } finally {
+    restoreFetch();
+  }
+});
+
+// ── Quimby Step 4: revised-paper anchor tests ─────────────────────────────────
+// Fixture approximates the empirical 2309.16843v3 case from the structural-signal
+// audit: published 2023-09-28, updated 2026-07-02 (~1007 day delta). Before the
+// fix, published_at/content_date anchored to 2023-09-28 and the paper scored ~29/100
+// freshness. After the fix it anchors to 2026-07-02 (~5 days old) and scores ~99/100.
+const REVISED_PAPER_FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2309.16843v3</id>
+    <updated>2026-07-02T00:00:00Z</updated>
+    <published>2023-09-28T00:00:00Z</published>
+    <title>A revised preprint from 2023</title>
+    <summary>Empirical anchor case: published 2023-09-28, last revised 2026-07-02.</summary>
+    <author><name>Test Author</name></author>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.LG" />
+  </entry>
+</feed>`;
+
+// Unrevised fixture: published == updated — the regression control.
+const UNREVISED_PAPER_FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2605.11111v1</id>
+    <updated>2026-05-15T12:00:00Z</updated>
+    <published>2026-05-15T12:00:00Z</published>
+    <title>A fresh unrevised paper</title>
+    <summary>Standard case: published equals updated, no revision.</summary>
+    <author><name>Test Author</name></author>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.AI" />
+  </entry>
+</feed>`;
+
+test("searchArxivSignals: revised paper uses updated as published_at (approximates 2309.16843v3 shape)", async () => {
+  const restoreFetch = installFetch(new Response(REVISED_PAPER_FIXTURE, { status: 200 }));
+
+  try {
+    const signals = await searchArxivSignals({
+      query: "revised preprint",
+      retrievedAt: "2026-07-07T00:00:00.000Z",
+      semanticScore: 0.9,
+    });
+
+    assert.equal(signals.length, 1);
+    // updated (2026-07-02) is later — anchor must be the revision date, not the submission date
+    assert.equal(signals[0].published_at, "2026-07-02T00:00:00Z");
+    // metadata still carries the revision date (unchanged)
+    assert.equal(signals[0].metadata?.updated_at, "2026-07-02T00:00:00Z");
+    assert.equal(signals[0].source, "https://arxiv.org/abs/2309.16843v3");
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("searchArxivSignals: unrevised paper (published == updated) is unaffected by the fix", async () => {
+  const restoreFetch = installFetch(new Response(UNREVISED_PAPER_FIXTURE, { status: 200 }));
+
+  try {
+    const signals = await searchArxivSignals({
+      query: "fresh paper",
+      retrievedAt: "2026-07-07T00:00:00.000Z",
+    });
+
+    assert.equal(signals.length, 1);
+    // published == updated, so result is identical to pre-fix behavior
+    assert.equal(signals[0].published_at, "2026-05-15T12:00:00Z");
+    assert.equal(signals[0].metadata?.updated_at, "2026-05-15T12:00:00Z");
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("arxivAdapter: revised paper content_date uses updated date, not published date", async () => {
+  const restoreFetch = installFetch(new Response(REVISED_PAPER_FIXTURE, { status: 200 }));
+
+  try {
+    const result = await arxivAdapter({ url: "revised preprint", maxLength: 6000 });
+
+    // Before fix: "2023-09-28". After fix: "2026-07-02" (the revision date).
+    assert.equal(result.content_date, "2026-07-02");
+    assert.equal(result.freshness_confidence, "high");
+    // Human-readable output still shows both dates — unaffected by the anchor change
+    assert.match(result.raw, /Published: 2023-09-28 \(updated 2026-07-02\)/);
   } finally {
     restoreFetch();
   }

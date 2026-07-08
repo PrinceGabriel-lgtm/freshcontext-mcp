@@ -97,7 +97,11 @@ export async function ycAdapter(options: ExtractOptions): Promise<AdapterResult>
 
   return {
     raw,
-    content_date: new Date().toISOString().split("T")[0],
-    freshness_confidence: "high",
+    // Date is null, not today. A YC listing carries no reliable content-freshness date
+    // (the batch is a founding-era marker, not a last-updated signal). Stamping "today"
+    // made a freshness product score every YC result as perpetually fresh — a false
+    // signal in the flattering direction. null = "freshness unknown", which is honest.
+    content_date: null,
+    freshness_confidence: "low",
   };
 }

@@ -64,7 +64,13 @@ test("arXiv signal extraction feeds Core evaluation and decision helper", async 
     assert.ok(decisions[0].warnings.some((warning) => /does not certify truth/i.test(warning)));
 
     assert.equal(evaluations[1].signal.title, "Information aging in retrieval augmented systems");
-    assert.equal(decisions[1].decision, "cite_as_supporting");
+    // Fixture entry 2 has updated (2024-11-10) != published (2024-10-15). After the
+    // Quimby Step 4 anchor fix, published_at now resolves to `updated`, moving this
+    // paper's freshness_score from just under 50 to just over 50 — which crosses the
+    // decision.ts:300 threshold and lands it in the finalScore>=0.55 fallback
+    // (decision.ts:326-327, use_as_background) instead of the freshnessScore<50
+    // branch (decision.ts:300-311, cite_as_supporting).
+    assert.equal(decisions[1].decision, "use_as_background");
     assert.ok(decisions[1].warnings.some((warning) => /does not certify truth/i.test(warning)));
   } finally {
     restoreFetch();

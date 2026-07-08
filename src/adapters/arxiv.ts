@@ -114,7 +114,7 @@ export async function arxivAdapter(options: ExtractOptions): Promise<AdapterResu
   const raw = papers.join("\n\n").slice(0, options.maxLength ?? 6000);
 
   const dates = entries
-    .map(entry => entry.published.slice(0, 10))
+    .map(entry => (entry.updated || entry.published).slice(0, 10))
     .filter(Boolean)
     .sort()
     .reverse();
@@ -137,7 +137,7 @@ export async function searchArxivSignals(input: ArxivSignalSearchInput): Promise
     content: entry.summary,
     source: entry.id,
     source_type: "arxiv",
-    published_at: entry.published || null,
+    published_at: entry.updated || entry.published || null,
     retrieved_at: retrievedAt,
     semantic_score: semanticScore,
     metadata: {
