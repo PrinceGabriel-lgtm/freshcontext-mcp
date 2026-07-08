@@ -1965,6 +1965,7 @@ async function runClaimChecks(state) {
   }
 
   await checkVersionConsistency(state, claimCheck);
+  await checkSourceVersionConstants(state, claimCheck);
   const claimSurfaces = await loadClaimSurfaces(state, claimCheck);
   checkToolCountClaims(state, claimCheck, claimSurfaces);
   checkFinanceAdapterClaims(state, claimCheck, claimSurfaces);
@@ -2048,6 +2049,86 @@ async function checkVersionConsistency(state, claimCheck) {
     message: `package.json and server.json versions match at ${packageVersion}.`,
     recommendation: "No action needed for package/server version consistency."
   });
+}
+
+// The FreshContext version lives hardcoded in three source files as well as the two
+// manifests. checkVersionConsistency only compares package.json vs server.json, so a
+// bump that misses a source constant would pass that gate while silently changing or
+// breaking every signed payload (worker.ts's SERVICE_VERSION is baked into the HMAC
+// payload). This gates the source constants against package.json too — the recurring
+// version-drift root cause (found again by the 2026-07-07 whole-codebase review, F5).
+async function checkSourceVersionConstants(state, claimCheck) {
+  if (state.packageMetadata?.name !== FRESHCONTEXT_MCP_PACKAGE_NAME) {
+    return;
+  }
+  const packageVersion = state.packageMetadata?.version;
+  if (!packageVersion) {
+    return;
+  }
+
+  const targets = [
+    { file: "src/rest/handler.ts", re: /const\s+SERVICE_VERSION\s*=\s*["']([^"']+)["']/ },
+    { file: "worker/src/worker.ts", re: /const\s+SERVICE_VERSION\s*=\s*["']([^"']+)["']/ },
+    // src/server.ts sets the MCP server version via `version: "x.y.z"` (single occurrence).
+    { file: "src/server.ts", re: /version:\s*["']([^"']+)["']/ }
+  ];
+
+  for (const target of targets) {
+    const filePath = path.join(state.projectRoot, target.file);
+    let raw;
+    try {
+      raw = await fs.readFile(filePath, "utf8");
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        addClaimCheckFinding(state, claimCheck, {
+          ruleId: "claim-check-source-version-unreadable",
+          severity: "warn",
+          path: target.file,
+          fileCategory: "config",
+          message: `Unable to read ${target.file} for the source version-constant check: ${error.message}`,
+          recommendation: "Ensure the source version constant is present and readable so drift can be gated."
+        });
+      }
+      continue;
+    }
+
+    const match = raw.match(target.re);
+    if (!match) {
+      addClaimCheckFinding(state, claimCheck, {
+        ruleId: "claim-check-source-version-missing",
+        severity: "warn",
+        path: target.file,
+        fileCategory: "config",
+        message: `Could not find a hardcoded version constant in ${target.file}; the drift gate could not verify it.`,
+        recommendation: "Keep the version constant in a form the gate can match, or derive it from package.json."
+      });
+      continue;
+    }
+
+    const sourceVersion = match[1];
+    if (sourceVersion !== packageVersion) {
+      addClaimCheckFinding(state, claimCheck, {
+        ruleId: "claim-check-source-version-mismatch",
+        severity: "fail",
+        path: target.file,
+        fileCategory: "config",
+        match: `${sourceVersion} != ${packageVersion}`,
+        message: `${target.file} version constant ${sourceVersion} does not match package.json version ${packageVersion}.`,
+        recommendation: "Align the source version constant with package.json before release (every surface reads one version)."
+      });
+      continue;
+    }
+
+    addClaimCheckFinding(state, claimCheck, {
+      ruleId: "claim-check-source-version-match",
+      severity: "info",
+      path: target.file,
+      fileCategory: "config",
+      match: sourceVersion,
+      message: `${target.file} version constant matches package.json at ${sourceVersion}.`,
+      recommendation: "No action needed."
+    });
+  }
 }
 
 async function loadClaimSurfaces(state, claimCheck) {
