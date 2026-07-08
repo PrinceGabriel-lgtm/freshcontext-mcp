@@ -675,8 +675,12 @@ async function fetchArxiv(query: string, maxLength: number, log: LogFields = {})
   });
 
   const raw = papers.join("\n\n").slice(0, maxLength);
+  // Decay from the last REVISION date, not first submission: arXiv's <updated> is the
+  // most recent version date and falls back to <published> for never-revised papers.
+  // Using <published> alone over-ages revised preprints (a v3 from last week scored as
+  // years old). Mirrors the same fix in src/adapters/arxiv.ts.
   const dates = entries
-    .map(m => getTag(m[1], "published").slice(0, 10))
+    .map(m => (getTag(m[1], "updated") || getTag(m[1], "published")).slice(0, 10))
     .filter(Boolean)
     .sort()
     .reverse();
@@ -1237,6 +1241,10 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
       }
 
       const sigLines: string[] = [];
+      // v3 lines — decision-bound signature, emitted alongside v2 (additive, F2 fix).
+      // Built from the SAME v3Payload/v3Sig computed below for the ledger row: this
+      // makes "emitted v3 == ledger row" true by construction, not by a second HMAC.
+      const sigLinesV3: string[] = [];
       const snapshotRows: Array<{
         id: string;
         verdict_id: string;
@@ -1277,7 +1285,8 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
         const sig = await hmacSha256(env.FC_HMAC_SECRET, payload);
         sigLines.push(`item=${i + 1} result_id=${resultId} sig=${sig}`);
 
-        // v3 snapshot row — verdict-bound, stored in ledger only, never emitted.
+        // v3 payload — verdict-bound, emitted in [FRESHCONTEXT_SIG_V3] below AND
+        // stored in the ledger row (same computed value feeds both).
         // Guard: skip if decision fields needed for the row are missing (type allows optional).
         if (decision.evaluated_at && decision.verdict_id) {
           const contentHash = coreSha256Hex(canonicalizeHaPriContent(signal.content));
@@ -1293,6 +1302,16 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
             decision: decision.decision,
           });
           const v3Sig = await hmacSha256(env.FC_HMAC_SECRET, v3Payload);
+
+          // Emit the exact same v3Payload/v3Sig just computed — reused, not recomputed.
+          // payload is JSON-encoded so its embedded newlines stay on one line; a caller
+          // can JSON.parse() the value back to the raw signing_payload string and POST
+          // it to /v1/verify (Mode 1, stateless) directly.
+          sigLinesV3.push(
+            `item=${i + 1} result_id=${resultId} verdict_id=${decision.verdict_id} ` +
+            `sig=${v3Sig} payload=${JSON.stringify(v3Payload)}`
+          );
+
           snapshotRows.push({
             id: crypto.randomUUID(),
             verdict_id: decision.verdict_id,
@@ -1327,6 +1346,20 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
         "[/FRESHCONTEXT_SIG_V1]",
       ].join("\n");
 
+      // v3 block — decision-bound signature (F2 fix). Additive: v2 block above is
+      // byte-for-byte unchanged, still frozen by the 9844b0c golden vector. A caller
+      // can verify this block's payload via POST /v1/verify (Mode 1, stateless) or
+      // look up verdict_id via /v1/verify (Mode 2, ledger-backed) — both recompute
+      // over the same bytes stored here and in evaluation_snapshots.
+      const sigBlockV3 = sigLinesV3.length > 0
+        ? [
+            "[FRESHCONTEXT_SIG_V3]",
+            "algo=HMAC-SHA256",
+            ...sigLinesV3,
+            "[/FRESHCONTEXT_SIG_V3]",
+          ].join("\n")
+        : null;
+
       // Write snapshot rows to the append-only ledger — non-fatal, non-blocking.
       // A D1 failure MUST NOT affect the user's formatted+signed response.
       if (snapshotRows.length > 0) {
@@ -1359,7 +1392,8 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
         }
       }
 
-      return ok(formatted + "\n" + sigBlock);
+      const withV3 = sigBlockV3 ? "\n" + sigBlockV3 : "";
+      return ok(formatted + "\n" + sigBlock + withV3);
     } catch (err) {
       if (err instanceof EvaluateContextInputError) {
         return ok(`[FreshContext evaluate_context error]\n${err.message}`);
@@ -1478,7 +1512,10 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
         const items = data as any[];
         const raw = items.map((r, i) => `[${i+1}] ${r.title ?? "Untitled"}\nAuthors: ${r.authors ?? "Unknown"}\nYear: ${r.year ?? "Unknown"}\nSnippet: ${r.snippet ?? "N/A"}`).join("\n\n");
         const newest = items.map(r => r.year).filter(Boolean).sort().reverse()[0] ?? null;
-        return ok(stamp(raw, safeUrl, newest ? `${newest}-01-01` : null, newest ? "high" : "low", "google_scholar"));
+        // Only the year is scrapeable from Scholar. Anchor at mid-year (Jul 1), not Jan 1:
+        // Jan 1 systematically over-ages a paper by up to ~6 months in the decay model.
+        // Mid-year makes the expected error ~0 instead of ~+6 months. Mirrors src/adapters/scholar.ts.
+        return ok(stamp(raw, safeUrl, newest ? `${newest}-07-01` : null, newest ? "high" : "low", "google_scholar"));
       } catch (err: unknown) { return adapterError("extract_scholar", "google_scholar", url, err); }
     });
   });
@@ -1507,7 +1544,12 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
         await browser.close();
         const items = data as any[];
         const raw = items.map((c, i) => `[${i+1}] ${c.name ?? "Unknown"} (${c.batch ?? "N/A"})\n${c.desc ?? "No description"}\nTags: ${c.tags?.join(", ") ?? "none"}`).join("\n\n");
-        return ok(stamp(raw, safeUrl, new Date().toISOString().slice(0, 10), "medium", "yc"));
+        // Date is null, not today. A YC listing carries no reliable content-freshness date
+        // (the batch is a founding-era marker, not a last-updated signal). Stamping "today"
+        // made a freshness product score every YC result as perpetually fresh — a false
+        // signal in the flattering direction. null = "freshness unknown", which is honest.
+        // Mirrors src/adapters/yc.ts.
+        return ok(stamp(raw, safeUrl, null, "low", "yc"));
       } catch (err: unknown) { return adapterError("extract_yc", "yc", url, err); }
     });
   });
