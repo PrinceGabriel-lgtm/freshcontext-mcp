@@ -11,6 +11,8 @@ import { synthesizeBriefing as generateAIBriefing } from "./synthesize.js";
 import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate, applyDecay, RT_EXPIRY_FLOOR, hmacSha256 } from "./intelligence.js";
 import { buildHaPriPayload, buildHaPriPayloadV3, sha256Hex as coreSha256Hex, canonicalizeHaPriContent } from "../../src/core/index.js";
 import { handleRestRequest } from "../../src/rest/handler.js";
+import { checkVerifyRateLimit } from "./rateLimit.js";
+import type { RateLimitBinding } from "./rateLimit.js";
 import {
   analyzeCompositeContent,
   isUncacheableContent,
@@ -51,6 +53,7 @@ interface Env {
   GITHUB_TOKEN?: string;
   PH_TOKEN?: string;
   FC_HMAC_SECRET?: string;
+  VERIFY_RATE_LIMITER?: RateLimitBinding;
 }
 
 type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error" | "cache_error" | "snapshot_write_error";
@@ -2436,6 +2439,21 @@ export default {
     // call to them 404s at the allow-route gate above, never reaching the engine.
     if (url.pathname === "/v1/health" || url.pathname === "/v1/verify") {
       try {
+        // Rate-limit /v1/verify only (F-3): it's public + unauthenticated and Mode 2 does a
+        // billable D1 read per request. /v1/health is a cheap liveness check monitors poll,
+        // so it is not limited. Key on CF-Connecting-IP (Cloudflare-injected, not spoofable)
+        // — NOT getClientIp, which trusts a caller-controllable X-Forwarded-For fallback.
+        if (url.pathname === "/v1/verify") {
+          const rlKey = request.headers.get("CF-Connecting-IP") ?? "unknown";
+          const allowed = await checkVerifyRateLimit(env.VERIFY_RATE_LIMITER, rlKey);
+          if (!allowed) {
+            return jsonResponse(
+              { error: "Rate limit exceeded — max 100 requests per minute per IP on /v1/verify." },
+              429,
+              { "Retry-After": "60" }
+            );
+          }
+        }
         return await handleRestRequest(request, env.FC_HMAC_SECRET, env.DB);
       } catch (err: unknown) {
         return routeError(err);

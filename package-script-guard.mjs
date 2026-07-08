@@ -108,6 +108,7 @@ const commands = {
       "tests/haPriV2GoldenVectors.test.ts",
       "tests/haPriV3GoldenVectors.test.ts",
       "tests/hmacSigning.test.ts",
+      "tests/rateLimit.test.ts",
       "tests/signalContractExamples.test.ts",
       "tests/batchValidationHarness.test.ts",
       "tests/rank.test.ts",
