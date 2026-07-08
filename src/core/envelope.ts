@@ -41,6 +41,17 @@ export function stampFreshness(
   };
 }
 
+// Retrieved content is untrusted. If it contains a literal FreshContext envelope
+// delimiter, an attacker-controlled page could close the wrapper early and make the
+// text after it read as non-retrieved (trusted) context, or truncate the JSON block
+// and break the extractor. Neutralize any [FRESHCONTEXT], [/FRESHCONTEXT],
+// [FRESHCONTEXT_JSON], [/FRESHCONTEXT_JSON] token (case-insensitive) at serialization
+// time. Applied in the serializers, not on the FreshContext data model, so a caller
+// reading ctx.content programmatically still gets the raw text unaltered.
+export function neutralizeEnvelopeDelimiters(content: string): string {
+  return content.replace(/\[(\/?FRESHCONTEXT(?:_JSON)?)\]/gi, "[NEUTRALIZED:$1]");
+}
+
 export function toStructuredJSON(ctx: FreshContext): object {
   return {
     freshcontext: {
@@ -53,7 +64,7 @@ export function toStructuredJSON(ctx: FreshContext): object {
       staleness:            ctx.staleness,
       revalidate_after:     ctx.revalidate_after,
     },
-    content: ctx.content,
+    content: neutralizeEnvelopeDelimiters(ctx.content),
   };
 }
 
@@ -81,7 +92,7 @@ export function formatForLLM(ctx: FreshContext, options: EnvelopeFormatOptions =
     `${scoreLine}`,
     `${stalenessLine}`,
     `---`,
-    ctx.content,
+    neutralizeEnvelopeDelimiters(ctx.content),
     `[/FRESHCONTEXT]`,
   ].join("\n");
 
