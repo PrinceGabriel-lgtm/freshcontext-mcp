@@ -11,7 +11,7 @@ import { synthesizeBriefing as generateAIBriefing } from "./synthesize.js";
 import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate, applyDecay, RT_EXPIRY_FLOOR, hmacSha256 } from "./intelligence.js";
 import { buildHaPriPayload, buildHaPriPayloadV3, sha256Hex as coreSha256Hex, canonicalizeHaPriContent } from "../../src/core/index.js";
 import { handleRestRequest } from "../../src/rest/handler.js";
-import { checkVerifyRateLimit } from "./rateLimit.js";
+import { checkVerifyRateLimit, checkKvRateLimit } from "./rateLimit.js";
 import type { RateLimitBinding } from "./rateLimit.js";
 import {
   analyzeCompositeContent,
@@ -56,7 +56,7 @@ interface Env {
   VERIFY_RATE_LIMITER?: RateLimitBinding;
 }
 
-type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error" | "cache_error" | "snapshot_write_error";
+type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error" | "cache_error" | "snapshot_write_error" | "rate_limit_kv_error";
 
 type LogFields = {
   request_id?: string;
@@ -462,16 +462,20 @@ function validateUrl(rawUrl: string, adapter: string): string {
 const RATE_LIMIT    = 60;
 const RATE_WINDOW_S = 60;
 
+// Fail-open (2026-07-08 incident fix): a KV outage (e.g. the account's daily write quota
+// exhausted) must never be treated as "this caller is abusive." Before this fix, an
+// uncaught kv.get/put throw here propagated straight to the /mcp route handler's catch,
+// which returned 429 to EVERY request — turning a KV quota problem into a total
+// self-inflicted outage of the endpoint the limiter exists to protect. checkKvRateLimit
+// (worker/src/rateLimit.ts, unit-tested) allows the request through on a KV error instead
+// of blocking it, and reports kvError so it's still visible in logs.
 async function checkRateLimit(ip: string, kv: KVNamespace): Promise<void> {
-  const key = `rl:${ip}`;
-  const current = await kv.get(key);
-  const count = current ? parseInt(current) : 0;
-  if (count >= RATE_LIMIT)
+  const result = await checkKvRateLimit(kv, `rl:${ip}`, RATE_LIMIT, RATE_WINDOW_S);
+  if (result.kvError) {
+    logEvent("rate_limit_kv_error", { phase: "mcp_rate_limit" });
+  }
+  if (!result.allowed) {
     throw new SecurityError(`Rate limit exceeded — max ${RATE_LIMIT} requests per minute per IP.`);
-  if (!current) {
-    await kv.put(key, "1", { expirationTtl: RATE_WINDOW_S });
-  } else {
-    await kv.put(key, String(count + 1), { expirationTtl: RATE_WINDOW_S });
   }
 }
 
