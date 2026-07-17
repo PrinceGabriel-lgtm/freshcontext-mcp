@@ -1,0 +1,38 @@
+{
+  "name": "freshcontext-enforce",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Enforcement wrapper for FreshContext. Drops context that isn't safe for agent handoff, orders the rest strongest-first, and returns an audit trail — before it reaches the model. Core makes the verdict provable; this makes it in-path.",
+  "keywords": [
+    "freshcontext",
+    "context-integrity",
+    "ai-agents",
+    "rag",
+    "llm",
+    "postprocessor",
+    "enforcement",
+    "agent-handoff"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "tsx --test tests/*.test.ts"
+  }
+}
