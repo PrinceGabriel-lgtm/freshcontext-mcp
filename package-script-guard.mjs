@@ -111,6 +111,7 @@ const commands = {
       "tests/rateLimit.test.ts",
       "tests/kvRateLimit.test.ts",
       "tests/adapterAnchorRegression.test.ts",
+      "tests/wrapperIntegration.test.ts",
       "tests/signalContractExamples.test.ts",
       "tests/batchValidationHarness.test.ts",
       "tests/rank.test.ts",
