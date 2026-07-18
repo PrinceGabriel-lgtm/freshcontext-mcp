@@ -85,3 +85,31 @@ describe("adapter freshness-anchor regression guard (F-1/F-2)", () => {
     );
   });
 });
+
+// Narrow regression guard for F-7 (2026-07-18 tool-mix audit): several tools stamp their
+// freshness envelope from `new Date()` unconditionally instead of the real source date,
+// even when that date was already computed in scope. `package_trends` was the sharpest
+// case — it computes npm's `time.modified` / PyPI's `upload_time` and prints it in the
+// visible text, then discarded that same value for the envelope. This is the one F-7
+// instance fixed so far (a mechanical, zero-design-ambiguity fix); the 5 landscape
+// composites + search_jobs's fallback are the same bug class but need a design decision
+// (oldest vs newest vs null+per-section) before they can be fixed — see the state skill's
+// F-7 entry. Do not extend this guard to the composites until that decision is made.
+describe("tool freshness-envelope regression guard (F-7, package_trends)", () => {
+  const worker = readFileSync("worker/src/worker.ts", "utf8");
+
+  test("package_trends must not stamp its envelope date as 'today' unconditionally", () => {
+    const toolBody = worker.match(/server\.registerTool\("package_trends",[\s\S]*?\n  \}\);/)?.[0];
+    assert.ok(toolBody, "package_trends tool registration not found in worker/src/worker.ts");
+    assert.doesNotMatch(
+      toolBody,
+      /stamp\(raw,\s*"package-registries",\s*new Date\(\)/,
+      "package_trends must not stamp today unconditionally — it must use the real computed `latest` date, like fetchPackageTrends"
+    );
+    assert.match(
+      toolBody,
+      /stamp\(raw,\s*"package-registries",\s*latest,\s*latest\s*\?\s*"high"\s*:\s*"low"/,
+      "package_trends must stamp { latest, latest ? \"high\" : \"low\" } — the real newest release date it already computes"
+    );
+  });
+});

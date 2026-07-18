@@ -1600,6 +1600,10 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
       try {
         const entries = packages.split(",").map(s => s.trim()).filter(Boolean).slice(0, 5);
         const results: string[] = [];
+        // Track the real newest release date across entries (mirrors fetchPackageTrends,
+        // used by the composite tools) instead of stamping today regardless of how stale
+        // the registries actually report.
+        let latest: string | null = null;
         for (const entry of entries) {
           const isNpm = !entry.startsWith("pypi:") && (entry.startsWith("npm:") || !entry.includes(":"));
           const name = entry.replace(/^(npm:|pypi:)/, "");
@@ -1608,17 +1612,21 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
             if (!res.ok) { results.push(`[npm:${name}] Not found`); continue; }
             const j = await res.json() as any;
             const versions = Object.keys(j.versions ?? {}).slice(-5).reverse();
-            results.push(`npm:${name}\nLatest: ${j["dist-tags"]?.latest ?? "N/A"}\nUpdated: ${j.time?.modified?.slice(0,10) ?? "N/A"}\nRecent versions: ${versions.join(", ")}\nDescription: ${j.description ?? "N/A"}`);
+            const modified = j.time?.modified ?? null;
+            if (modified && (!latest || modified > latest)) latest = modified;
+            results.push(`npm:${name}\nLatest: ${j["dist-tags"]?.latest ?? "N/A"}\nUpdated: ${modified?.slice(0,10) ?? "N/A"}\nRecent versions: ${versions.join(", ")}\nDescription: ${j.description ?? "N/A"}`);
           } else {
             const res = await sourceFetch(`https://pypi.org/pypi/${encodeURIComponent(name)}/json`, undefined, adapterLog("package_trends", "packagetrends", packages));
             if (!res.ok) { results.push(`[pypi:${name}] Not found`); continue; }
             const j = await res.json() as any;
             const versions = Object.keys(j.releases ?? {}).slice(-5).reverse();
+            const upload = j.urls?.[0]?.upload_time ?? null;
+            if (upload && (!latest || upload > latest)) latest = upload;
             results.push(`pypi:${name}\nLatest: ${j.info?.version ?? "N/A"}\nDescription: ${j.info?.summary ?? "N/A"}\nRecent versions: ${versions.join(", ")}`);
           }
         }
         const raw = results.join("\n\n─────────────\n\n");
-        return ok(stamp(raw, "package-registries", new Date().toISOString(), "high", "packagetrends"));
+        return ok(stamp(raw, "package-registries", latest, latest ? "high" : "low", "packagetrends"));
       } catch (err: unknown) { return adapterError("package_trends", "packagetrends", packages, err); }
     });
   });
