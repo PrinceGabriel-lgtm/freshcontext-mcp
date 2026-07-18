@@ -51,4 +51,37 @@ describe("adapter freshness-anchor regression guard (F-1/F-2)", () => {
       "worker extract_scholar must not anchor Scholar dates at Jan 1 (use mid-year)"
     );
   });
+
+  // 2026-07-18 extensions: the original guard covered extract_yc (browser path) but not
+  // fetchYC (yc-oss JSON helper feeding extract_idea_landscape) — which is exactly where
+  // the today-stamp bug survived the 2026-07-08 fix. And Scholar's year-only anchor was
+  // still claiming "high" confidence; ±6 months of real uncertainty is "medium".
+
+  test("fetchYC (yc-oss helper) must not stamp its date as 'today' — worker", () => {
+    const fetchYcBody = worker.match(/async function fetchYC\([\s\S]*?\n\}/)?.[0];
+    assert.ok(fetchYcBody, "fetchYC function not found in worker/src/worker.ts");
+    assert.doesNotMatch(
+      fetchYcBody,
+      /new Date\(\)/,
+      "worker fetchYC must stamp a null date (freshness unknown), not today"
+    );
+    assert.match(
+      fetchYcBody,
+      /date:\s*null,\s*conf:\s*"low"/,
+      "worker fetchYC must return { date: null, conf: \"low\" } like extract_yc and src/adapters/yc.ts"
+    );
+  });
+
+  test("Scholar year-only anchor must claim at most 'medium' confidence — npm + deployed", () => {
+    assert.match(
+      scholarNpm,
+      /newestYear\s*\?\s*"medium"\s*:\s*"low"/,
+      "src/adapters/scholar.ts must not claim high confidence for a year-only date anchor"
+    );
+    assert.match(
+      worker,
+      /newest\s*\?\s*"medium"\s*:\s*"low"/,
+      "worker extract_scholar must not claim high confidence for a year-only date anchor"
+    );
+  });
 });

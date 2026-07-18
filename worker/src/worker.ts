@@ -1111,7 +1111,11 @@ async function fetchYC(query: string, maxLength: number, log: LogFields = {}): P
     `${h.one_liner ?? "N/A"}`,
     h.website ? `Website: ${h.website}` : null,
   ].filter(Boolean).join("\n")).join("\n\n").slice(0, maxLength);
-  return { raw, date: new Date().toISOString().slice(0, 10), conf: "medium" };
+  // Date is null, not today. The yc-oss feed carries no reliable per-company freshness
+  // date (batch is a founding-era marker, not last-updated). Stamping "today" scored
+  // every YC result as perpetually fresh — same bug fixed in extract_yc and
+  // src/adapters/yc.ts on 2026-07-08; this helper was the path that fix missed.
+  return { raw, date: null, conf: "low" };
 }
 
 // ── Jobs (Remotive) — composite helper ───────────────────────────────────────
@@ -1521,8 +1525,10 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
         const newest = items.map(r => r.year).filter(Boolean).sort().reverse()[0] ?? null;
         // Only the year is scrapeable from Scholar. Anchor at mid-year (Jul 1), not Jan 1:
         // Jan 1 systematically over-ages a paper by up to ~6 months in the decay model.
-        // Mid-year makes the expected error ~0 instead of ~+6 months. Mirrors src/adapters/scholar.ts.
-        return ok(stamp(raw, safeUrl, newest ? `${newest}-07-01` : null, newest ? "high" : "low", "google_scholar"));
+        // Mid-year makes the expected error ~0 instead of ~+6 months. Confidence is
+        // "medium", not "high": a year-only anchor is still ±6 months of real
+        // uncertainty, which "high" overstates. Mirrors src/adapters/scholar.ts.
+        return ok(stamp(raw, safeUrl, newest ? `${newest}-07-01` : null, newest ? "medium" : "low", "google_scholar"));
       } catch (err: unknown) { return adapterError("extract_scholar", "google_scholar", url, err); }
     });
   });

@@ -65,8 +65,10 @@ export async function scholarAdapter(options: ExtractOptions): Promise<AdapterRe
     raw,
     // Only the year is scrapeable from Scholar. Anchor at mid-year (Jul 1), not Jan 1:
     // Jan 1 systematically over-ages a paper by up to ~6 months in the decay model.
-    // Mid-year makes the expected error ~0 instead of ~+6 months.
+    // Mid-year makes the expected error ~0 instead of ~+6 months. Confidence is
+    // "medium", not "high": a year-only anchor is still ±6 months of real
+    // uncertainty, which "high" overstates.
     content_date: newestYear ? `${newestYear}-07-01` : null,
-    freshness_confidence: newestYear ? "high" : "low",
+    freshness_confidence: newestYear ? "medium" : "low",
   };
 }
