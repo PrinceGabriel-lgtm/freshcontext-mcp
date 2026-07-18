@@ -86,15 +86,14 @@ describe("adapter freshness-anchor regression guard (F-1/F-2)", () => {
   });
 });
 
-// Narrow regression guard for F-7 (2026-07-18 tool-mix audit): several tools stamp their
+// Regression guard for F-7 (2026-07-18 tool-mix audit): several tools stamped their
 // freshness envelope from `new Date()` unconditionally instead of the real source date,
 // even when that date was already computed in scope. `package_trends` was the sharpest
-// case — it computes npm's `time.modified` / PyPI's `upload_time` and prints it in the
-// visible text, then discarded that same value for the envelope. This is the one F-7
-// instance fixed so far (a mechanical, zero-design-ambiguity fix); the 5 landscape
-// composites + search_jobs's fallback are the same bug class but need a design decision
-// (oldest vs newest vs null+per-section) before they can be fixed — see the state skill's
-// F-7 entry. Do not extend this guard to the composites until that decision is made.
+// case, fixed first (mechanical, zero design ambiguity). The 5 landscape composites +
+// search_jobs's fallback were the same bug class but needed a design decision first —
+// resolved 2026-07-18 (weakest-link policy: compositeEnvelope() takes the OLDEST
+// contributing date and the LOWEST confidence among fulfilled sources). This guard now
+// covers all of it.
 describe("tool freshness-envelope regression guard (F-7, package_trends)", () => {
   const worker = readFileSync("worker/src/worker.ts", "utf8");
 
@@ -110,6 +109,84 @@ describe("tool freshness-envelope regression guard (F-7, package_trends)", () =>
       toolBody,
       /stamp\(raw,\s*"package-registries",\s*latest,\s*latest\s*\?\s*"high"\s*:\s*"low"/,
       "package_trends must stamp { latest, latest ? \"high\" : \"low\" } — the real newest release date it already computes"
+    );
+  });
+});
+
+describe("composite freshness-envelope regression guard (F-7, landscape tools)", () => {
+  const worker = readFileSync("worker/src/worker.ts", "utf8");
+
+  test("compositeEnvelope() helper exists with weakest-link semantics", () => {
+    assert.match(
+      worker,
+      /const compositeEnvelope = \(/,
+      "compositeEnvelope() must exist — the shared weakest-link envelope helper for composite tools"
+    );
+  });
+
+  for (const tool of [
+    "extract_gov_landscape",
+    "extract_finance_landscape",
+    "extract_company_landscape",
+    "extract_idea_landscape",
+  ] as const) {
+    test(`${tool} must not stamp its envelope date as 'today' unconditionally`, () => {
+      const toolBody = worker.match(new RegExp(`server\\.registerTool\\("${tool}",[\\s\\S]*?\\n  \\}\\);`))?.[0];
+      assert.ok(toolBody, `${tool} tool registration not found in worker/src/worker.ts`);
+      // Only the final return-stamp statement matters here — the body still legitimately
+      // contains `new Date()` for its own "Generated: <timestamp>" display line, which is
+      // an assembly timestamp, not a freshness claim, and is out of scope for this guard.
+      const returnStamp = toolBody.match(/return ok\(stamp\(body,[\s\S]*?\)\);/)?.[0];
+      assert.ok(returnStamp, `${tool}'s final stamp() return not found`);
+      assert.doesNotMatch(
+        returnStamp,
+        /new Date\(\)/,
+        `${tool} must use compositeEnvelope(), not new Date(), for its envelope date/confidence`
+      );
+      assert.match(
+        toolBody,
+        /const envelope = compositeEnvelope\(/,
+        `${tool} must compute its envelope via compositeEnvelope()`
+      );
+    });
+  }
+
+  test("extract_landscape must not stamp its envelope date as 'today' unconditionally", () => {
+    const toolBody = worker.match(/server\.registerTool\("extract_landscape",[\s\S]*?\n  \}\);/)?.[0];
+    assert.ok(toolBody, "extract_landscape tool registration not found in worker/src/worker.ts");
+    const returnStamp = toolBody.match(/return ok\(stamp\(sections,[\s\S]*?\)\);/)?.[0];
+    assert.ok(returnStamp, "extract_landscape's final stamp() return not found");
+    assert.doesNotMatch(
+      returnStamp,
+      /new Date\(\)/,
+      "extract_landscape must use compositeEnvelope(), not new Date(), for its envelope date/confidence"
+    );
+    assert.match(
+      toolBody,
+      /const envelope = compositeEnvelope\(\[hn, repos, pkg\]\)/,
+      "extract_landscape must compute its envelope via compositeEnvelope()"
+    );
+  });
+
+  test("extract_landscape's description must not claim a YC source it does not call", () => {
+    const toolBody = worker.match(/server\.registerTool\("extract_landscape",[\s\S]*?\n  \}\);/)?.[0];
+    assert.ok(toolBody, "extract_landscape tool registration not found in worker/src/worker.ts");
+    const description = toolBody.match(/description:\s*"([^"]*)"/)?.[1];
+    assert.ok(description, "extract_landscape's description string not found");
+    assert.doesNotMatch(
+      description,
+      /YC/i,
+      "extract_landscape's description must not mention YC — the implementation never calls fetchYC (use extract_idea_landscape for YC funding signal)"
+    );
+  });
+
+  test("search_jobs must not stamp its envelope date as 'today' on the no-date fallback", () => {
+    const toolBody = worker.match(/server\.registerTool\("search_jobs",[\s\S]*?\n  \}\);/)?.[0];
+    assert.ok(toolBody, "search_jobs tool registration not found in worker/src/worker.ts");
+    assert.doesNotMatch(
+      toolBody,
+      /newestDate \?\? new Date\(\)/,
+      "search_jobs must stamp `newestDate` (null when no listing had a usable date), not fall back to today"
     );
   });
 });

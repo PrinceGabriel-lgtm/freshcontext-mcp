@@ -1499,7 +1499,7 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
   });
 
   server.registerTool("extract_scholar", {
-    description: "Extract research results from Google Scholar with publication dates.",
+    description: "Extract research results (title, authors, year, snippet) from a Google Scholar search URL. Scholar exposes only the publication year, not an exact date, so freshness confidence is capped at medium.",
     inputSchema: z.object({ url: z.string().url().describe("Google Scholar search URL") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
@@ -1534,7 +1534,9 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
   });
 
   server.registerTool("extract_yc", {
-    description: "Scrape YC company listings by keyword. Returns name, batch, tags, description per company.",
+    // Description previously said "by keyword", but the schema requires a full YC
+    // companies URL (a bare keyword fails z.string().url()) — fixed to match.
+    description: "Scrape YC company listings from a ycombinator.com/companies search URL. Returns name, batch, status, tags, and description per company. Freshness is unknown — YC listings carry no reliable per-company update date.",
     inputSchema: z.object({ url: z.string().url().describe("YC URL e.g. https://www.ycombinator.com/companies?query=mcp") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
@@ -1632,7 +1634,7 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
   });
 
   server.registerTool("extract_reddit", {
-    description: "Extract posts and community sentiment from Reddit.",
+    description: "Extract recent posts from a subreddit (e.g. 'r/MachineLearning') or a Reddit search/listing URL. Returns title, subreddit, author, score, comment count, and post date per result.",
     inputSchema: z.object({ url: z.string().describe("Subreddit name e.g. 'r/MachineLearning' or search URL") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
@@ -1663,7 +1665,7 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
   });
 
   server.registerTool("extract_producthunt", {
-    description: "Recent Product Hunt launches by keyword or topic.",
+    description: "Extract recent Product Hunt launches by keyword/topic search or a PH URL. Returns name, tagline, votes, comment count, topics, and launch date per result.",
     inputSchema: z.object({ url: z.string().describe("Search query or PH topic URL") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
@@ -1738,41 +1740,60 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
           }
         }
         const raw = sections.join("\n\n");
-        return ok(stamp(raw, `jobs:${q}`, newestDate ?? new Date().toISOString(), newestDate ? "high" : "medium", "jobs"));
+        // newestDate is null, not today, when no listing carried a usable date —
+        // stamping today on the fallback was the same false-freshness bug as F-7.
+        return ok(stamp(raw, `jobs:${q}`, newestDate, newestDate ? "high" : "medium", "jobs"));
       } catch (err: unknown) { return adapterError("search_jobs", "jobs", query, err); }
     });
   });
 
   server.registerTool("extract_landscape", {
-    description: "Composite tool. Queries YC + GitHub + HN + npm simultaneously. Returns a unified timestamped landscape report.",
+    // 2026-07-18: description previously claimed a YC source that the implementation
+    // never called (audit finding). Fixed to match actual behavior — HN + GitHub + npm,
+    // no YC. Use extract_idea_landscape for a report that includes YC funding signal.
+    description: "Composite tool. Queries GitHub + HN + npm simultaneously. Returns a unified landscape report with each source's own freshness.",
     inputSchema: z.object({ topic: z.string().describe("Project idea or keyword e.g. 'mcp server'") }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ topic }) => {
     return withCache("landscape", topic, env.CACHE, ctx, async () => {
       try {
         const t = topic.replace(/[\x00-\x1F]/g, "").trim().slice(0, 200);
-        const [hn, repos, pkg] = await Promise.allSettled([
-          sourceFetch(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(t)}&tags=story&hitsPerPage=10`, undefined, adapterLog("extract_landscape", "hackernews", topic)).then(r => r.json()),
-          sourceFetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(t)}&sort=stars&per_page=8`, { headers: { "User-Agent": SERVICE_UA } }, adapterLog("extract_landscape", "reposearch", topic)).then(r => r.json()),
+        // hn/repos reuse the same shared helpers as the other composites (real
+        // per-source date, no duplicated fetch logic — this used to be a third,
+        // drifting inline copy of the HN/GitHub search calls). npm has no equivalent
+        // "search by keyword" helper (fetchPackageTrends looks up named packages, not
+        // a keyword search), so it stays inline here but now extracts the real
+        // per-result `package.date` npm's search API already returns.
+        const [hn, repos, pkgRaw] = await Promise.allSettled([
+          fetchHN(t, 3000, adapterLog("extract_landscape", "hackernews", topic)),
+          fetchRepoSearch(t, 3000, env.GITHUB_TOKEN, adapterLog("extract_landscape", "reposearch", topic)),
           sourceFetch(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(t)}&size=5`, undefined, adapterLog("extract_landscape", "packagetrends", topic)).then(r => r.json()),
         ]);
-        if (hn.status === "rejected") logEvent("adapter_error", adapterLog("extract_landscape", "hackernews", topic), hn.reason);
-        if (repos.status === "rejected") logEvent("adapter_error", adapterLog("extract_landscape", "reposearch", topic), repos.reason);
-        if (pkg.status === "rejected") logEvent("adapter_error", adapterLog("extract_landscape", "packagetrends", topic), pkg.reason);
+        logRejectedSection("extract_landscape", "hackernews", topic, hn);
+        logRejectedSection("extract_landscape", "reposearch", topic, repos);
+        if (pkgRaw.status === "rejected") logEvent("adapter_error", adapterLog("extract_landscape", "packagetrends", topic), pkgRaw.reason);
+        const pkg: PromiseSettledResult<AdapterHit> = pkgRaw.status === "fulfilled"
+          ? (() => {
+              const objects = (pkgRaw.value as any).objects ?? [];
+              const dates = objects.map((o: any) => o.package?.date).filter(Boolean).sort().reverse();
+              const raw = objects.length
+                ? objects.map((o: any, i: number) => `[${i + 1}] ${o.package.name}@${o.package.version} — ${o.package.description ?? "N/A"}`).join("\n")
+                : `No npm packages for "${t}".`;
+              return { status: "fulfilled" as const, value: { raw, date: dates[0] ?? null, conf: dates[0] ? "high" as const : "low" as const } };
+            })()
+          : { status: "rejected" as const, reason: pkgRaw.reason };
         const sections = [
           `# Landscape Report: "${t}"`,
           `Generated: ${new Date().toISOString()}`,
           "",
-          "## HN Sentiment",
-          hn.status === "fulfilled" ? (hn.value as any).hits?.slice(0, 8).map((h: any, i: number) => `[${i+1}] ${h.title} (${h.points}pts, ${h.created_at?.slice(0,10)})`).join("\n") : `Error`,
+          section("HN Sentiment", hn),
           "",
-          "## Top GitHub Repos",
-          repos.status === "fulfilled" ? (repos.value as any).items?.slice(0, 8).map((r: any, i: number) => `[${i+1}] ${r.full_name} ⭐${r.stargazers_count} — ${r.description ?? "N/A"}`).join("\n") : `Error`,
+          section("Top GitHub Repos", repos),
           "",
-          "## npm Packages",
-          pkg.status === "fulfilled" ? (pkg.value as any).objects?.map((o: any, i: number) => `[${i+1}] ${o.package.name}@${o.package.version} — ${o.package.description ?? "N/A"}`).join("\n") : `Error`,
+          section("npm Packages", pkg),
         ].join("\n");
-        return ok(stamp(sections, `freshcontext:landscape:${t}`, new Date().toISOString().slice(0,10), "medium", "landscape"));
+        const envelope = compositeEnvelope([hn, repos, pkg]);
+        return ok(stamp(sections, `freshcontext:landscape:${t}`, envelope.date, envelope.conf, "landscape"));
       } catch (err: unknown) { return adapterError("extract_landscape", "landscape", topic, err); }
     });
   });
@@ -1864,7 +1885,10 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
 
   // ─── Composite section helper ───────────────────────────────────────────
   // Wraps each Promise.allSettled result into a "## label\n<content>" section,
-  // surfacing partial failures rather than collapsing the whole call.
+  // surfacing partial failures rather than collapsing the whole call. Each
+  // fulfilled section also carries its own source's freshness (F-7 fix,
+  // 2026-07-18): a composite is only honest if the model can see which of its
+  // ingredients is actually fresh, instead of one blanket date for everything.
   const section = (
     label: string,
     r: PromiseSettledResult<AdapterHit>,
@@ -1877,7 +1901,8 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
       const reason = r.reason instanceof Error ? r.reason.message : String(r.reason);
       return `## ${label}\n[Unavailable: ${reason}]`;
     }
-    return `## ${label}\n${r.value.raw}`;
+    const freshnessNote = `_Source freshness: ${r.value.date ?? "unknown"} (confidence: ${r.value.conf})_`;
+    return `## ${label}\n${freshnessNote}\n\n${r.value.raw}`;
   };
   const logRejectedSection = (
     tool: string,
@@ -1888,6 +1913,32 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
     if (r.status === "rejected") {
       logEvent("adapter_error", adapterLog(tool, adapter, input), r.reason);
     }
+  };
+  // ─── Composite envelope helper (F-7 fix, 2026-07-18) ────────────────────
+  // The outer FreshContext envelope for a multi-source composite previously
+  // hardcoded new Date()/"high" regardless of how stale any ingredient was —
+  // a freshness product claiming high confidence on data it never checked.
+  // Weakest-link policy: a composite is only as fresh, and only as trustworthy,
+  // as its stalest / least-confident contributing source. date = OLDEST
+  // non-null date among fulfilled sources (not newest — that would still
+  // flatter). conf = the lowest confidence among fulfilled sources (a source
+  // that legitimately has no date, e.g. YC, still counts — its "low" pulls
+  // the whole composite down, which is correct: the report contains a
+  // component with unknown freshness).
+  const CONF_RANK: Record<"high" | "medium" | "low", number> = { high: 3, medium: 2, low: 1 };
+  const compositeEnvelope = (
+    results: PromiseSettledResult<AdapterHit>[]
+  ): { date: string | null; conf: "high" | "medium" | "low" } => {
+    const fulfilled = results.filter(
+      (r): r is PromiseFulfilledResult<AdapterHit> => r.status === "fulfilled"
+    );
+    if (!fulfilled.length) return { date: null, conf: "low" };
+    const dates = fulfilled.map(r => r.value.date).filter((d): d is string => !!d).sort();
+    const date = dates.length ? dates[0] : null;
+    const conf = fulfilled
+      .map(r => r.value.conf)
+      .reduce((worst, c) => (CONF_RANK[c] < CONF_RANK[worst] ? c : worst), "high" as "high" | "medium" | "low");
+    return { date, conf };
   };
 
   // ─── Tool: extract_gov_landscape ────────────────────────────────────────
@@ -1922,7 +1973,8 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
         section("📦 GitHub Repository Activity", repos),
         section("🔄 Product Release Velocity (Changelog)", changelog),
       ].join("\n\n");
-      return ok(stamp(body, `gov_landscape:${query}`, new Date().toISOString(), "high", "gov_landscape"));
+      const envelope = compositeEnvelope([contracts, hn, repos, changelog]);
+      return ok(stamp(body, `gov_landscape:${query}`, envelope.date, envelope.conf, "gov_landscape"));
     });
   });
 
@@ -1963,7 +2015,8 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
         section("📦 Repo Ecosystem (GitHub)", repos),
         section("🔄 Product Release Velocity (Changelog)", changelog),
       ].join("\n\n");
-      return ok(stamp(body, `finance_landscape:${tickers}`, new Date().toISOString(), "high", "finance_landscape"));
+      const envelope = compositeEnvelope([price, hn, reddit, repos, changelog]);
+      return ok(stamp(body, `finance_landscape:${tickers}`, envelope.date, envelope.conf, "finance_landscape"));
     });
   });
 
@@ -2003,7 +2056,8 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
         section("🔄 Product Release Velocity (Changelog)", changelog),
         section("📈 Market Data (Stooq)", finance),
       ].join("\n\n");
-      return ok(stamp(body, `company_landscape:${company}`, new Date().toISOString(), "high", "company_landscape"));
+      const envelope = compositeEnvelope([sec, contracts, gdelt, changelog, finance]);
+      return ok(stamp(body, `company_landscape:${company}`, envelope.date, envelope.conf, "company_landscape"));
     });
   });
 
@@ -2046,7 +2100,12 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
         section("🔧 Ecosystem Signal — Packages", pkg),
         section("🚀 Launch Signal — Product Hunt", ph),
       ].join("\n\n");
-      return ok(stamp(body, `idea_landscape:${idea}`, new Date().toISOString(), "high", "idea_landscape"));
+      // Note: YC (fetchYC) always returns conf "low" — it has no reliable per-listing
+      // date (see 2026-07-18 freshness fix). Under weakest-link policy that means this
+      // composite's overall confidence is "low" whenever YC returns any hits, which is
+      // the honest outcome: the report contains a component of unknown freshness.
+      const envelope = compositeEnvelope([hn, yc, repos, jobs, pkg, ph]);
+      return ok(stamp(body, `idea_landscape:${idea}`, envelope.date, envelope.conf, "idea_landscape"));
     });
   });
 
