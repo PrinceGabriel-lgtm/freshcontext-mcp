@@ -148,7 +148,7 @@ server.registerTool(
   "extract_yc",
   {
     description:
-      "Scrape YC company listings. Use https://www.ycombinator.com/companies?query=KEYWORD to find startups in a space. Returns name, batch, tags, description per company with freshness timestamp.",
+      "Scrape YC company listings. Use https://www.ycombinator.com/companies?query=KEYWORD to find startups in a space. Returns name, batch, tags, description per company. Freshness is unknown — YC listings carry no reliable per-company update date.",
     inputSchema: z.object({
       url: z.string().url().describe("YC companies URL e.g. https://www.ycombinator.com/companies?query=mcp"),
       max_length: z.number().optional().default(6000),
