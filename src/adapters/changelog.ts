@@ -47,7 +47,21 @@ async function fetchGitHubReleases(owner: string, repo: string, maxLength: numbe
     { headers: { "Accept": "application/vnd.github.v3+json", "User-Agent": "freshcontext-mcp" } }
   );
 
-  if (!res.ok) throw new Error(`GitHub releases API error: ${res.status}`);
+  if (!res.ok) {
+    let message = "";
+    try {
+      const body = await res.json() as { message?: string };
+      message = body.message ? `: ${body.message}` : "";
+    } catch {
+      // Keep the status-specific error even if GitHub returns non-JSON.
+    }
+
+    if (res.status === 403 || res.status === 429) {
+      throw new Error(`GitHub releases API rate limited (${res.status})${message}. Try again later or authenticate upstream.`);
+    }
+
+    throw new Error(`GitHub releases API error: ${res.status}${message}`);
+  }
 
   const releases = await res.json() as Array<{
     tag_name: string;
@@ -58,7 +72,9 @@ async function fetchGitHubReleases(owner: string, repo: string, maxLength: numbe
     draft: boolean;
   }>;
 
-  if (!releases.length) throw new Error("No releases found");
+  if (!releases.length) {
+    throw new Error(`No GitHub Releases found for ${owner}/${repo}. Git tags are not GitHub Releases; create a release or use an npm package name.`);
+  }
 
   const stable = releases.filter((r) => !r.prerelease && !r.draft);
   const items = stable.length ? stable : releases;
@@ -247,11 +263,7 @@ export async function changelogAdapter(options: ExtractOptions): Promise<Adapter
   const safeInput = validateUrl(input, "changelog");
   const ghMatch = safeInput.match(/github\.com\/([^/]+)\/([^/?\s]+)/);
   if (ghMatch) {
-    try {
-      return await fetchGitHubReleases(ghMatch[1], ghMatch[2], maxLength);
-    } catch {
-      // Fall through to browser scrape if API fails
-    }
+    return fetchGitHubReleases(ghMatch[1], ghMatch[2].replace(/\.git$/, ""), maxLength);
   }
 
   // Any other URL → discover changelog

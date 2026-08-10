@@ -113,3 +113,48 @@ test("changelog npm package path remains available", async () => {
     restore();
   }
 });
+
+test("changelog GitHub repo path surfaces API rate limits explicitly", async () => {
+  const requested: string[] = [];
+  const restore = installFetch((input) => {
+    requested.push(String(input));
+    return new Response(JSON.stringify({
+      message: "API rate limit exceeded for shared test client.",
+    }), { status: 403, headers: { "Content-Type": "application/json" } });
+  });
+
+  try {
+    await assert.rejects(
+      changelogAdapter({ url: "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp" }),
+      /GitHub releases API rate limited \(403\).*Try again later or authenticate upstream/
+    );
+    assert.deepEqual(requested, [
+      "https://api.github.com/repos/PrinceGabriel-lgtm/freshcontext-mcp/releases?per_page=10",
+    ]);
+  } finally {
+    restore();
+  }
+});
+
+test("changelog GitHub repo path reports empty Releases without browser fallback", async () => {
+  const requested: string[] = [];
+  const restore = installFetch((input) => {
+    requested.push(String(input));
+    return new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+
+  try {
+    await assert.rejects(
+      changelogAdapter({ url: "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp" }),
+      /No GitHub Releases found for PrinceGabriel-lgtm\/freshcontext-mcp.*Git tags are not GitHub Releases/
+    );
+    assert.deepEqual(requested, [
+      "https://api.github.com/repos/PrinceGabriel-lgtm/freshcontext-mcp/releases?per_page=10",
+    ]);
+  } finally {
+    restore();
+  }
+});
