@@ -168,6 +168,6 @@ This pass did not:
 
 ## Final Gate Summary
 
-FreshContext is in better pre-release security shape after Pass 12-A and Pass 12-B. The local MCP package, validation tooling, Worker debug routes, and selected network adapter boundaries now have explicit guardrails where the audit found low-risk gaps. Root and Worker dependency audits are clean, package dry-run contents remain bounded, Trust Scanner effective fail remains 0, and no live secret was identified by the local scan.
+FreshContext was in better pre-release security shape after Pass 12-A and Pass 12-B. The local MCP package, validation tooling, Worker debug routes, and selected network adapter boundaries had explicit guardrails where the audit found low-risk gaps. Treat dependency-audit and Trust Scanner status in this file as dated Pass 12 evidence; rerun root and Worker audits plus `trust:gate` before making a current release-cleanliness claim.
 
 Release should still use a final release-decision gate before npm publish or Worker deploy, but the deferred Pass 12-B security items are closed.

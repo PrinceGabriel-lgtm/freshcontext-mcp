@@ -21,6 +21,16 @@ const KNOWN_PAYLOAD =
   "verdict_id=cb1a2b1e64fc1814de0b4c4c8bf7c33c36f8da2aa0a06d0088baf23d98ee2a85\n" +
   "decision=use_first";
 
+const KNOWN_PAYLOAD_V2 =
+  "FRESHCONTEXT_HA_PRI_V2\n" +
+  "result_id=fc-v2-001\n" +
+  "canonical_content_sha256=9f4e132a2f45f5694e782f3f6bfcd6f5234f718e398100392244ae260f803a07\n" +
+  "semantic_fingerprint_sha256=6f8ba42b67507f500f2b88e3aa740e88d8db696e93430f31eb7d76525a37844c\n" +
+  "adapter=arxiv\n" +
+  "published_at=2026-05-20T00:00:00.000Z\n" +
+  "retrieved_at=2026-06-09T12:00:00.000Z\n" +
+  "engine_version=0.3.23";
+
 // Test key: obviously fake, committed only for test purposes. Never used in production.
 const TEST_KEY = "freshcontext-test-hmac-key-do-not-use-in-production";
 
@@ -47,10 +57,38 @@ describe("/v1/verify stateless endpoint", () => {
       verifyRequest({ signing_payload: KNOWN_PAYLOAD, signature: knownSig }),
       TEST_KEY
     );
-    const body = await r.json() as { status: string; reasons: string[] };
+    const body = await r.json() as { status: string; signature_version: string; reasons: string[] };
     assert.equal(r.status, 200);
     assert.equal(body.status, "valid");
+    assert.equal(body.signature_version, "FRESHCONTEXT_HA_PRI_V3");
     assert.deepEqual(body.reasons, []);
+  });
+
+  test("valid v2 payload reports the explicit payload signature_version", async () => {
+    const v2Sig = await hmacSha256(TEST_KEY, KNOWN_PAYLOAD_V2);
+    const r = await handleRestRequest(
+      verifyRequest({ signing_payload: KNOWN_PAYLOAD_V2, signature: v2Sig }),
+      TEST_KEY
+    );
+    const body = await r.json() as { status: string; signature_version: string };
+    assert.equal(r.status, 200);
+    assert.equal(body.status, "valid");
+    assert.equal(body.signature_version, "FRESHCONTEXT_HA_PRI_V2");
+  });
+
+  test("explicit signature_version mismatch with payload header → 400 invalid_request", async () => {
+    const r = await handleRestRequest(
+      verifyRequest({
+        signing_payload: KNOWN_PAYLOAD,
+        signature: knownSig,
+        signature_version: "FRESHCONTEXT_HA_PRI_V2",
+      }),
+      TEST_KEY
+    );
+    const body = await r.json() as { error: { code: string; message: string } };
+    assert.equal(r.status, 400);
+    assert.equal(body.error.code, "invalid_request");
+    assert.match(body.error.message, /signature_version/);
   });
 
   test("tampered payload (decision changed) → status:invalid", async () => {

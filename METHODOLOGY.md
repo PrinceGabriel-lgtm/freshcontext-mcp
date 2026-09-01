@@ -286,19 +286,23 @@ not a fresh clock read — the now-per-pull invariant). Rows are never updated o
 integrity rests on immutability. The write is non-fatal and non-blocking: a ledger failure can
 never break the consumer's evaluation response.
 
-**Trustless verification.** A `/v1/verify` endpoint (mounted on the Worker) returns
-`valid` / `invalid` / `unknown` and offers two modes. Stateless: the caller presents the
-signing payload and signature, and the endpoint recomputes the HMAC and compares — no state
-read. Ledger-backed: the caller presents a `verdict_id` (or row `id`), and the endpoint reads
-the STORED signing payload and signature from the append-only ledger and verifies those — so
-verification uses the stored, version-scoped engine version, never a live constant, and a
-verdict stays verifiable against its ledger row under any version. Either mode lets a third
-party verify *without holding the secret*.
+**Issuer-operated verification.** `/v1/verify` is FreshContext's server-side verification
+endpoint. It lets a caller submit a FreshContext signature envelope and receive a canonical
+validity result from the issuer-operated verification service. Stateless mode accepts a
+signing payload and signature, then recomputes the HMAC and compares it without a state read.
+Ledger-backed mode accepts a `verdict_id` (or row `id`), reads the STORED signing payload and
+signature from the append-only ledger, and verifies those bytes, so verification uses the
+stored, version-scoped engine version rather than a live constant. This provides
+audit-friendly, reproducible verification against FreshContext's signing and ledger
+semantics, but it is not independent verification: the verifier still relies on
+FreshContext's endpoint and key custody model. Independent offline verification would require
+a different trust model, such as public-key signatures with published verification keys and
+versioned canonicalization rules.
 
 **Why this matters (the trust-layer claim):** v1 could say "this is what we stored." v3 can
-say "this verdict was reached at this time, signed, and you can prove it was not altered —
-without trusting us." That is an audit primitive, not a dashboard. It is the difference
-between a freshness *feature* and context-integrity *infrastructure*.
+say "this verdict was reached at this time, signed, and later checked against FreshContext's
+server-side signing and ledger semantics." That is an audit primitive, not a dashboard. It is
+the difference between a freshness *feature* and context-integrity *infrastructure*.
 
 **Honest status line:** the signed evaluate → store loop is live in production (first real
 signed row landed 2026-06-30, verified byte-correct). The `/v1/verify` and `/v1/health`
@@ -426,9 +430,9 @@ For technical integrators, auditors, and future platform partners:
 
 4. **The Ha-Pri Audit Signature scheme** — a layered integrity system: v1 is the provenance
    stamp; **v2/v3 is the live, shipped, HMAC-signed, verdict-bound, tamper-evident loop** with
-   an append-only ledger and a stateless trustless `/v1/verify` endpoint (in production as of
-   2026-06-30). This is the defensible core: a signed verdict a third party can verify without
-   trusting the issuer.
+   an append-only ledger and a server-side `/v1/verify` endpoint (in production as of
+   2026-06-30). This is a defensible audit primitive: a signed verdict can be checked through
+   FreshContext's issuer-operated verification service and ledger semantics.
 
 5. **The Store / Ledger design** — support for recurring watched queries, historical signal accumulation, D1-backed storage, and time-series auditability.
 
@@ -443,7 +447,7 @@ For technical integrators, auditors, and future platform partners:
 
 ### Version 1.3 — June 2026
 - Documented the shipped, live Ha-Pri v2/v3 signed-verdict loop (§3.1a): HMAC signing,
-  verdict-bound v3 payload, append-only `evaluation_snapshots` ledger, stateless trustless
+  verdict-bound v3 payload, append-only `evaluation_snapshots` ledger, server-side
   `/v1/verify`, version-scoped verification, non-fatal ledger writes. Live in production
   2026-06-30 (first signed row verified byte-correct).
 - Added the Flag A decay validation note (§2.5): tested against 1,219 real rows; pure

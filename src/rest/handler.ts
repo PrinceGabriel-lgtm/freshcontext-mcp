@@ -34,6 +34,8 @@ interface SnapshotRow {
   signature_version: string;
 }
 
+type HaPriSignatureVersion = "FRESHCONTEXT_HA_PRI_V2" | "FRESHCONTEXT_HA_PRI_V3";
+
 type RestErrorCode =
   | "invalid_request"
   | "method_not_allowed"
@@ -322,6 +324,14 @@ async function handleVerifyLedger(
   });
 }
 
+function signatureVersionFromPayload(signingPayload: string): HaPriSignatureVersion | null {
+  const firstLine = signingPayload.split(/\r?\n/, 1)[0];
+  if (firstLine === "FRESHCONTEXT_HA_PRI_V2" || firstLine === "FRESHCONTEXT_HA_PRI_V3") {
+    return firstLine;
+  }
+  return null;
+}
+
 // Mode 1 — stateless. Caller presents the full payload + signature; we recompute
 // and compare. No DB touched. Byte-identical to the pre-two-mode behavior.
 async function handleVerifyStateless(body: JsonRecord, hmacSecret: string): Promise<Response> {
@@ -331,11 +341,26 @@ async function handleVerifyStateless(body: JsonRecord, hmacSecret: string): Prom
     return errorResponse("invalid_request", "signing_payload must be a non-empty string.", 400);
   }
 
+  const payloadSignatureVersion = signatureVersionFromPayload(signing_payload);
+  if (body.signature_version !== undefined) {
+    if (typeof body.signature_version !== "string" || body.signature_version.trim() === "") {
+      return errorResponse("invalid_request", "signature_version must be a non-empty string when provided.", 400);
+    }
+    if (payloadSignatureVersion && body.signature_version !== payloadSignatureVersion) {
+      return errorResponse(
+        "invalid_request",
+        "signature_version does not match the signing_payload header.",
+        400
+      );
+    }
+  }
+
   // Unknown (not invalid): caller has no signature to present.
   // Mirrors verifyHaPriV2's three-state contract: missing/empty → unknown, not invalid.
   if (signature === undefined || signature === null) {
     return jsonResponse({
       status: "unknown",
+      signature_version: payloadSignatureVersion ?? "unknown",
       reasons: ["signature missing or empty; verification status unknown"],
     });
   }
@@ -347,6 +372,7 @@ async function handleVerifyStateless(body: JsonRecord, hmacSecret: string): Prom
   if (signature.trim() === "") {
     return jsonResponse({
       status: "unknown",
+      signature_version: payloadSignatureVersion ?? "unknown",
       reasons: ["signature missing or empty; verification status unknown"],
     });
   }
@@ -354,10 +380,18 @@ async function handleVerifyStateless(body: JsonRecord, hmacSecret: string): Prom
   const expected = await hmacHex(hmacSecret, signing_payload);
 
   if (await timingSafeEqualHex(hmacSecret, signature, expected)) {
-    return jsonResponse({ status: "valid", reasons: [] });
+    return jsonResponse({
+      status: "valid",
+      signature_version: payloadSignatureVersion ?? "unknown",
+      reasons: [],
+    });
   }
 
-  return jsonResponse({ status: "invalid", reasons: ["HMAC does not match recomputed signature"] });
+  return jsonResponse({
+    status: "invalid",
+    signature_version: payloadSignatureVersion ?? "unknown",
+    reasons: ["HMAC does not match recomputed signature"],
+  });
 }
 
 async function handleVerify(

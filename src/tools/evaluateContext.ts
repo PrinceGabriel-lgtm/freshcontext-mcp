@@ -2,6 +2,7 @@ import {
   evaluateSignals,
   getSourceProfile,
   interpretEvaluations,
+  neutralizeEnvelopeDelimiters,
   toReadableContextResult,
 } from "../core/index.js";
 import type {
@@ -137,6 +138,25 @@ function sourceTitle(evaluation: CoreSignalEvaluationResult): string {
   return evaluation.signal.source;
 }
 
+function neutralizeOutputText(value: string): string {
+  return neutralizeEnvelopeDelimiters(value);
+}
+
+function neutralizeOutputValue<T>(value: T): T {
+  if (typeof value === "string") {
+    return neutralizeOutputText(value) as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => neutralizeOutputValue(item)) as T;
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, neutralizeOutputValue(item)])
+    ) as T;
+  }
+  return value;
+}
+
 function formatFreshness(score: number | null): string {
   return score === null ? "unknown" : `${Math.round(score)}/100`;
 }
@@ -150,7 +170,7 @@ function formatUtility(score: number): string {
 }
 
 function formatList(values: string[]): string {
-  return values.length > 0 ? values.join("; ") : "None";
+  return values.length > 0 ? values.map(neutralizeOutputText).join("; ") : "None";
 }
 
 export function formatEvaluateContextResult(result: EvaluateContextResult): string {
@@ -167,17 +187,17 @@ export function formatEvaluateContextResult(result: EvaluateContextResult): stri
   result.items.forEach((item, index) => {
     const { evaluation, decision } = item;
     lines.push(
-      `${index + 1}. ${sourceTitle(evaluation)}`,
-      `   Decision: ${decision.label}`,
-      `   Meaning: ${decision.meaning}`,
-      `   Action: ${decision.action}`,
+      `${index + 1}. ${neutralizeOutputText(sourceTitle(evaluation))}`,
+      `   Decision: ${neutralizeOutputText(decision.label)}`,
+      `   Meaning: ${neutralizeOutputText(decision.meaning)}`,
+      `   Action: ${neutralizeOutputText(decision.action)}`,
       `   Warnings: ${formatList(decision.warnings)}`,
-      `   Source: ${evaluation.signal.source}`,
+      `   Source: ${neutralizeOutputText(evaluation.signal.source)}`,
       `   Freshness: ${formatFreshness(evaluation.freshness_score)}`,
       `   Rank score: ${formatRank(evaluation.ranked.final_score)}`,
       `   Utility: ${formatUtility(evaluation.utility.score)}`,
-      `   Confidence: ${evaluation.ranked.confidence}`,
-      `   Why: ${evaluation.explanation}`,
+      `   Confidence: ${neutralizeOutputText(evaluation.ranked.confidence)}`,
+      `   Why: ${neutralizeOutputText(evaluation.explanation)}`,
       ""
     );
   });
@@ -185,7 +205,7 @@ export function formatEvaluateContextResult(result: EvaluateContextResult): stri
   const structured = {
     profile: result.profile.profile_id,
     intent: result.intent,
-    results: result.items.map((item, index) => ({
+    results: result.items.map((item, index) => neutralizeOutputValue({
       index: index + 1,
       title: sourceTitle(item.evaluation),
       source: item.evaluation.signal.source,

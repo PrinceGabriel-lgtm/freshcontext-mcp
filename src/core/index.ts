@@ -1,7 +1,7 @@
 export { LAMBDA, calculateFreshnessScore, scoreLabel, stalenessVerdict, computeRevalidateAfter } from "./decay.js";
 export type { StalenessVerdict } from "./decay.js";
 export { looksLikeFailedAdapterContent } from "./guards.js";
-export { stampFreshness, toStructuredJSON, formatForLLM } from "./envelope.js";
+export { stampFreshness, toStructuredJSON, formatForLLM, neutralizeEnvelopeDelimiters } from "./envelope.js";
 export { explainSignal } from "./explain.js";
 export { rankSignals, rankSignal, clampScore } from "./rank.js";
 export { calculateContextUtility } from "./utility.js";
