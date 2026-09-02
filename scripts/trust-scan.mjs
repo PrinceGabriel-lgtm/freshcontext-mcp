@@ -120,6 +120,13 @@ const CLAIM_SURFACE_CONFIG_FILES = new Set([
   "server.json"
 ]);
 
+// Any semver literal asserted in a claim surface. package.json is the single source of
+// truth; a literal that disagrees with it is a stale claim. Historical, dated, and
+// forward-looking lines are skipped by the shared helpers in checkVersionClaims.
+// This exists because the version literal in these docs has now rotted three times
+// (0.3.19 -> 0.3.23 -> 0.4.0 -> 0.5.0). The staleness law applies to our own docs.
+const VERSION_CLAIM_PATTERN = /\b\d+\.\d+\.\d+\b/gu;
+
 const STALE_TOOL_COUNT_CLAIM_PATTERN = /\b(?:21|20|11)\s+(?:MCP\s+)?tools\b/giu;
 const YAHOO_CLAIM_PATTERN = /\byahoo\b/giu;
 
@@ -786,6 +793,15 @@ function isPrivateOrArchivePath(lowerPath, basename) {
   }
 
   if (basename.includes("session") || basename.includes("handoff")) {
+    return true;
+  }
+
+  // Internal audit / report material. These are gitignored (standing rule, 2026-09-02)
+  // and never shipped, so they are records rather than public claim surfaces. Keeping
+  // this list aligned with .gitignore stops the two classifiers disagreeing.
+  if (/(^|\/)(audit|evidence_pass|current_state_map)/u.test(lowerPath)
+    || /(audit|fixlist|evidence_pass|state_map|trust_roadmap)/u.test(basename)
+    || basename.endsWith("_review.md")) {
     return true;
   }
 
@@ -1967,6 +1983,7 @@ async function runClaimChecks(state) {
   await checkVersionConsistency(state, claimCheck);
   await checkSourceVersionConstants(state, claimCheck);
   const claimSurfaces = await loadClaimSurfaces(state, claimCheck);
+  checkVersionClaims(state, claimCheck, claimSurfaces);
   checkToolCountClaims(state, claimCheck, claimSurfaces);
   checkFinanceAdapterClaims(state, claimCheck, claimSurfaces);
   checkHaPriBoundaryClaims(state, claimCheck, claimSurfaces);
@@ -2168,6 +2185,79 @@ async function loadClaimSurfaces(state, claimCheck) {
   return surfaces;
 }
 
+function checkVersionClaims(state, claimCheck, claimSurfaces) {
+  const expected = claimCheck.packageVersion;
+  if (!expected) {
+    addClaimCheckFinding(state, claimCheck, {
+      ruleId: "claim-check-version-not-configured",
+      severity: "info",
+      message: "No package version is available to check documentation version claims against.",
+      recommendation: "Ensure package.json declares a version."
+    });
+    return;
+  }
+
+  let failures = 0;
+  for (const surface of claimSurfaces) {
+    if (VERSION_CLAIM_EXEMPT_SURFACES.has(normalizePath(surface.path).toLowerCase())) {
+      continue;
+    }
+
+    for (const { lineNumber, lineText, matchText } of findLineMatches(surface.lines, VERSION_CLAIM_PATTERN)) {
+      if (matchText === expected) {
+        continue;
+      }
+
+      // Only police FreshContext's own version, not dependency ranges.
+      if (!FRESHCONTEXT_VERSION_CONTEXT_PATTERN.test(lineText)) {
+        continue;
+      }
+
+      // A line may legitimately name an older version when it is explicitly historical,
+      // carries its own date, describes a future/not-yet state, or is a release-notes
+      // heading. Those are records, not current claims.
+      if (isHistoricalOrRegressionLine(lineText)) {
+        continue;
+      }
+      if (isFutureOrNotYetImplementationLine(lineText)) {
+        continue;
+      }
+      if (DATED_LINE_PATTERN.test(lineText)) {
+        continue;
+      }
+      if (MARKDOWN_HEADING_PATTERN.test(lineText)) {
+        continue;
+      }
+      // The version-scoping invariant is explained by contrasting a row's STORED
+      // engine_version against the live constant. That contrast is the point.
+      if (VERSION_SCOPING_CONTEXT_PATTERN.test(lineText)) {
+        continue;
+      }
+
+      failures += 1;
+      addClaimCheckFinding(state, claimCheck, {
+        ruleId: "claim-check-version-stale-current",
+        severity: "fail",
+        path: surface.path,
+        line: lineNumber,
+        fileCategory: surface.fileCategory,
+        match: matchText,
+        message: `Claim surface states version ${matchText}, but package.json is ${expected}.`,
+        recommendation: `Derive the version instead of hard-coding it (point at npm view / @latest / /v1/health), or mark the line as historical with its date.`
+      });
+    }
+  }
+
+  if (failures === 0) {
+    addClaimCheckFinding(state, claimCheck, {
+      ruleId: "claim-check-version-current",
+      severity: "info",
+      message: `No stale version claims found in public/package claim surfaces. Package version is ${expected}.`,
+      recommendation: "Keep version claims derived rather than hard-coded (staleness law)."
+    });
+  }
+}
+
 function checkToolCountClaims(state, claimCheck, claimSurfaces) {
   const expectedToolCount = claimCheck.expectedToolCount;
   if (expectedToolCount === null) {
@@ -2305,6 +2395,32 @@ function findLineMatches(lines, pattern) {
   }
   return matches;
 }
+
+// A line that carries its own ISO date is a dated record, not a live claim.
+const DATED_LINE_PATTERN = /\b(?:19|20)\d{2}-\d{2}-\d{2}\b/u;
+
+// Release-notes and section headings record history rather than assert current state.
+const MARKDOWN_HEADING_PATTERN = /^\s{0,3}#{1,6}\s/u;
+
+// The version-scoping invariant is demonstrated by contrasting a row's stored
+// engine_version with the live constant; such a line names an old version on purpose.
+const VERSION_SCOPING_CONTEXT_PATTERN = /\bstored\b|\bengine_version\b|\bper-row\b|\bsignature_version\b/iu;
+
+// Only FreshContext's OWN version is a claim about this product. A semver on a line that
+// never mentions FreshContext is almost always a dependency range or a third-party
+// version, which this rule has no business policing.
+const FRESHCONTEXT_VERSION_CONTEXT_PATTERN = /freshcontext|package_version|server_version/iu;
+
+// Manifests and lockfiles are full of dependency ranges. Their own version field is
+// already covered by claim-check-version-match / claim-check-source-version-match.
+const VERSION_CLAIM_EXEMPT_SURFACES = new Set([
+  "package.json",
+  "package-lock.json",
+  "server.json",
+  // A changelog names the version of every past release by definition. Policing it
+  // would force rewriting history on every bump.
+  "docs/release_notes.md"
+]);
 
 function isHistoricalOrRegressionLine(lineText) {
   const lower = lineText.toLowerCase();

@@ -257,7 +257,7 @@ Claude Desktop is a supported MCP client, but FreshContext Core is not Claude-de
 
 The canonical reference implementation of this specification is:
 
-**freshcontext-mcp@0.3.23** — an MCP server with `evaluate_context` for caller-provided candidate context plus 21 read-only reference adapters covering:
+**freshcontext-mcp@latest** — an MCP server with `evaluate_context` for caller-provided candidate context plus 21 read-only reference adapters covering:
 
 **Intelligence:** GitHub, Hacker News, Google Scholar, arXiv, Reddit
 
@@ -291,7 +291,7 @@ The canonical reference implementation of this specification is:
 - Added Core-backed envelope/scoring implementation status.
 - Added optional context-conditioned scoring language without changing the envelope contract.
 - Clarified MCP as one interface over the FreshContext methodology.
-- Updated reference implementation language for freshcontext-mcp@0.3.19, `evaluate_context`, and 21 read-only reference adapters.
+- Updated reference implementation language for freshcontext-mcp (see npm for the current version), `evaluate_context`, and 21 read-only reference adapters.
 
 ### Version 1.1 — April 2026
 - Added Composite Adapters section

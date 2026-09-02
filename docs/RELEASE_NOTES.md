@@ -1,5 +1,54 @@
 # FreshContext Release Notes
 
+## 0.5.0
+
+A correctness and honesty release. Nothing new was added; several things that were
+overstated or silently wrong were fixed. Minor rather than patch because consumer-visible
+behavior changed, not only wording.
+
+**Verification claims corrected.** `METHODOLOGY.md` described `/v1/verify` as "trustless"
+and said a third party could verify "without trusting the issuer." That was wrong.
+Verification uses a symmetric HMAC whose secret only the issuer holds, so a third party
+must ask the issuer's endpoint and believe the answer. The documentation now calls this
+what it is — issuer-operated verification — and states plainly what independent offline
+verification would require instead (public-key signatures with published verification keys
+and versioned canonicalization rules).
+
+**Envelope delimiter hardening.** The delimiter neutralizer covered `[FRESHCONTEXT]` and
+`[FRESHCONTEXT_JSON]` but not the signature or evaluation-JSON markers, and
+`evaluate_context` emitted caller-supplied title and source fields without routing them
+through it. Retrieved or caller-supplied content could therefore inject a forged
+`[FRESHCONTEXT_SIG_V1]` block or truncate a JSON block. Both are closed: the neutralizer now
+covers `[FRESHCONTEXT_EVALUATION_JSON]` and `[FRESHCONTEXT_SIG_V1|V2|V3]`, and
+`evaluate_context` routes its human-readable lines and structured string values through it.
+Generated FreshContext delimiters are unaffected.
+
+**`/v1/verify` Mode 1 states which guarantee it gave.** Stateless verification treated the
+signing payload as opaque bytes, so a v2 payload and a v3 payload both returned a bare
+`valid` — with no way for the caller to tell whether they had proven content integrity or
+decision binding. Mode 1 now derives `signature_version` from the payload header, returns
+it, and rejects a caller-supplied `signature_version` that contradicts the header with a
+`400 invalid_request`.
+
+**Composite freshness honesty** (carried from the 0.4.x line). Composite and landscape tools
+stamped `new Date()` with high confidence regardless of how stale their inputs were.
+They now use a weakest-link envelope: the oldest contributing date and the lowest confidence
+among fulfilled sources. `package_trends` stamps its real computed release date, `fetchYC`
+stamps null rather than today, and Scholar claims at most medium confidence on a year-only
+anchor.
+
+**Dependency advisory floors.** `qs` raised to `^6.16.0` and `fast-uri` to `^3.1.6` in both
+the package and Worker trees, clearing four `fast-uri` high advisories and two `qs`
+moderates. Root `npm audit --omit=dev` reports 0 vulnerabilities. The Worker tree retains
+three high advisories in the `@cloudflare/puppeteer -> @puppeteer/browsers -> extract-zip`
+chain; those are install-time only and verified absent from the built Worker bundle.
+
+**Version claims are now gated.** The version literal in these docs had rotted three times
+(0.3.19 → 0.3.23 → 0.4.0 → 0.5.0). Version literals in the test suite are now derived from
+`package.json`, and `trust:gate` gained a `claim-check-version-stale-current` rule that fails
+when a public or package claim surface asserts a version that disagrees with `package.json`.
+Documentation now points at the live version rather than hard-coding it.
+
 ## 0.4.0
 
 FreshContext 0.4.0 ships the signed-verdict integrity loop and the staleness envelope live in
