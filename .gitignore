@@ -38,6 +38,19 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Internal audit / report material — NEVER commit. Standing rule, 2026-09-02.
+# These name still-open findings and internal strategy; the repo is public.
+AUDIT*.md
+*_AUDIT_*.md
+*_AUDIT.md
+EVIDENCE_PASS_*.md
+*_FIXLIST*.md
+CURRENT_STATE_MAP*.md
+*_REVIEW.md
+docs/SECURITY_AUDIT_*.md
+docs/FRESHCONTEXT_*_AUDIT_*.md
+docs/FRESHCONTEXT_MATH_SPINE_REVIEW.md
+
 # Internal / strategic notes — not for public repo
 # These contain session continuity, strategy, financial context, etc.
 CLAUDE.md
