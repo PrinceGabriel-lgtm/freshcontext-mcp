@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+
+// Derived from package.json — see note in evaluateContextSnapshot.test.ts.
+const PKG_VERSION: string = createRequire(import.meta.url)("../package.json").version;
 import { readFileSync } from "node:fs";
 import { handleRestRequest } from "../src/rest/handler.js";
 
@@ -47,7 +51,7 @@ test("GET /v1/health returns REST health payload", async () => {
   assert.deepEqual(body, {
     ok: true,
     service: "freshcontext-rest",
-    version: "0.4.0",
+    version: PKG_VERSION,
     core_available: true,
   });
 });

@@ -2,6 +2,12 @@ import { env, SELF } from "cloudflare:test";
 import { describe, test, expect, beforeAll } from "vitest";
 import { buildHaPriPayloadV3 } from "../../src/core/index.js";
 import { hmacSha256 } from "../src/intelligence.js";
+import pkg from "../../package.json" with { type: "json" };
+
+// Derived, never hardcoded — a literal here has already rotted twice
+// (0.3.23 -> 0.4.0 -> 0.5.0). The Worker sources SERVICE_VERSION from the
+// same package.json, so this stays true across bumps by construction.
+const PKG_VERSION: string = pkg.version;
 
 // Must equal the FC_HMAC_SECRET binding in vitest.config.mts so the Worker's verify
 // path recomputes the same HMAC we sign the seeded row with.
@@ -48,7 +54,7 @@ const SEED = {
   published_at: "2026-06-01T00:00:00.000Z",
   retrieved_at: "2026-06-29T10:00:00.000Z",
   evaluated_at: "2026-06-29T10:00:05.000Z",
-  engine_version: "0.4.0",
+  engine_version: PKG_VERSION,
   decision: "use_first",
 };
 
@@ -97,12 +103,12 @@ beforeAll(async () => {
 });
 
 describe("mounted /v1 route — real Worker fetch (F3)", () => {
-  test("GET /v1/health → 200 {ok:true, version:0.4.0}", async () => {
+  test("GET /v1/health → 200 {ok:true, version matches package.json}", async () => {
     const r = await SELF.fetch("https://freshcontext.test/v1/health");
     expect(r.status).toBe(200);
     const body = await r.json() as { ok: boolean; version: string };
     expect(body.ok).toBe(true);
-    expect(body.version).toBe("0.4.0");
+    expect(body.version).toBe(PKG_VERSION);
   });
 
   test("Mode 1: valid payload + signature → valid", async () => {
@@ -127,7 +133,7 @@ describe("mounted /v1 route — real Worker fetch (F3)", () => {
     };
     expect(body.status).toBe("valid");
     expect(body.matched_rows).toBe(1);
-    expect(body.engine_version).toBe("0.4.0");
+    expect(body.engine_version).toBe(PKG_VERSION);
     expect(body.signature_version).toBe("FRESHCONTEXT_HA_PRI_V3");
   });
 

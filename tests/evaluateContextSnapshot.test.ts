@@ -1,5 +1,6 @@
 import test, { describe, before } from "node:test";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import {
   evaluateContextInput,
 } from "../src/tools/evaluateContext.js";
@@ -17,7 +18,9 @@ const { hmacSha256 } = workerIntelligence;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SERVICE_VERSION = "0.4.0";
+// Derived, never hardcoded: a literal here has already rotted twice
+// (0.3.23 -> 0.4.0 -> 0.5.0). package.json is the single source of truth.
+const SERVICE_VERSION: string = createRequire(import.meta.url)("../package.json").version;
 const TEST_KEY = "freshcontext-test-hmac-key-do-not-use-in-production";
 const NOW = "2026-06-29T10:00:00.000Z";
 

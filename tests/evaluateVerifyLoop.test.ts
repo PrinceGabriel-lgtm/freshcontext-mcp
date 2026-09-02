@@ -1,5 +1,6 @@
 import test, { describe, before } from "node:test";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { evaluateContextInput } from "../src/tools/evaluateContext.js";
 import type { EvaluateContextResult } from "../src/tools/evaluateContext.js";
 import { buildHaPriPayloadV3 } from "../src/core/index.js";
@@ -11,7 +12,9 @@ const { hmacSha256 } = workerIntelligence;
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
-const SERVICE_VERSION = "0.4.0";
+// Derived, never hardcoded: a literal here has already rotted twice
+// (0.3.23 -> 0.4.0 -> 0.5.0). package.json is the single source of truth.
+const SERVICE_VERSION: string = createRequire(import.meta.url)("../package.json").version;
 // Test key: obviously fake. The only thing faked in this end-to-end test.
 const TEST_KEY = "freshcontext-test-integration-key-do-not-use";
 
