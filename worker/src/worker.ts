@@ -21,7 +21,7 @@ import {
   stamp,
 } from "./freshcontextEnvelope.js";
 
-const SERVICE_VERSION = "0.5.0";
+const SERVICE_VERSION = "0.5.1";
 const SERVICE_UA = `freshcontext-mcp/${SERVICE_VERSION} (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)`;
 
 const signalInputSchema = z.object({

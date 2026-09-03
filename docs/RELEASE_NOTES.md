@@ -1,5 +1,35 @@
 # FreshContext Release Notes
 
+## 0.5.1
+
+Documentation corrections. No source behavior changed.
+
+0.5.0 shipped with three stale claims in files that are part of the published package. A
+self-review after that release found them, along with the reason the 0.5.0 version-claim
+gate had not:
+
+- **`SECURITY.md` named the wrong supported line.** It told vulnerability reporters that
+  FreshContext supports `freshcontext-mcp@0.3.x`, two minor versions after that stopped
+  being true. It now points at the latest published release and tells you how to check it.
+- **`README.md`** described `evaluate_context` as "prepared for `0.4.0`". It now points at
+  `/v1/health` for the Worker's live version and tool count rather than asserting parity
+  with the package.
+- **`docs/API_DESIGN.md`** documented a `/v1/health` response sample with
+  `"version": "0.1.0"` — a value the endpoint has never returned. It is now a placeholder.
+- **`METHODOLOGY.md`** described `0.4.0` as "the current constant" inside a dated 2026-07-06
+  record. Reworded to "the engine constant in force at the time" so the record stays true
+  regardless of the current version.
+
+**Why the gate missed them.** The `claim-check-version-stale-current` rule added in 0.5.0
+required the literal word "freshcontext" on the matched line, to avoid policing dependency
+ranges. Prose in the project's own README rarely repeats the product name, so the rule was
+blind exactly where it mattered. Its pattern also required three numeric segments and so
+could not see `0.3.x`. The rule is now scoped by file — every public doc except manifests,
+this changelog, and `docs/DEPENDENCY_DILIGENCE.md`, which names third-party versions on
+purpose — it matches `x`-suffixed lines, and one over-broad exemption
+(`should|would|will|design|target`) was removed. Its coverage is pinned by tests rather
+than by a single spot check.
+
 ## 0.5.0
 
 A correctness and honesty release. Nothing new was added; several things that were
