@@ -57,7 +57,7 @@ interface Env {
   MCP_RATE_LIMITER?: RateLimitBinding;
 }
 
-type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error" | "cache_error" | "snapshot_write_error" | "cron_adapter_empty" | "cron_adapter_failing";
+type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error" | "cache_error" | "snapshot_write_error" | "cron_adapter_empty" | "cron_adapter_failing" | "briefing_synthesis_error";
 
 type LogFields = {
   request_id?: string;
@@ -2731,10 +2731,25 @@ export default {
       try { checkAuth(request, env); } catch (e: any) { return errResponse(e.message, 401); }
       try {
         await runScheduledScrape(env, { ...requestLog, phase: "manual_briefing_now" });
-        // Use Claude synthesis if key is set, fallback to local formatter
+        // Use Claude synthesis if the key is set, fall back to the local formatter.
+        //
+        // The `?? await formatBriefing(...)` fallback only ever covered a null RETURN.
+        // generateAIBriefing THROWS on an upstream API error, which bypassed it entirely
+        // and 500'd the whole route — so the fallback this code declares has never
+        // actually fallen back. Observed 2026-09-03: a valid key with an exhausted credit
+        // balance returned 400 and took the endpoint down with it, even though a perfectly
+        // good local briefing was available.
+        //
+        // Catch and degrade instead. This is not a swallowed error: it is logged as
+        // briefing_synthesis_error with the cause, and the caller still gets a briefing.
         let briefingText: string;
         if (env.ANTHROPIC_KEY) {
-          const aiResult = await generateAIBriefing(env.DB, env.ANTHROPIC_KEY);
+          let aiResult: Awaited<ReturnType<typeof generateAIBriefing>> = null;
+          try {
+            aiResult = await generateAIBriefing(env.DB, env.ANTHROPIC_KEY);
+          } catch (err: unknown) {
+            logEvent("briefing_synthesis_error", { ...requestLog, phase: "manual_briefing_now" }, err);
+          }
           briefingText = aiResult?.summary ?? await formatBriefing(env.DB);
         } else {
           briefingText = await formatBriefing(env.DB);
