@@ -85,9 +85,13 @@ export async function synthesizeBriefing(
   (globalThis as any).__ANTHROPIC_KEY__ = anthropicKey;
 
   // 1. Load user profile
+  // D1's .first(colName?) takes an optional COLUMN NAME, not bind parameters. Passing
+  // userId there left the `?` unbound, so every call threw
+  // "D1_ERROR: Wrong number of parameter bindings for SQL query" — AI briefing synthesis
+  // has never succeeded. Bind through .bind() as everywhere else in this file.
   const profile = await db.prepare(
     `SELECT * FROM user_profiles WHERE id = ?`
-  ).first<UserProfile>(userId);
+  ).bind(userId).first<UserProfile>();
 
   if (!profile) return null;
 

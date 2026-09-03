@@ -1,0 +1,85 @@
+name: Verify
+
+# Verification only. This workflow does NOT publish.
+#
+# It used to run `npm publish` on every v* tag. That broke on 2026-07-01 when the
+# NPM_TOKEN secret (created 2026-03-26) stopped authenticating — npm's 2FA-bypass
+# restrictions invalidated legacy automation tokens. It failed silently for two months
+# and four releases because publishing was being done by hand from a workstation, so
+# nobody depended on the workflow succeeding. That is the same silent-failure shape as
+# the cron adapters: a broken thing that nothing forced to be true.
+#
+# Publishing stays manual and deliberate — an irreversible, outward-facing action that
+# should be a decision, not a side effect of pushing a tag. What CI is genuinely good at
+# is proving the tree is sound on a clean machine, which the old workflow never did: it
+# ran `npm ci && npm run build && npm publish` and never once ran the test suite.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Trust gate
+        run: npm run trust:gate
+
+      - name: Production dependency audit (root)
+        run: npm audit --omit=dev
+
+      - name: Install worker dependencies
+        working-directory: worker
+        run: npm ci
+
+      - name: Typecheck worker
+        working-directory: worker
+        run: npx tsc --noEmit
+
+      - name: Worker tests
+        working-directory: worker
+        run: npm test
+
+      # Proves the Worker bundles and every binding resolves, without deploying.
+      # No Cloudflare credentials are needed for a dry run.
+      - name: Worker build (dry run)
+        working-directory: worker
+        run: npx wrangler deploy --dry-run
+
+      # The package tarball is a public artifact. Fail if internal audit material ever
+      # reaches it — the .gitignore rules are the first line of defence, this is the second.
+      - name: Check the npm tarball carries no internal material
+        run: |
+          npm pack --dry-run --json > /tmp/pack.json
+          node -e "
+            const files = JSON.parse(require('fs').readFileSync('/tmp/pack.json','utf8'))[0].files.map(f => f.path);
+            const bad = files.filter(p => /AUDIT|EVIDENCE|FIXLIST|STATE_MAP|TRUST_ROADMAP|_REVIEW|[.]sql\$|^[.]env\$|[.]local[.]txt\$/i.test(p));
+            if (bad.length) { console.error('Internal material in tarball:', bad.join(', ')); process.exit(1); }
+            console.log('Tarball clean:', files.length, 'files');
+          "
