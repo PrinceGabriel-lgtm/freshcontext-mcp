@@ -11,11 +11,12 @@ import { synthesizeBriefing as generateAIBriefing } from "./synthesize.js";
 import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate, applyDecay, RT_EXPIRY_FLOOR, hmacSha256 } from "./intelligence.js";
 import { buildHaPriPayload, buildHaPriPayloadV3, sha256Hex as coreSha256Hex, canonicalizeHaPriContent } from "../../src/core/index.js";
 import { handleRestRequest } from "../../src/rest/handler.js";
-import { checkVerifyRateLimit, checkKvRateLimit } from "./rateLimit.js";
+import { checkVerifyRateLimit } from "./rateLimit.js";
 import type { RateLimitBinding } from "./rateLimit.js";
 import {
   analyzeCompositeContent,
   isUncacheableContent,
+  looksLikeFailedAdapterContent,
   parseFreshContextJson,
   replaceFreshContextJson,
   stamp,
@@ -44,7 +45,6 @@ const signalInputSchema = z.object({
 
 interface Env {
   BROWSER: Fetcher;
-  RATE_LIMITER: KVNamespace;
   CACHE: KVNamespace;
   DB: D1Database;
   ASSETS: Fetcher;  // Static assets binding for /demo (configured in wrangler.jsonc)
@@ -54,9 +54,10 @@ interface Env {
   PH_TOKEN?: string;
   FC_HMAC_SECRET?: string;
   VERIFY_RATE_LIMITER?: RateLimitBinding;
+  MCP_RATE_LIMITER?: RateLimitBinding;
 }
 
-type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error" | "cache_error" | "snapshot_write_error" | "rate_limit_kv_error";
+type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error" | "cache_error" | "snapshot_write_error" | "cron_adapter_empty" | "cron_adapter_failing";
 
 type LogFields = {
   request_id?: string;
@@ -459,25 +460,18 @@ function validateUrl(rawUrl: string, adapter: string): string {
 
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
 
+// Kept only for the 429 message and the MCP_RATE_LIMITER binding's documented limit.
+// Cloudflare enforces the actual limit from wrangler.jsonc, not from these constants —
+// keep them in step with the "simple" block there.
 const RATE_LIMIT    = 60;
 const RATE_WINDOW_S = 60;
 
-// Fail-open (2026-07-08 incident fix): a KV outage (e.g. the account's daily write quota
-// exhausted) must never be treated as "this caller is abusive." Before this fix, an
-// uncaught kv.get/put throw here propagated straight to the /mcp route handler's catch,
-// which returned 429 to EVERY request — turning a KV quota problem into a total
-// self-inflicted outage of the endpoint the limiter exists to protect. checkKvRateLimit
-// (worker/src/rateLimit.ts, unit-tested) allows the request through on a KV error instead
-// of blocking it, and reports kvError so it's still visible in logs.
-async function checkRateLimit(ip: string, kv: KVNamespace): Promise<void> {
-  const result = await checkKvRateLimit(kv, `rl:${ip}`, RATE_LIMIT, RATE_WINDOW_S);
-  if (result.kvError) {
-    logEvent("rate_limit_kv_error", { phase: "mcp_rate_limit" });
-  }
-  if (!result.allowed) {
-    throw new SecurityError(`Rate limit exceeded — max ${RATE_LIMIT} requests per minute per IP.`);
-  }
-}
+// RT-5 (2026-09-03): the KV get-then-put limiter that used to live here is gone. It was
+// non-atomic and eventually consistent, so a concurrent burst all read the same count and
+// each wrote count+1 — the 60/min cap was trivially bypassable on the path that launches a
+// headless browser per call. Its fail-open wrapper (2026-07-08 incident fix) went with it:
+// the native binding has no KV dependency to fail. /mcp now uses MCP_RATE_LIMITER, the same
+// atomic primitive /v1/verify already used. See the call site in fetch().
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -2149,6 +2143,12 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
       if (env?.GITHUB_TOKEN) headers["Authorization"] = `Bearer ${env.GITHUB_TOKEN}`;
       const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&per_page=10`;
       const res = await sourceFetch(url, { headers }, { ...log, adapter: "reposearch" });
+      // Surface the failure instead of returning "". Without this check a 401 parsed fine,
+      // data.items was undefined, and `?? ""` produced empty output — which scrapeOne's
+      // `if (!raw)` guard dropped BEFORE the last_run_at update, so the query stayed first
+      // in the ORDER BY last_run_at queue and failed silently every 6h. That is how the
+      // 2026-07-31 GITHUB_TOKEN expiry went unnoticed for 33 days.
+      if (!res.ok) return `GitHub search error ${res.status} for "${query}"`;
       const data = await res.json() as any;
       return sanitize(data.items?.map((r: any) => `${r.full_name} | stars:${r.stargazers_count} | updated:${r.updated_at?.slice(0,10)} | ${r.description ?? ""}`).join("\n") ?? "");
     }
@@ -2262,7 +2262,27 @@ async function runScheduledScrape(env: Env, log: LogFields = {}): Promise<void> 
         watched_query_id: wq.id,
         input_hash: hashInput(wq.query),
       });
-      if (!raw || raw.startsWith("[adapter")) return null;
+      if (!raw || raw.startsWith("[adapter")) {
+        // Advance last_run_at even on empty output. Skipping it left the query permanently
+        // first in `ORDER BY last_run_at ASC NULLS FIRST`, so a persistently failing adapter
+        // burned a query slot every cycle and never surfaced (2026-07-31 GITHUB_TOKEN expiry).
+        await env.DB.prepare(`UPDATE watched_queries SET last_run_at = datetime('now') WHERE id = ?`).bind(wq.id).run();
+        logEvent("cron_adapter_empty", { ...log, adapter: wq.adapter, watched_query_id: wq.id });
+        return null;
+      }
+
+      // A persistently failing adapter returns the SAME error string every run, so the
+      // unchanged-content check below treats it as "nothing new" and writes nothing. That is
+      // indistinguishable from a quiet news day. Log it explicitly so the failure is visible
+      // in observability even when no row is written.
+      if (looksLikeFailedAdapterContent(raw)) {
+        logEvent("cron_adapter_failing", {
+          ...log,
+          adapter: wq.adapter,
+          watched_query_id: wq.id,
+          input_hash: hashInput(wq.query),
+        });
+      }
 
       const hash = simpleHash(raw);
       const last = await env.DB.prepare(
@@ -2827,11 +2847,16 @@ export default {
       }
     }
 
-    try {
-      const ip = getClientIp(request);
-      await checkRateLimit(ip, env.RATE_LIMITER);
-    } catch (err: any) {
-      return errResponse(err.message, 429);
+    // RT-5: atomic Cloudflare Rate Limiting binding, replacing the KV get-then-put counter.
+    // PR-6: keyed on CF-Connecting-IP (Cloudflare-injected, not spoofable) rather than
+    // getClientIp, which falls back to a caller-controlled X-Forwarded-For header. /v1/verify
+    // already keyed this way; the expensive browser-launching path had kept the soft key.
+    const mcpRlKey = request.headers.get("CF-Connecting-IP") ?? "unknown";
+    if (!(await checkVerifyRateLimit(env.MCP_RATE_LIMITER, mcpRlKey))) {
+      return new Response(
+        JSON.stringify({ error: `Rate limit exceeded — max ${RATE_LIMIT} requests per minute per IP.` }),
+        { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "60" } }
+      );
     }
 
     try {

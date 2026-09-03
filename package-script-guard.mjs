@@ -109,7 +109,7 @@ const commands = {
       "tests/haPriV3GoldenVectors.test.ts",
       "tests/hmacSigning.test.ts",
       "tests/rateLimit.test.ts",
-      "tests/kvRateLimit.test.ts",
+      "tests/mcpRateLimitRegression.test.ts",
       "tests/adapterAnchorRegression.test.ts",
       "tests/wrapperIntegration.test.ts",
       "tests/signalContractExamples.test.ts",
