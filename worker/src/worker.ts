@@ -460,11 +460,10 @@ function validateUrl(rawUrl: string, adapter: string): string {
 
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
 
-// Kept only for the 429 message and the MCP_RATE_LIMITER binding's documented limit.
-// Cloudflare enforces the actual limit from wrangler.jsonc, not from these constants —
-// keep them in step with the "simple" block there.
-const RATE_LIMIT    = 60;
-const RATE_WINDOW_S = 60;
+// Kept only for the 429 message. Cloudflare enforces the real limit from the "simple"
+// block in wrangler.jsonc, not from these constants — keep them in step with it.
+const RATE_LIMIT    = 10;
+const RATE_WINDOW_S = 10;
 
 // RT-5 (2026-09-03): the KV get-then-put limiter that used to live here is gone. It was
 // non-atomic and eventually consistent, so a concurrent burst all read the same count and
@@ -2854,7 +2853,7 @@ export default {
     const mcpRlKey = request.headers.get("CF-Connecting-IP") ?? "unknown";
     if (!(await checkVerifyRateLimit(env.MCP_RATE_LIMITER, mcpRlKey))) {
       return new Response(
-        JSON.stringify({ error: `Rate limit exceeded — max ${RATE_LIMIT} requests per minute per IP.` }),
+        JSON.stringify({ error: `Rate limit exceeded — max ${RATE_LIMIT} requests per ${RATE_WINDOW_S}s per IP.` }),
         { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "60" } }
       );
     }

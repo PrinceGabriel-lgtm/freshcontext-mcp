@@ -43,10 +43,16 @@
     // consistent, so a concurrent burst all read the same count and each wrote count+1 —
     // the cap was trivially exceeded. The else-branch also re-put on every hit, refreshing
     // the TTL so a steady stream never rolled the window. Same limit/period as before.
+    // Measured 2026-09-03 against production: with { limit: 60, period: 60 } a single IP
+    // pushed 100 requests in 4.1s with ZERO 429s, and ~140 in-window before the limiter
+    // began rejecting. Cloudflare's binding is atomic and per-colo but its accounting is
+    // best-effort, so a 60-second window barely constrains a short burst — which is exactly
+    // the shape of the abuse this protects against on the browser-launching path.
+    // 10 requests / 10s keeps the same 60/min sustained rate while bounding a burst to ~10.
     {
       "name": "MCP_RATE_LIMITER",
       "namespace_id": "1002",
-      "simple": { "limit": 60, "period": 60 }
+      "simple": { "limit": 10, "period": 10 }
     }
   ],
   "assets": {
