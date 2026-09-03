@@ -125,7 +125,9 @@ const CLAIM_SURFACE_CONFIG_FILES = new Set([
 // forward-looking lines are skipped by the shared helpers in checkVersionClaims.
 // This exists because the version literal in these docs has now rotted three times
 // (0.3.19 -> 0.3.23 -> 0.4.0 -> 0.5.0). The staleness law applies to our own docs.
-const VERSION_CLAIM_PATTERN = /\b\d+\.\d+\.\d+\b/gu;
+// Matches 1.2.3 and also a line-series claim like `0.3.x`, which SECURITY.md used to
+// assert a supported package line. The earlier three-numeric-segment pattern missed it.
+const VERSION_CLAIM_PATTERN = /\b\d+\.\d+\.(?:\d+|x)\b/giu;
 
 const STALE_TOOL_COUNT_CLAIM_PATTERN = /\b(?:21|20|11)\s+(?:MCP\s+)?tools\b/giu;
 const YAHOO_CLAIM_PATTERN = /\byahoo\b/giu;
@@ -2208,21 +2210,22 @@ function checkVersionClaims(state, claimCheck, claimSurfaces) {
         continue;
       }
 
-      // Only police FreshContext's own version, not dependency ranges.
-      if (!FRESHCONTEXT_VERSION_CONTEXT_PATTERN.test(lineText)) {
-        continue;
-      }
-
       // A line may legitimately name an older version when it is explicitly historical,
-      // carries its own date, describes a future/not-yet state, or is a release-notes
-      // heading. Those are records, not current claims.
+      // carries its own date, or is a heading. Those are records, not current claims.
+      //
+      // Deliberately NOT skipped: isFutureOrNotYetImplementationLine. It matches
+      // should/would/will/design/target, which appear in ordinary prose constantly —
+      // as an exemption for version claims it excused far more than it should.
       if (isHistoricalOrRegressionLine(lineText)) {
         continue;
       }
-      if (isFutureOrNotYetImplementationLine(lineText)) {
-        continue;
-      }
-      if (DATED_LINE_PATTERN.test(lineText)) {
+      // Historical prose wraps, so a dated record's date is often on the line above the
+      // version it cites. Checking only the matched line produces permanent false
+      // positives on wrapped records, and a rule people mute is worse than no rule.
+      // Trade-off accepted: a genuinely stale claim on the line after a dated line is
+      // excused. The window is one line, deliberately — not a paragraph.
+      const precedingLine = surface.lines[lineNumber - 2] ?? "";
+      if (DATED_LINE_PATTERN.test(lineText) || DATED_LINE_PATTERN.test(precedingLine)) {
         continue;
       }
       if (MARKDOWN_HEADING_PATTERN.test(lineText)) {
@@ -2404,22 +2407,23 @@ const MARKDOWN_HEADING_PATTERN = /^\s{0,3}#{1,6}\s/u;
 
 // The version-scoping invariant is demonstrated by contrasting a row's stored
 // engine_version with the live constant; such a line names an old version on purpose.
-const VERSION_SCOPING_CONTEXT_PATTERN = /\bstored\b|\bengine_version\b|\bper-row\b|\bsignature_version\b/iu;
+const VERSION_SCOPING_CONTEXT_PATTERN = /\bstored\b|\bengine_version\b|\bper-row\b|\bsignature_version\b|\bversion-scoping\b/iu;
 
-// Only FreshContext's OWN version is a claim about this product. A semver on a line that
-// never mentions FreshContext is almost always a dependency range or a third-party
-// version, which this rule has no business policing.
-const FRESHCONTEXT_VERSION_CONTEXT_PATTERN = /freshcontext|package_version|server_version/iu;
-
-// Manifests and lockfiles are full of dependency ranges. Their own version field is
-// already covered by claim-check-version-match / claim-check-source-version-match.
+// Scoped by FILE, not by line. An earlier version of this rule required the word
+// "freshcontext" on the same line, which silently blinded it to the product's own README
+// (prose rarely repeats the product name) — it reported clean while README.md still said
+// 0.4.0. Scope is now every public doc except the files that legitimately name other
+// versions, listed below.
 const VERSION_CLAIM_EXEMPT_SURFACES = new Set([
+  // Manifests and lockfiles are dependency ranges; their own version field is already
+  // covered by claim-check-version-match / claim-check-source-version-match.
   "package.json",
   "package-lock.json",
   "server.json",
-  // A changelog names the version of every past release by definition. Policing it
-  // would force rewriting history on every bump.
-  "docs/release_notes.md"
+  // A changelog names the version of every past release by definition.
+  "docs/release_notes.md",
+  // Dependency diligence records third-party versions (qs@x, ws@y) on purpose.
+  "docs/dependency_diligence.md"
 ]);
 
 function isHistoricalOrRegressionLine(lineText) {

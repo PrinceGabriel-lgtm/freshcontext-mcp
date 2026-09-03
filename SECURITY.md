@@ -2,9 +2,10 @@
 
 ## Supported Versions
 
-FreshContext currently supports the active `freshcontext-mcp@0.3.x` package line.
+FreshContext supports the latest published `freshcontext-mcp` release line. Run
+`npm view freshcontext-mcp version` to see the current version.
 
-Please use the latest published `0.3.x` release when reporting a vulnerability, and include the exact package version, repository, transport, and environment involved.
+Please use the latest published release when reporting a vulnerability, and include the exact package version, repository, transport, and environment involved.
 
 ## Reporting A Vulnerability
 

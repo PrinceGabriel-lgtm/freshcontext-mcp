@@ -286,7 +286,7 @@ Returns host health and version metadata.
 {
   "ok": true,
   "service": "freshcontext-rest",
-  "version": "0.1.0",
+  "version": "<package version>",
   "core_available": true
 }
 ```

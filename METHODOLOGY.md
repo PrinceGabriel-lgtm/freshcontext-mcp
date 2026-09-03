@@ -312,8 +312,9 @@ over the real Worker route in the integration harness. **The production live-dat
 confirmed, not just stamped at deploy:** on 2026-07-06 a real `curl` against the live
 deployed URL returned `{"ok":true,...,"version":"0.4.0"}` from `/v1/health`, and both
 verify modes returned `valid` for the real ledger row signed 2026-06-30 — ledger-backed
-verify correctly returned that row's *stored* `engine_version: "0.3.23"` (not the current
-`0.4.0` constant), demonstrating the version-scoping invariant live, not just in tests.
+verify correctly returned that row's *stored* `engine_version: "0.3.23"` (not the engine
+constant in force at the time, `0.4.0`), demonstrating the version-scoping invariant live,
+not just in tests.
 `/v1/evaluate` (public evaluate) stays unmounted pending a separate security decision. The
 emitted `[FRESHCONTEXT_SIG_V1]` block in tool output remains v2 for now; v3 is stored in the
 ledger and is what the ledger-backed verify checks (the verdict-bound record). An

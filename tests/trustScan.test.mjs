@@ -550,6 +550,74 @@ test("claim check allows historical Yahoo regression wording", async () => {
   }
 });
 
+test("claim check fails a stale version claim in a public doc", async () => {
+  const fixture = await createFixture({ rules: emptyRules });
+  try {
+    await writeFreshContextPackageJson(fixture, "1.0.0");
+    // Prose that never repeats the product name. An earlier draft of this rule required
+    // "freshcontext" on the matched line and so reported clean while README said 0.4.0.
+    await writeFile(path.join(fixture, "README.md"), "The stdio MCP server is prepared for `0.4.0` today.\n", "utf8");
+
+    const result = runScanner(fixture, ["--claim-check", "--fail-on", "fail", "--json"]);
+    assert.equal(result.status, 1);
+
+    const report = JSON.parse(result.stdout);
+    const findings = report.findings.filter((item) => item.ruleId === "claim-check-version-stale-current");
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].match, "0.4.0");
+    assert.equal(findings[0].effectiveSeverity, "fail");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("claim check fails an x-suffixed version line claim", async () => {
+  const fixture = await createFixture({ rules: emptyRules });
+  try {
+    await writeFreshContextPackageJson(fixture, "1.0.0");
+    // SECURITY.md asserted a supported `0.3.x` line long after it stopped being true,
+    // and a three-numeric-segment pattern could not see it.
+    await writeFile(path.join(fixture, "SECURITY.md"), "Supported: the active `freshcontext-mcp@0.3.x` package line.\n", "utf8");
+
+    const result = runScanner(fixture, ["--claim-check", "--fail-on", "fail", "--json"]);
+    assert.equal(result.status, 1);
+
+    const report = JSON.parse(result.stdout);
+    const findings = report.findings.filter((item) => item.ruleId === "claim-check-version-stale-current");
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].match, "0.3.x");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("claim check allows dated, historical, heading, and version-scoping mentions", async () => {
+  const fixture = await createFixture({ rules: emptyRules });
+  try {
+    await writeFreshContextPackageJson(fixture, "1.0.0");
+    const lines = [
+      "On 2026-07-06 a curl returned version 0.4.0 from /v1/health.",
+      "Previously the package was 0.3.23.",
+      "Verify returned the row's stored engine_version 0.3.23, not the live constant.",
+      "## 0.4.0",
+      "The current release is 1.0.0.",
+      "Confirmed on 2026-07-06 by a real curl against the deployed URL, which",
+      "returned 0.4.0 and proved the endpoint was live.",
+      ""
+    ];
+    await writeFile(path.join(fixture, "README.md"), lines.join("\n"), "utf8");
+
+    const result = runScanner(fixture, ["--claim-check", "--fail-on", "fail", "--json"]);
+    assert.equal(result.status, 0, result.stdout);
+
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.findings.some((item) => item.ruleId === "claim-check-version-stale-current"), false);
+    assert.equal(report.findings.some((item) => item.ruleId === "claim-check-version-current"), true);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 test("claim check fails current Ha-Pri v2 deployed or Worker verification claims", async () => {
   const fixture = await createFixture({ rules: emptyRules });
   try {
