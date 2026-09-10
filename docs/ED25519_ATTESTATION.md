@@ -1,0 +1,115 @@
+# E-2 — Ed25519 Attestation and Independent Verification
+
+**Status:** implementation branch; not a production claim until keys are configured and the Worker is deployed and verified.
+
+## Why this exists
+
+FreshContext's Ha-Pri v2/v3 production path uses HMAC-SHA256. HMAC detects tampering, but the signing secret is held by FreshContext, so an outside verifier must ask the issuer to recompute the MAC. That is issuer-operated verification, not independent verification.
+
+E-2 adds an asymmetric Ed25519 attestation path. FreshContext holds only the private signing key; anyone can verify an attestation with the published public key, offline and without calling FreshContext.
+
+This is required by the Context Integrity Benchmark v1 design: benchmark evidence must be recomputable and verifiable without trusting the benchmark author.
+
+## Transition contract
+
+E-2 is additive so the existing 17 historical HMAC ledger rows remain valid.
+
+- Existing `FRESHCONTEXT_HA_PRI_V2` / `FRESHCONTEXT_HA_PRI_V3` signatures continue to verify through the legacy HMAC path.
+- When the Ed25519 key bindings are present, successful MCP `evaluate_context` responses that already contain the decision-bound V3 payload receive an additional `[FRESHCONTEXT_SIG_V4]` block.
+- V4 signs a versioned payload containing the V3 decision-bound fields plus `key_id` and `signature_algorithm=Ed25519`.
+- `/.well-known/freshcontext-signing-keys.json` publishes the verification keys.
+- `/v1/verify` accepts V4 stateless verification, but the service endpoint is optional: the same signature is independently verifiable offline.
+- The existing `evaluation_snapshots` rows are not rewritten. E-2 does not mutate historical HMAC evidence or pretend it was asymmetrically signed.
+
+The benchmark harness can use the same Ed25519 signing primitive directly for RFC 8785-canonicalized benchmark run records. The benchmark record canonicalization is separate from the Ha-Pri line payload; both are signed as exact bytes.
+
+## Worker bindings
+
+Production needs these bindings before V4 signing activates:
+
+- `FC_ED25519_KEY_ID` — public identifier such as `fc-prod-2026-09-a`.
+- `FC_ED25519_PRIVATE_KEY_B64` — PKCS#8 DER private key encoded as standard base64. **Secret. Never commit it.**
+- `FC_ED25519_PUBLIC_KEY_B64` — SPKI DER public key encoded as standard base64. Public.
+- `FC_ED25519_PUBLIC_KEYS_JSON` — optional JSON array retaining previous public keys for rotation/history.
+
+If the three active-key fields are incomplete, the wrapper does not sign and the base Worker behavior is unchanged.
+
+## Generate a keypair
+
+Generate production keys locally in a controlled environment. Node 20+ example:
+
+```js
+import { generateKeyPairSync } from "node:crypto";
+
+const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+console.log("PRIVATE_PKCS8_B64=" + privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"));
+console.log("PUBLIC_SPKI_B64=" + publicKey.export({ type: "spki", format: "der" }).toString("base64"));
+```
+
+Store the private value as a Cloudflare secret. The public value and key id are intentionally publishable.
+
+## Public key document
+
+`GET /.well-known/freshcontext-signing-keys.json` returns:
+
+```json
+{
+  "schema": "freshcontext.signing-keys.v1",
+  "algorithm": "Ed25519",
+  "keys": [
+    {
+      "key_id": "fc-prod-2026-09-a",
+      "algorithm": "Ed25519",
+      "public_key_spki_b64": "...",
+      "status": "active"
+    }
+  ]
+}
+```
+
+The optional history binding accepts entries with `key_id`, `public_key_spki_b64`, `status`, and optional `valid_from` / `valid_until` fields. The active binding wins if the same key id appears in history.
+
+## Rotation policy
+
+1. Generate a new Ed25519 keypair and a never-reused key id.
+2. Add the outgoing public key to `FC_ED25519_PUBLIC_KEYS_JSON` with `status: "retired"`. Do this **before** changing the active key.
+3. Set the new private key secret, public key, and active key id.
+4. Deploy and verify that the well-known endpoint contains both the retired and active keys.
+5. Produce a test V4 attestation and verify it offline using only the published public key.
+6. Keep retired public keys published for as long as signed artifacts that reference them are expected to remain verifiable.
+
+Never reuse a key id for different key material. Never delete a public verification key merely because its private key has been retired.
+
+## Offline verification
+
+Given the exact `signing_payload`, base64url `signature`, and the SPKI public key from the well-known document:
+
+```js
+import { createPublicKey, verify } from "node:crypto";
+
+const publicKey = createPublicKey({
+  key: Buffer.from(process.env.FC_PUBLIC_KEY_B64, "base64"),
+  format: "der",
+  type: "spki"
+});
+
+const signature = Buffer.from(process.env.FC_SIGNATURE.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+const valid = verify(null, Buffer.from(process.env.FC_PAYLOAD, "utf8"), publicKey, signature);
+console.log(valid ? "valid" : "invalid");
+```
+
+The verifier does not contact FreshContext and does not possess the private key.
+
+## Deployment gate
+
+Do not call E-2 "live" until all of these are true in production:
+
+1. production Ed25519 keypair generated and private key stored as a Cloudflare secret;
+2. public key document returns the active key id and expected SPKI bytes;
+3. a real MCP `evaluate_context` response contains a V4 block;
+4. the V4 payload verifies offline from a separate process using only the published public key;
+5. tampering with the payload causes offline verification to fail;
+6. legacy V3 ledger rows still verify through the existing path;
+7. CI, Worker typecheck, and the trust gate are green.
+
+Until that gate is completed, E-2 is implemented but not deployed.
