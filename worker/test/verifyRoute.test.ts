@@ -103,6 +103,20 @@ beforeAll(async () => {
 });
 
 describe("mounted /v1 route — real Worker fetch (F3)", () => {
+  // The deploy job asserts against production that /health.git_sha equals the commit
+  // it just pushed; that assertion is only worth anything if the field is actually
+  // there and actually reads the binding. Here there is no GIT_SHA binding, so this
+  // pins the un-deployed default — and would fail if the field were dropped or
+  // hardcoded.
+  test("GET /health → 200, git_sha falls back to 'dev' with no deploy binding", async () => {
+    const r = await SELF.fetch("https://freshcontext.test/health");
+    expect(r.status).toBe(200);
+    const body = await r.json() as { status: string; version: string; git_sha: string };
+    expect(body.status).toBe("ok");
+    expect(body.version).toBe(PKG_VERSION);
+    expect(body.git_sha).toBe("dev");
+  });
+
   test("GET /v1/health → 200 {ok:true, version matches package.json}", async () => {
     const r = await SELF.fetch("https://freshcontext.test/v1/health");
     expect(r.status).toBe(200);
