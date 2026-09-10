@@ -62,7 +62,8 @@ describe("E-2 Ed25519 attestation primitives", () => {
     expect(upgraded).toContain("algo=Ed25519");
     expect(upgraded).toContain(`key_id=${KEY_ID}`);
 
-    const line = upgraded.split("\n").find((candidate) => candidate.startsWith("item=1 ") && candidate.includes(" payload="));
+    const v4 = upgraded.slice(upgraded.indexOf("[FRESHCONTEXT_SIG_V4]"));
+    const line = v4.split("\n").find((candidate) => candidate.startsWith("item=1 ") && candidate.includes(" payload="));
     expect(line).toBeTruthy();
     const marker = " payload=";
     const payloadAt = line!.indexOf(marker);
