@@ -7,8 +7,11 @@ import {
   verifyV4Payload,
 } from "./ed25519Attestation.js";
 import type { Ed25519SigningEnv } from "./ed25519Attestation.js";
+import { checkVerifyRateLimit } from "./rateLimit.js";
+import type { RateLimitBinding } from "./rateLimit.js";
 
 interface Env extends Ed25519SigningEnv {
+  VERIFY_RATE_LIMITER?: RateLimitBinding;
   [key: string]: unknown;
 }
 
@@ -100,6 +103,17 @@ async function maybeHandleV4Verify(request: Request, env: Env): Promise<Response
   const explicitlyV4 = body.signature_version === ED25519_SIGNATURE_VERSION;
   const payloadIsV4 = typeof payload === "string" && payload.startsWith(`${ED25519_SIGNATURE_VERSION}\n`);
   if (!explicitlyV4 && !payloadIsV4) return null;
+
+  // Preserve the same public-endpoint abuse boundary as the legacy HMAC verifier.
+  // Local/miniflare has no native binding, so checkVerifyRateLimit intentionally allows.
+  const rlKey = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  if (!(await checkVerifyRateLimit(env.VERIFY_RATE_LIMITER, rlKey))) {
+    return jsonResponse(
+      { error: "Rate limit exceeded — max 100 requests per minute per IP on /v1/verify." },
+      429,
+      { "Retry-After": "60" }
+    );
+  }
 
   if (typeof payload !== "string" || payload.trim() === "") {
     return jsonResponse({
