@@ -2,7 +2,19 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "freshcontext-mcp",
   "main": "src/worker.ts",
-  "compatibility_date": "2024-09-23",
+  // Bumped 2026-09-10 from 2024-09-23, which was two years stale.
+  //
+  // 2025-10-11 rather than something nearer today because that is the newest date the
+  // test runtime can actually execute: @cloudflare/vitest-pool-workers pins its own
+  // nested workerd 1.20251011.0, older than the 1.20260609.1 wrangler bundles. Set a
+  // date above it and miniflare silently falls back, so the suite would be proving
+  // things about a runtime production does not run.
+  //
+  // vitest.config.mts reads this value rather than restating it AND refuses to start if
+  // it exceeds the pool's workerd, so neither half of that can drift again. To go newer,
+  // upgrade @cloudflare/vitest-pool-workers first — the tests are the constraint, and
+  // they should be.
+  "compatibility_date": "2025-10-11",
   "compatibility_flags": ["nodejs_compat_v2"],
   "browser": {
     "binding": "BROWSER"
