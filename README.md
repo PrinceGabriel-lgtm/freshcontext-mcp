@@ -1,30 +1,53 @@
 # FreshContext
 
-I asked Claude to help me find a job. It gave me a list of openings. I applied to three of them. Two didn't exist anymore. One had been closed for two years.
+**Build your context-integrity layer on an existing foundation.**
 
-Claude had no idea. It presented everything with the same confidence.
+FreshContext evaluates candidate information before it reaches model reasoning. It combines source-aware freshness, ranking, explanations, provenance readiness and explicit recommendations about how context should be used.
 
-That's the problem freshcontext fixes.
+Bring context from your retriever, database, agent or source adapter. Use the reusable Core inside your application, or connect through MCP. Shape the surrounding experience around your own workflows and platform.
 
-This repository is the integrated FreshContext Core/MCP package. FreshContext is the context judgment layer between retrieval and reasoning. Core is the reusable engine that scores, ranks, explains, and turns candidate context into decision-ready context; MCP is the first live host/interface over that engine.
+This repository is the integrated FreshContext Core/MCP package. Core owns evaluation; MCP is the first live host/interface. Your application decides how to act on the recommendations.
 
 [![npm version](https://img.shields.io/npm/v/freshcontext-mcp)](https://www.npmjs.com/package/freshcontext-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-Listed-blue)](https://registry.modelcontextprotocol.io)
 
-> **Live demo:** [freshcontext-mcp.gimmanuel73.workers.dev/demo](https://freshcontext-mcp.gimmanuel73.workers.dev/demo) — same model, same query, two completely different answers. Only the temporal layer changed.
+**Start here:** [Client setup](./docs/CLIENT_SETUP.md) · [Core API](./docs/CORE_API.md) · [Product roadmap](./docs/FUTURE_LANES.md#product-roadmap) · [Hosted demo](https://freshcontext-mcp.gimmanuel73.workers.dev/demo)
+
+## What you can build on today
+
+| Foundation | What it gives your application |
+|---|---|
+| **Core evaluation** | Normalize candidate signals, score freshness, rank results and inspect the reasons. |
+| **Source profiles and decisions** | Interpret context for a source class and task: use, cite, background, refresh, verify, watch or exclude. |
+| **Provenance helpers** | Inspect source and timing completeness and prepare content identity material when inputs are available. |
+| **MCP and reference adapters** | Evaluate caller-provided context with `evaluate_context`, or invoke separate read-only adapters for source-specific intake. |
+| **Specification and deployment assets** | Build against documented contracts and inspect the Worker, storage and operational reference surfaces. |
+
+Core is available through `freshcontext-mcp/core`, with an edge entrypoint at `freshcontext-mcp/core/edge`. Hosted endpoints are versioned deployment surfaces and are verified separately from the package. See the [architecture boundary](#architecture-boundary).
+
+## Your platform, your product direction
+
+The existing evaluation foundation supports several directions. The product extensions below have explicit implementation and validation gates in the [roadmap](./docs/FUTURE_LANES.md#product-roadmap).
+
+| Direction | Product experience | Boundary |
+|---|---|---|
+| **Embedded evaluation** | Add context recommendations and reasons to your retrieval, memory or agent workflow. | Current Core interfaces; each host integration requires validation. |
+| **Context monitoring** | Show which information is aging, uncertain or due for review, with history and alerts. | Proposed dashboard and re-evaluation workflow. |
+| **Controlled enforcement** | Map recommendations to review, refresh or exclusion before context is used. | Proposed host policy layer; evaluation alone does not block a request. |
+| **Standalone or white-label delivery** | Package an experience under your own product design and operating model. | Proposed packaging route, with access, deployment, support and licensing requirements. |
+
+Start with one integration. Preserve the evaluation contract while choosing the user experience, connectors and operating policies that fit your platform. Monitoring and enforcement can share the same decision outputs; white-label is a delivery choice for either route.
 
 ---
 
 ## The problem
 
-Large language models retrieve web data semantically. Cosine similarity finds the documents that match a query best — but cosine doesn't know when a document was written.
+Semantic relevance does not establish whether information is current, traceable or suitable for a particular task. A retriever can return a strong textual match whose date is missing, whose content is old, or whose extraction failed.
 
-So a 2022 blog post and a 2026 paper can score nearly identically. The model gets a context window full of stale documents and faithfully summarizes 2022 advice for a 2026 question.
+FreshContext makes those signals and their implications visible before the application assembles model context. It judges context usefulness and uncertainty; it does not certify truth.
 
-That's not hallucination. That's correct summarization of corrupted retrieval.
-
-> **Most RAG pipelines rank context correctly semantically but incorrectly temporally.**
+The project started with a practical failure: I asked Claude to help me find a job. It returned openings with equal confidence, including jobs that had already closed. FreshContext grew from that freshness problem into a reusable context-evaluation boundary.
 
 ---
 
@@ -39,7 +62,7 @@ candidate context
   -> model / agent / app
 ```
 
-FreshContext evaluates freshness, source profile, confidence, utility, provenance material, and failure honesty before context reaches the LLM. The temporal core uses Decay-Adjusted Relevancy:
+FreshContext evaluates freshness, source profile, confidence, provenance readiness and failure signals before context reaches the LLM. Context-conditioned utility is returned as an explanatory sidecar; it does not control default ranking or decision labels. The temporal core uses Decay-Adjusted Relevancy:
 
 ```
 R_t = R_0 · e^(−λt)
@@ -50,9 +73,9 @@ R_t = R_0 · e^(−λt)
 - `t` — hours elapsed since publication
 - `R_t` — decay-adjusted relevancy at query time
 
-That's the core correction. No model swap. No re-embedding. No re-indexing. The layer drops onto whatever retrieval pipeline you already have.
+The evaluation step can work with candidate signals from an existing retriever. The host maps its inputs to the signal contract and decides what to do with the outputs; integration effort depends on that host.
 
-**The layer is the product.** The named adapters shipped with this repo demonstrate compatibility across different source classes. The DAR engine, the freshness envelope, Source Profiles, and the FreshContext Specification are the moat.
+**The reusable boundary is the foundation.** The named adapters demonstrate source intake, while the Core, source profiles, decision semantics and specification provide a shared contract for product development.
 
 ---
 
@@ -452,9 +475,25 @@ Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 
 ## Roadmap
 
+The direction is **an existing evaluation foundation that teams can embed, observe and extend into controlled workflows**. The diagram separates current interfaces from proposed products; it is not a release schedule.
+
+```mermaid
+flowchart TD
+  core["Current: Core + MCP evaluation"] --> host["Validate one host integration"]
+  host --> embedded["Embed recommendations"]
+  host --> monitor["Proposed: monitoring + alerts"]
+  host --> control["Proposed: controlled enforcement"]
+  monitor --> product["Proposed: standalone / white-label delivery"]
+  control --> product
+```
+
+**Next bounded proof:** evaluate a fixed set of caller-provided signals, preserve the reasons, and display their history in an observation-only prototype. Re-evaluation, alerting and any automatic action are separate host work. See [Product roadmap](./docs/FUTURE_LANES.md#product-roadmap) for completion gates and [First monitoring slice](./docs/FUTURE_LANES.md#first-monitoring-slice) for the concrete build specification.
+
+### Existing milestones and implementation lanes
+
 - [x] FreshContext Specification v1.2 published (MIT, open standard)
 - [x] DAR engine with source-specific lambda constants
-- [x] Ha-Pri v1 provenance signatures on stored signals
+- [x] Ha-Pri v1 SHA-256 provenance references on stored signals
 - [x] Semantic deduplication via fingerprinting
 - [x] Live before/after demo at `/demo`
 - [x] METHODOLOGY.md — methodology and engineering documentation
@@ -466,9 +505,11 @@ Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
 - [x] Ha-Pri v2 Core helper and deterministic golden vectors
 - [x] Ha-Pri v2 production-enforcement design document
 - [ ] Ha-Pri v2 Worker/D1 production enforcement
-- [x] GitHub Actions release workflow — manual or `v*` tag-triggered npm publish path
+- [x] GitHub Actions verification and Worker deployment workflow; npm publication remains a separate manual release action
 - [ ] Webhook triggers — push high-entropy signals on threshold
-- [ ] Dashboard — React frontend for the D1 intelligence pipeline
+- [ ] Context monitoring — evaluation history, scheduled re-evaluation, dashboard and alerts
+- [ ] Controlled enforcement — explicit host policies, shadow evaluation, audit and rollback
+- [ ] Standalone / white-label delivery — product configuration, access boundaries and operating model
 - [ ] GKG upgrade for `extract_gdelt` — tone scores, goldstein scale, event codes
 
 Future work is organized in [FreshContext Future Lanes](./docs/FUTURE_LANES.md). Roadmap items are not live product claims until implemented and validated.
