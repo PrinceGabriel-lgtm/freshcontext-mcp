@@ -14,4 +14,4 @@ This notice does not grant trademark registration, partnership status, certifica
 
 Security reports and trust questions may be sent to:
 
-gimmanuel73@gmail.com
+security@freshcontext.dev
