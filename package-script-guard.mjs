@@ -62,6 +62,15 @@ const commands = {
     command: "node",
     args: ["scripts/smoke-stdio.mjs"],
   },
+  // Operator tool, not a shipped verifier: it obtains a live verdict so the two scripts
+  // that ARE shipped have something real to check. Deliberately absent from package.json
+  // files[], so in an installed package the guard's `required` check refuses it.
+  "prove:attestation": {
+    required: ["scripts/prove-live-attestation.mjs"],
+    command: "node",
+    args: ["scripts/prove-live-attestation.mjs"],
+    passThroughArgs: true,
+  },
   "trust:gate": {
     required: ["scripts/trust-scan.mjs"],
     command: "node",

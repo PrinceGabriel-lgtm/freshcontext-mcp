@@ -1,0 +1,217 @@
+# E-2 acceptance criterion, executed against production rather than described.
+#
+# "A stranger, with no FreshContext account, can verify a verdict." This workflow IS that
+# stranger. It obtains a real verdict from the live Worker, fetches the published key
+# document, and then checks the signature using ONLY the two verifiers that ship in the
+# npm tarball — the same files anyone else would run.
+#
+# Why it exists as its own workflow rather than a step inside deploy: this is the only
+# check in the repository that can catch a MISMATCHED KEYPAIR — a published public key
+# that is not the pair of the installed private secret. That failure is silent (every
+# verdict looks perfectly well-formed and fails verification for everyone downstream)
+# and it is invisible to a dry run, to the type checker, and to the worker test suite,
+# all of which use a generated keypair rather than production's.
+#
+# It deliberately does NOT roll production back. A verification failure can just as
+# easily mean the key document is stale as that the deploy is bad, and a harness that
+# reverts a good deploy on its own uncertainty is worse than one that reports.
+name: Attestation proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      allow_unconfigured:
+        description: "Pass when the Worker publishes no active signing key yet (baseline run before the public key is merged)"
+        type: boolean
+        default: false
+  schedule:
+    # 07:00 UTC daily. A mismatched pair or a vanished key is caught within a day
+    # rather than by the first third party who tries to verify something.
+    - cron: "0 7 * * *"
+  # So a future change can invoke this from another workflow without duplicating it.
+  workflow_call:
+    inputs:
+      allow_unconfigured:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: attestation-proof
+  cancel-in-progress: false
+
+jobs:
+  prove:
+    name: Prove a live verdict verifies offline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Fail early if the Worker URL is missing
+        env:
+          WORKER_BASE_URL: ${{ vars.WORKER_BASE_URL }}
+        run: |
+          if [ -z "$WORKER_BASE_URL" ]; then
+            echo "::error::Repository variable WORKER_BASE_URL is not set. Settings -> Secrets and variables -> Actions -> Variables."
+            exit 1
+          fi
+
+      - name: Obtain a live verdict and lay out its bytes
+        id: obtain
+        env:
+          WORKER_BASE_URL: ${{ vars.WORKER_BASE_URL }}
+          ALLOW_UNCONFIGURED: ${{ inputs.allow_unconfigured }}
+        run: |
+          set -uo pipefail
+          set +e
+          node scripts/prove-live-attestation.mjs --base "$WORKER_BASE_URL" --out proof | tee obtain.log
+          status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$status" = "2" ]; then
+            # Exit 2 is "no active signing key published", which is a state, not a fault.
+            # It is still a REGRESSION once a key has been published, so it fails unless
+            # the caller said otherwise.
+            {
+              echo "## Attestation proof — not configured"
+              echo
+              echo "The Worker publishes no active Ed25519 key, so no verdict is independently"
+              echo "verifiable yet. Verdicts are still signed V3/HMAC, which is honest but is"
+              echo "issuer attestation rather than verification."
+              echo
+              echo '```'
+              cat obtain.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "$ALLOW_UNCONFIGURED" = "true" ]; then
+              echo "unconfigured=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::No active signing key is published. Merge the public-key PR, or re-run with allow_unconfigured if this is the pre-merge baseline."
+            exit 1
+          fi
+
+          if [ "$status" != "0" ]; then
+            {
+              echo "## Attestation proof — FAILED before verification"
+              echo
+              echo '```'
+              cat obtain.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit "$status"
+          fi
+          echo "unconfigured=false" >> "$GITHUB_OUTPUT"
+
+      # ── The check itself, performed only by the artifacts a third party would run ──
+      - name: Verify with the shipped Node verifier
+        if: steps.obtain.outputs.unconfigured == 'false'
+        run: |
+          node scripts/verify-offline.mjs \
+            --payload proof/verdict.payload \
+            --signature-file proof/verdict.sig \
+            --keys proof/keys.json
+
+      - name: Verify with the shipped Python verifier
+        if: steps.obtain.outputs.unconfigured == 'false'
+        run: |
+          python3 scripts/verify_offline.py \
+            --payload proof/verdict.payload \
+            --signature-file proof/verdict.sig \
+            --keys proof/keys.json
+
+      # Without this, a verifier hardcoded to exit 0 would "prove" everything above.
+      - name: Negative controls — a tampered payload and a tampered signature must fail
+        if: steps.obtain.outputs.unconfigured == 'false'
+        run: |
+          set -uo pipefail
+          sed 's/^decision=.*/decision=tampered/' proof/verdict.payload > proof/tampered.payload
+          if cmp -s proof/verdict.payload proof/tampered.payload; then
+            echo "::error::the negative control did not actually change the payload"
+            exit 1
+          fi
+          head -c 1 proof/verdict.sig | grep -q B && first=C || first=B
+          printf '%s%s' "$first" "$(cut -c2- proof/verdict.sig)" > proof/tampered.sig
+
+          fails=0
+          check () {
+            "$@" >/dev/null 2>&1 && { echo "::error::$* unexpectedly reported VALID"; fails=1; } \
+              || echo "ok    rejected: $*"
+          }
+          check node scripts/verify-offline.mjs --payload proof/tampered.payload --signature-file proof/verdict.sig --keys proof/keys.json
+          check python3 scripts/verify_offline.py --payload proof/tampered.payload --signature-file proof/verdict.sig --keys proof/keys.json
+          check node scripts/verify-offline.mjs --payload proof/verdict.payload --signature-file proof/tampered.sig --keys proof/keys.json
+          check python3 scripts/verify_offline.py --payload proof/verdict.payload --signature-file proof/tampered.sig --keys proof/keys.json
+          exit "$fails"
+
+      # The block a caller verified and the row the ledger stored are the same bytes by
+      # construction in worker.ts. This is the independent check of that claim: ask the
+      # ledger, by verdict_id, and require it to answer ed25519 rather than hmac.
+      - name: Ledger round-trip — the stored row is V4, not just the emitted block
+        if: steps.obtain.outputs.unconfigured == 'false'
+        env:
+          WORKER_BASE_URL: ${{ vars.WORKER_BASE_URL }}
+        run: |
+          set -uo pipefail
+          verdict_id=$(node -p 'require("./proof/verdict.json").verdict_id')
+          body=""
+          for attempt in 1 2 3 4 5; do
+            body=$(curl -sS --max-time 20 -X POST "${WORKER_BASE_URL%/}/v1/verify" \
+              -H 'Content-Type: application/json' \
+              -d "{\"verdict_id\":\"$verdict_id\"}" || true)
+            status=$(printf '%s' "$body" | node -p 'JSON.parse(require("fs").readFileSync(0,"utf8")).status ?? ""' 2>/dev/null || echo "")
+            [ "$status" = "valid" ] && break
+            echo "attempt $attempt: status=${status:-<none>} — the ledger write is ctx.waitUntil, so retrying"
+            sleep 3
+          done
+          printf '%s\n' "$body"
+          node -e '
+            const r = JSON.parse(process.argv[1]);
+            const want = { status: "valid", verification_method: "ed25519", signature_version: "FRESHCONTEXT_HA_PRI_V4" };
+            for (const [k, v] of Object.entries(want)) {
+              if (r[k] !== v) {
+                console.error(`::error::/v1/verify returned ${k}=${JSON.stringify(r[k])}, expected ${JSON.stringify(v)}`);
+                process.exit(1);
+              }
+            }
+            if (r.issuer_attested) { console.error("::error::the ledger row is still issuer-attested"); process.exit(1); }
+            console.log("ok    the ledger row verifies as ed25519, independently of the emitted block");
+          ' "$body"
+
+      - name: Summarise
+        if: always() && steps.obtain.outputs.unconfigured == 'false'
+        run: |
+          {
+            echo "## Attestation proof"
+            echo
+            echo "A live verdict from \`${{ vars.WORKER_BASE_URL }}\` was verified using only the"
+            echo "two verifiers that ship in the npm tarball, against the public key document"
+            echo "the Worker publishes. No FreshContext secret was involved in the check."
+            echo
+            echo '```'
+            cat proof/verdict.json
+            echo '```'
+            echo
+            echo "Signed bytes:"
+            echo
+            echo '```'
+            cat proof/verdict.payload
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: attestation-proof
+          path: proof/
+          if-no-files-found: ignore
+          retention-days: 30
