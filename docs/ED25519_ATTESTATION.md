@@ -82,23 +82,29 @@ Never reuse a key id for different key material. Never delete a public verificat
 
 ## Offline verification
 
-Given the exact `signing_payload`, base64url `signature`, and the SPKI public key from the well-known document:
+**See [VERIFYING.md](./VERIFYING.md)** — the third-party-facing document, plus two
+runnable verifiers that ship in this repository and in the npm package:
 
-```js
-import { createPublicKey, verify } from "node:crypto";
-
-const publicKey = createPublicKey({
-  key: Buffer.from(process.env.FC_PUBLIC_KEY_B64, "base64"),
-  format: "der",
-  type: "spki"
-});
-
-const signature = Buffer.from(process.env.FC_SIGNATURE.replace(/-/g, "+").replace(/_/g, "/"), "base64");
-const valid = verify(null, Buffer.from(process.env.FC_PAYLOAD, "utf8"), publicKey, signature);
-console.log(valid ? "valid" : "invalid");
+```sh
+node   scripts/verify-offline.mjs  --payload verdict.payload --signature-file verdict.sig --keys keys.json
+python3 scripts/verify_offline.py  --payload verdict.payload --signature-file verdict.sig --keys keys.json
 ```
 
-The verifier does not contact FreshContext and does not possess the private key.
+Both exit 0 on a valid signature, 1 otherwise, and resolve the key themselves from the
+`key_id` carried inside the signed payload. Neither contacts FreshContext.
+
+A correction to the E-2 spec, which asked for "Node and Python, ~20 lines each, using
+standard libraries": **that is not achievable in Python.** The standard library has no
+Ed25519. The options were a `pip install cryptography` — a native extension that can
+fail to build — or implementing RFC 8032 verification inline. The script does the
+latter, because a verifier a sceptic can run with nothing but an interpreter is worth
+more than one that needs a working compiler toolchain first. It is validated against
+RFC 8032's published vectors in `tests/offlineVerification.test.ts`, negative cases
+included.
+
+`tests/offlineVerification.test.ts` also runs both scripts as real subprocesses against
+a real signature — the cross-implementation check E-2 section 8 calls "the test that
+proves independence; the others only prove self-consistency".
 
 ## Deployment gate
 

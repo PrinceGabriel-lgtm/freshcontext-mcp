@@ -140,6 +140,7 @@ const commands = {
       "tests/coreEdgeBoundary.test.ts",
       "tests/lambdaSingleSource.test.ts",
       "tests/workerDarGoldenVectors.test.ts",
+      "tests/offlineVerification.test.ts",
       "tests/trustScan.test.mjs",
     ],
   },
