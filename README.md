@@ -6,7 +6,9 @@ Claude had no idea. It presented everything with the same confidence.
 
 That's the problem freshcontext fixes.
 
-This repository is the integrated FreshContext Core/MCP package. FreshContext is the context judgment layer between retrieval and reasoning. Core is the reusable engine that scores, ranks, explains, and turns candidate context into decision-ready context; MCP is the first live host/interface over that engine.
+This repository is the integrated FreshContext Core/MCP package.
+
+**Category: context integrity infrastructure.** FreshContext sits between context acquisition and agent action. Its job is to decide whether information entering an AI workflow is still fresh, attributable and coherent enough for the system to rely on. Core is the reusable engine that scores, ranks, explains and turns candidate context into decision-ready context, with signed verdicts recorded in a verifiable ledger. MCP is the first live host interface over that engine — one interface over the methodology, not the product itself.
 
 [![npm version](https://img.shields.io/npm/v/freshcontext-mcp)](https://www.npmjs.com/package/freshcontext-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -450,26 +452,63 @@ Production: `https://api.freshcontext.dev`
 
 ---
 
+## Deployment modes
+
+The engine is deliberately separable from the interface it is reached through. The same Core runs in each of these without a rewrite:
+
+| Mode | What it means |
+|---|---|
+| Standalone | FreshContext runs as its own context-integrity service, as it does today. |
+| Embedded subsystem | Core runs inside an existing AI, data or security platform, invisible to that platform's users. |
+| SDK / API | Integrity primitives are consumed programmatically; no MCP involved. |
+| MCP infrastructure layer | FreshContext evaluates and governs context around MCP-enabled workflows — the live path in this repo. |
+| Gateway / control-plane component | Core operates at the policy boundary, before context is admitted into agent execution. |
+| White-label | The engine is surfaced under another product's branding and API. |
+
+Only the MCP and standalone modes are exercised in production today. The others are integration seams the architecture already supports, not shipped configurations.
+
+---
+
 ## Roadmap
+
+Split three ways so that genuine engineering risk is never filed as optionality. Nothing outside **Production core** is a live product claim.
+
+### Production core — built, running, testable
 
 - [x] FreshContext Specification v1.2 published (MIT, open standard)
 - [x] DAR engine with source-specific lambda constants
 - [x] Ha-Pri v1 provenance signatures on stored signals
-- [x] Semantic deduplication via fingerprinting
-- [x] Live before/after demo at `/demo`
-- [x] METHODOLOGY.md — methodology and engineering documentation
-- [x] Named reference adapters across intelligence, competitive research, market data, and composites
+- [x] Ha-Pri v2 Core helper and deterministic golden vectors
+- [x] Public `/v1/verify` endpoint — HMAC-signed, ledger-backed verdict verification
 - [x] Generic MCP `evaluate_context` tool for caller-provided candidate context
 - [x] Core-backed envelope generation shared by npm/MCP and the Cloudflare Worker
-- [x] Cloudflare Workers deployment — global edge, KV cache, KV rate limiting
-- [x] Published on npm and listed for MCP usage; Apify/feed assets are separated from the normal MCP runtime package
-- [x] Ha-Pri v2 Core helper and deterministic golden vectors
-- [x] Ha-Pri v2 production-enforcement design document
-- [ ] Ha-Pri v2 Worker/D1 production enforcement
+- [x] Semantic deduplication via fingerprinting
+- [x] Named reference adapters across intelligence, competitive research, market data, and composites
+- [x] Cloudflare Workers deployment — global edge, KV cache, atomic rate limiting
+- [x] Live before/after demo at `/demo`
+- [x] METHODOLOGY.md — methodology and engineering documentation
+- [x] Published on npm and listed for MCP usage; Apify/feed assets separated from the MCP runtime package
 - [x] GitHub Actions release workflow — manual or `v*` tag-triggered npm publish path
+
+In flight on the core, not an expansion surface:
+
+- [ ] Ha-Pri v2 Worker/D1 production enforcement (design document complete; hard tamper enforcement not yet live)
+
+### Expansion surfaces — deliberately open, not built
+
+These are integration seams the architecture supports and the engine does not yet implement. Stated in future tense on purpose.
+
+- [ ] **Context safety harness.** Policy enforcement before context reaches an agent: pass / warn / refresh / quarantine / block, with evidence attached to each decision. Today `evaluate_context` emits decisions and warnings; **the enforcement state machine does not exist** — `quarantine` and `block` are not implemented anywhere in the codebase.
+- [ ] **Enterprise control plane.** Dashboard over source health, trust score, context drift and provenance lineage. The verdict ledger is the data contract this would read from; the UI is unbuilt.
+- [ ] **Observability telemetry.** Historical integrity state, incidents, upstream degradation and remediation history.
+- [ ] **Autonomous remediation.** Automatic refresh, source substitution and re-evaluation — closed-loop rather than detection-only.
+- [ ] **Vertical policy packs.** Domain-specific integrity thresholds for regulated workflows.
 - [ ] Webhook triggers — push high-entropy signals on threshold
-- [ ] Dashboard — React frontend for the D1 intelligence pipeline
+
+### Research frontier — exploration, not commitment
+
 - [ ] GKG upgrade for `extract_gdelt` — tone scores, goldstein scale, event codes
+- [ ] Contradiction detection across concurrent sources
 
 Future work is organized in [FreshContext Future Lanes](./docs/FUTURE_LANES.md). Roadmap items are not live product claims until implemented and validated.
 
