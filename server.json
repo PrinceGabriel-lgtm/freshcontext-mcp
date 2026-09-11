@@ -7,7 +7,7 @@
     "source": "github"
   },
   "version": "0.5.1",
-  "website_url": "https://freshcontext-site.pages.dev",
+  "website_url": "https://freshcontext.dev",
   "packages": [
     {
       "registryType": "npm",
@@ -21,7 +21,7 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://freshcontext-mcp.gimmanuel73.workers.dev/mcp"
+      "url": "https://api.freshcontext.dev/mcp"
     }
   ]
 }

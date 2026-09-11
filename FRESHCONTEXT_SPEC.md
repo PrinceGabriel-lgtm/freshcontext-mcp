@@ -10,7 +10,7 @@ The FreshContext Specification defines a standard envelope format for AI-retriev
 
 It exists to solve one problem: **AI models present stale data with the same confidence as fresh data, and users have no way to tell the difference.**
 
-> **Illustrative demonstration:** [freshcontext-mcp.gimmanuel73.workers.dev/demo](https://freshcontext-mcp.gimmanuel73.workers.dev/demo) — same model, same query, different answers from different ranked context. The demo shows how FreshContext treats freshness signals.
+> **Illustrative demonstration:** [api.freshcontext.dev/demo](https://api.freshcontext.dev/demo) — same model, same query, different answers from different ranked context. The demo shows how FreshContext treats freshness signals.
 
 FreshContext addresses this by wrapping retrieved content in a structured envelope that carries three explicit properties:
 
@@ -277,7 +277,7 @@ The canonical reference implementation of this specification is:
 **Deployment:**
 - npm: `freshcontext-mcp`
 - GitHub: https://github.com/PrinceGabriel-lgtm/freshcontext-mcp
-- Cloud endpoint: `https://freshcontext-mcp.gimmanuel73.workers.dev/mcp`
+- Cloud endpoint: `https://api.freshcontext.dev/mcp`
 - MCP Registry: `io.github.PrinceGabriel-lgtm/freshcontext`
 
 ---
