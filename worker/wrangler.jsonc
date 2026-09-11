@@ -18,7 +18,15 @@
   // they should be.
   "compatibility_date": "2025-10-11",
   "compatibility_flags": ["nodejs_compat_v2"],
-
+  // PUBLIC Ed25519 verification key, published deliberately — see docs/VERIFYING.md.
+  // Committed rather than set in the dashboard because `wrangler deploy` deletes vars
+  // absent from this file. Written by scripts/write-public-key-vars.mjs during the key
+  // ceremony; key_id is derived from the key itself, so editing either by hand breaks
+  // the pair. The PRIVATE key is a Worker secret and never appears in this repository.
+  "vars": {
+    "FC_ED25519_KEY_ID": "fc-2026-09-ceced1ab",
+    "FC_ED25519_PUBLIC_KEY_B64": "MCowBQYDK2VwAyEAD13q6UUVb2iTZPH9PyRHHBmwoHMjvwb2Nnb9KRkq+r0="
+  },
   // Custom domain for the public endpoint. Previously this Worker was only reachable at
   // freshcontext-mcp.<subdomain>.workers.dev, which meant every MCP client config anyone
   // copied embedded a personal account subdomain, and the published endpoint could never
@@ -32,6 +40,25 @@
   "routes": [
     { "pattern": "api.freshcontext.dev", "custom_domain": true }
   ],
+  // Explicit, because the default is conditional and that cost us a production deploy.
+  //
+  // The `routes` block above was added on the understanding that "the workers.dev hostname
+  // keeps working, so existing clients do not break at cutover." It does not. Adding routes
+  // without naming workers_dev turns the subdomain OFF, and the deploy of 2a53671 proved it
+  // in the only way that counts — wrangler listed the triggers it had just published:
+  //
+  //     Deployed freshcontext-mcp triggers (1.34 sec)
+  //       api.freshcontext.dev (custom domain)
+  //       schedule: 0 */6 * * *
+  //
+  // No workers.dev route in that list, and freshcontext-mcp.<subdomain>.workers.dev/health
+  // then answered 404 six times over thirty seconds. The smoke test rolled production back,
+  // which is exactly what it is for — but every MCP client config anyone has already copied
+  // points at that hostname, so leaving it off silently breaks all of them.
+  //
+  // Setting it explicitly also removes the conditional: this file now says which hostnames
+  // serve instead of depending on an interaction between two keys.
+  "workers_dev": true,
   "browser": {
     "binding": "BROWSER"
   },
