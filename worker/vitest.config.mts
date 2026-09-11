@@ -122,6 +122,19 @@ const { privateKey, publicKey } = generateKeyPairSync("ed25519");
 const TEST_PRIVATE_KEY_B64 = privateKey.export({ type: "pkcs8", format: "der" }).toString("base64");
 const TEST_PUBLIC_KEY_B64 = publicKey.export({ type: "spki", format: "der" }).toString("base64");
 
+// A SECOND keypair, published as retired, so rotation is actually testable rather than
+// only documented. E-2 makes keys append-only: a rotated key is never removed from the
+// published document, because verdicts signed under it must stay verifiable forever or
+// the ledger's value evaporates. The only way to know that holds is to sign something
+// with the retired key and check it still verifies.
+//
+// The retired PRIVATE key is exposed as a test-only binding. Production never has one:
+// FC_ED25519_PUBLIC_KEYS_JSON carries public halves only, by design.
+const TEST_RETIRED_KEY_ID = "fc-test-ephemeral-retired";
+const retired = generateKeyPairSync("ed25519");
+const TEST_RETIRED_PRIVATE_KEY_B64 = retired.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64");
+const TEST_RETIRED_PUBLIC_KEY_B64 = retired.publicKey.export({ type: "spki", format: "der" }).toString("base64");
+
 export default defineWorkersConfig({
   test: {
     include: ["test/**/*.test.ts"],
@@ -151,6 +164,17 @@ export default defineWorkersConfig({
             FC_ED25519_KEY_ID: TEST_KEY_ID,
             FC_ED25519_PRIVATE_KEY_B64: TEST_PRIVATE_KEY_B64,
             FC_ED25519_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64,
+            FC_ED25519_PUBLIC_KEYS_JSON: JSON.stringify([
+              {
+                key_id: TEST_RETIRED_KEY_ID,
+                algorithm: "Ed25519",
+                public_key_spki_b64: TEST_RETIRED_PUBLIC_KEY_B64,
+                status: "retired",
+                valid_until: "2026-09-01T00:00:00Z",
+              },
+            ]),
+            // Test scaffolding only — production has no retired PRIVATE key anywhere.
+            TEST_RETIRED_PRIVATE_KEY_B64,
           },
         },
       },

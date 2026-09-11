@@ -2,6 +2,7 @@ import { env, SELF } from "cloudflare:test";
 import { describe, expect, test } from "vitest";
 import {
   ED25519_SIGNATURE_VERSION,
+  activeSigningConfig,
 
   buildHaPriPayloadV4,
   keyIdFromV4Payload,
@@ -109,5 +110,91 @@ describe("E-2 mounted Worker surface", () => {
     const response = await SELF.fetch(postVerify({ signing_payload: tampered, signature }));
     const body = await response.json() as { status: string };
     expect(body.status).toBe("invalid");
+  });
+});
+
+// ─── E-2 §8 — rotation, and the guards that keep an unsigned row out of the ledger ───
+describe("E-2 key rotation", () => {
+  const RETIRED_KEY_ID = "fc-test-ephemeral-retired";
+  const RETIRED_PRIVATE_KEY_B64 = env.TEST_RETIRED_PRIVATE_KEY_B64 as string;
+
+  // Keys are append-only. A rotated key is never removed from the published document,
+  // because every verdict ever signed under it must stay verifiable — otherwise the
+  // ledger quietly loses its history the moment you rotate, which is the opposite of
+  // what an append-only ledger is for.
+  test("a verdict signed under a RETIRED key still verifies", async () => {
+    const payload = buildHaPriPayloadV4(V3_PAYLOAD, RETIRED_KEY_ID);
+    const signature = await signEd25519(RETIRED_PRIVATE_KEY_B64, payload);
+
+    const response = await SELF.fetch(postVerify({ signing_payload: payload, signature }));
+    const body = await response.json() as {
+      status: string; key_id: string; verification_method: string;
+    };
+    expect(body.status).toBe("valid");
+    expect(body.key_id).toBe(RETIRED_KEY_ID);
+    expect(body.verification_method).toBe("ed25519");
+  });
+
+  test("the published document serves the retired key alongside the active one", async () => {
+    const response = await SELF.fetch("https://freshcontext.test/.well-known/freshcontext-signing-keys.json");
+    const body = await response.json() as {
+      keys: Array<{ key_id: string; status: string; public_key_spki_b64: string }>;
+    };
+    const active = body.keys.find((k) => k.key_id === KEY_ID);
+    const retired = body.keys.find((k) => k.key_id === RETIRED_KEY_ID);
+
+    expect(active?.status).toBe("active");
+    expect(retired?.status).toBe("retired");
+    // Distinct key material, or "rotation" would be a rename.
+    expect(retired?.public_key_spki_b64).not.toBe(active?.public_key_spki_b64);
+  });
+
+  test("a retired key cannot verify a verdict signed under the ACTIVE key", async () => {
+    // Rotation must not make the two keys interchangeable. Signed with active, relabelled
+    // retired: the key_id is inside the signed bytes, so this has to fail.
+    const payload = buildHaPriPayloadV4(V3_PAYLOAD, KEY_ID);
+    const signature = await signEd25519(PRIVATE_KEY_B64, payload);
+    const relabelled = payload.replace(`key_id=${KEY_ID}`, `key_id=${RETIRED_KEY_ID}`);
+
+    const response = await SELF.fetch(postVerify({ signing_payload: relabelled, signature }));
+    const body = await response.json() as { status: string };
+    expect(body.status).toBe("invalid");
+  });
+});
+
+describe("E-2 signing guards — never an unsigned or mislabelled ledger row", () => {
+  // worker.ts only signs V4 when activeSigningConfig() returns a complete set. If it
+  // returns null the row stays V3/HMAC, which is honest; what must never happen is a row
+  // labelled V4 that nothing can verify. These pin the three ways it can be incomplete.
+  const COMPLETE = {
+    FC_ED25519_KEY_ID: KEY_ID,
+    FC_ED25519_PRIVATE_KEY_B64: PRIVATE_KEY_B64,
+    FC_ED25519_PUBLIC_KEY_B64: PUBLIC_KEY_B64,
+  };
+
+  test("a complete configuration is accepted", () => {
+    expect(activeSigningConfig(COMPLETE)?.keyId).toBe(KEY_ID);
+  });
+
+  for (const missing of ["FC_ED25519_KEY_ID", "FC_ED25519_PRIVATE_KEY_B64", "FC_ED25519_PUBLIC_KEY_B64"] as const) {
+    test(`${missing} absent → no signing config, so the row stays V3/HMAC`, () => {
+      const partial = { ...COMPLETE, [missing]: undefined };
+      expect(activeSigningConfig(partial)).toBeNull();
+    });
+  }
+
+  test("a malformed key_id is refused rather than smuggled into the payload", () => {
+    expect(activeSigningConfig({ ...COMPLETE, FC_ED25519_KEY_ID: "has spaces and \n newlines" })).toBeNull();
+    // A key_id carrying a newline would forge extra payload lines, since the payload is
+    // newline-delimited. buildHaPriPayloadV4 rejects it too, belt and braces.
+    expect(() => buildHaPriPayloadV4(V3_PAYLOAD, "evil\nkey_id=other")).toThrow();
+  });
+
+  // This is what the writer's try/catch is for: signing configured but the key material
+  // unusable. worker.ts logs and drops the row rather than inserting one whose signature
+  // cannot be reproduced. E-2 §8: never an unsigned insert.
+  test("unusable private key material rejects instead of producing a bad signature", async () => {
+    await expect(signEd25519("not-base64-at-all-!!!", "payload")).rejects.toThrow();
+    await expect(signEd25519(PUBLIC_KEY_B64, "payload")).rejects.toThrow();
   });
 });
