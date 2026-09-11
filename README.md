@@ -12,7 +12,7 @@ This repository is the integrated FreshContext Core/MCP package. FreshContext is
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-Listed-blue)](https://registry.modelcontextprotocol.io)
 
-> **Live demo:** [freshcontext-mcp.gimmanuel73.workers.dev/demo](https://freshcontext-mcp.gimmanuel73.workers.dev/demo) — same model, same query, two completely different answers. Only the temporal layer changed.
+> **Live demo:** [api.freshcontext.dev/demo](https://api.freshcontext.dev/demo) — same model, same query, two completely different answers. Only the temporal layer changed.
 
 ---
 
@@ -188,7 +188,7 @@ GET /v1/intel/feed/:profile_id?limit=20&min_rt=0
 
 Every signal is stamped with `base_score`, `rt_score`, `entropy_level` (low / stable / high), `ha_pri_sig` (Ha-Pri v1 SHA-256 provenance reference), `semantic_fingerprint` (cross-adapter dedup), and `published_at`. Ready for direct LLM or agent consumption — no synthesis required.
 
-Production endpoint: `https://freshcontext-mcp.gimmanuel73.workers.dev`
+Production endpoint: `https://api.freshcontext.dev`
 
 ---
 
@@ -255,7 +255,7 @@ Add to your Claude Desktop config and restart:
   "mcpServers": {
     "freshcontext": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://freshcontext-mcp.gimmanuel73.workers.dev/mcp"]
+      "args": ["-y", "mcp-remote", "https://api.freshcontext.dev/mcp"]
     }
   }
 }
@@ -263,7 +263,7 @@ Add to your Claude Desktop config and restart:
 
 Restart Claude. Done.
 
-> Prefer a guided setup? Visit **[freshcontext-site.pages.dev](https://freshcontext-site.pages.dev)** — 3 steps, no terminal.
+> Prefer a guided setup? Visit **[freshcontext.dev](https://freshcontext.dev)** — 3 steps, no terminal.
 
 ### Local (full Playwright)
 
@@ -446,7 +446,7 @@ The reference implementation runs on Cloudflare's global edge:
 - **Provenance** — Ha-Pri v1 SHA-256 provenance stamps on stored signals; hard tamper enforcement is a future Ha-Pri v2 path
 - **Schema migrations** — promise-gated, idempotent, run on first request after deploy
 
-Production: `https://freshcontext-mcp.gimmanuel73.workers.dev`
+Production: `https://api.freshcontext.dev`
 
 ---
 

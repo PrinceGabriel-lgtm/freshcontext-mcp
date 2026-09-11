@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://freshcontext-site.pages.dev/freshcontext.schema.json",
+  "$id": "https://freshcontext.dev/freshcontext.schema.json",
   "title": "FreshContext",
   "description": "The FreshContext Specification v1.1 — structured envelope for AI-retrieved web data. https://github.com/PrinceGabriel-lgtm/freshcontext-mcp",
   "type": "object",

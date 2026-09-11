@@ -56,7 +56,7 @@ Keep this configuration in the local Codex config file, not in the repository. D
 The repository declares a remote Streamable HTTP MCP endpoint in `server.json` and the README:
 
 ```text
-https://freshcontext-mcp.gimmanuel73.workers.dev/mcp
+https://api.freshcontext.dev/mcp
 ```
 
 For clients that need a stdio bridge to a remote MCP endpoint, the README uses `mcp-remote`:
@@ -64,7 +64,7 @@ For clients that need a stdio bridge to a remote MCP endpoint, the README uses `
 ```toml
 [mcp_servers.freshcontext_remote]
 command = "npx"
-args = ["-y", "mcp-remote", "https://freshcontext-mcp.gimmanuel73.workers.dev/mcp"]
+args = ["-y", "mcp-remote", "https://api.freshcontext.dev/mcp"]
 ```
 
 This remote path was last verified on 2026-06-19 as a live Worker MCP endpoint exposing `0.4.0 / 22 tools`, including `evaluate_context`, `provenance_readiness`, `readable`, and `readable.handoff`. That confirms Worker availability and MCP tool discovery. It does not by itself claim Codex Cloud support or guarantee every MCP client can use the remote bridge without its own client-specific setup check.

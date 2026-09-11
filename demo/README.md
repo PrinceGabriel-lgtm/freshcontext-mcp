@@ -67,9 +67,9 @@ Replace `data.json` with your own retrieval output. The shape is documented inli
 ## Where this comes from
 
 - Repo: <https://github.com/PrinceGabriel-lgtm/freshcontext-mcp>
-- Spec: <https://freshcontext-site.pages.dev>
+- Spec: <https://freshcontext.dev>
 - npm: `npm install freshcontext-mcp`
-- Public health: <https://freshcontext-mcp.gimmanuel73.workers.dev/health>
+- Public health: <https://api.freshcontext.dev/health>
 - Authenticated feed: `/v1/intel/feed/default` requires a Worker API key.
 
 Built by Immanuel Gabriel · Grootfontein, Namibia · MIT licensed.

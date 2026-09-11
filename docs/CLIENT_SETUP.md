@@ -116,7 +116,7 @@ Expected smoke result:
 The repository also declares a remote Streamable HTTP MCP endpoint:
 
 ```text
-https://freshcontext-mcp.gimmanuel73.workers.dev/mcp
+https://api.freshcontext.dev/mcp
 ```
 
 Some clients can use `mcp-remote`:
@@ -126,7 +126,7 @@ Some clients can use `mcp-remote`:
   "mcpServers": {
     "freshcontext-remote": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://freshcontext-mcp.gimmanuel73.workers.dev/mcp"]
+      "args": ["-y", "mcp-remote", "https://api.freshcontext.dev/mcp"]
     }
   }
 }

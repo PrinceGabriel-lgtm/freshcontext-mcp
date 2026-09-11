@@ -175,7 +175,7 @@ ${bold('COMPLIANCE LEVELS')}
   ${r('FAIL')}                         Missing required fields
 
 ${bold('SPEC')}
-  https://freshcontext-site.pages.dev/spec.html
+  https://freshcontext.dev/spec.html
   https://github.com/PrinceGabriel-lgtm/freshcontext-mcp/blob/main/FRESHCONTEXT_SPEC.md
 `);
   process.exit(0);
