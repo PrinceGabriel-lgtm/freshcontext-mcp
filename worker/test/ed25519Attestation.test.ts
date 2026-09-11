@@ -176,7 +176,12 @@ describe("E-2 signing guards — never an unsigned or mislabelled ledger row", (
     expect(activeSigningConfig(COMPLETE)?.keyId).toBe(KEY_ID);
   });
 
-  for (const missing of ["FC_ED25519_KEY_ID", "FC_ED25519_PRIVATE_KEY_B64", "FC_ED25519_PUBLIC_KEY_B64"] as const) {
+  // Derived from COMPLETE rather than restating the three binding names as literals.
+  // Self-maintaining — a fourth required binding is covered the moment it is added here —
+  // and it drops a line of three long SCREAMING_SNAKE strings that GitGuardian's
+  // generic-high-entropy heuristic read as a secret assignment. The finding was a false
+  // positive, but deriving the list is the better code regardless.
+  for (const missing of Object.keys(COMPLETE) as Array<keyof typeof COMPLETE>) {
     test(`${missing} absent → no signing config, so the row stays V3/HMAC`, () => {
       const partial = { ...COMPLETE, [missing]: undefined };
       expect(activeSigningConfig(partial)).toBeNull();
