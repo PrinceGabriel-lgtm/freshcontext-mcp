@@ -1,6 +1,18 @@
 # E-2 — Ed25519 Attestation and Independent Verification
 
-**Status:** implementation branch; not a production claim until keys are configured and the Worker is deployed and verified.
+**Status:** live in production and proven against it.
+
+Key `fc-2026-09-ceced1ab` is installed and published, the Worker signs every new ledger row
+`FRESHCONTEXT_HA_PRI_V4`, and the `attestation-proof` workflow has obtained a real verdict
+from production and verified it with both shipped verifiers — including the negative
+controls and a ledger round-trip confirming the *stored* row is V4, not merely the emitted
+block ([run 34649322932](https://github.com/PrinceGabriel-lgtm/freshcontext-mcp/actions/runs/34649322932)).
+
+That run is what closes the gap this document used to hold open. Configuration alone could
+not: a published public key that is not the pair of the installed private secret produces
+verdicts that look perfectly well-formed and fail for every third party who checks, and
+unverifiable is indistinguishable from forged. The proof rules that out with evidence
+rather than assurance, and re-runs daily.
 
 ## Why this exists
 

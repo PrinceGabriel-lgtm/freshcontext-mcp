@@ -441,6 +441,7 @@ The reference implementation runs on Cloudflare's global edge:
 | `/briefing` | GET | Latest stored briefing |
 | `/v1/intel/feed/:profile_id` | GET | DAR-scored intelligence feed |
 | `/watched-queries` | GET | List all watched queries |
+| `/.well-known/freshcontext-signing-keys.json` | GET | Published Ed25519 verification keys (active + retired) |
 
 - **D1 database** — 18 watched queries running on 6-hour cron with relevancy scoring
 - **KV-backed rate limiting** — 60 req/min per IP across all edge nodes
@@ -479,7 +480,7 @@ Split three ways so that genuine engineering risk is never filed as optionality.
 - [x] DAR engine with source-specific lambda constants
 - [x] Ha-Pri v1 provenance signatures on stored signals
 - [x] Ha-Pri v2 Core helper and deterministic golden vectors
-- [x] Public `/v1/verify` endpoint — HMAC-signed, ledger-backed verdict verification
+- [x] Public `/v1/verify` endpoint — ledger-backed verdict verification, answering for both the legacy HMAC path and Ed25519, and reporting which was used via `verification_method`
 - [x] Generic MCP `evaluate_context` tool for caller-provided candidate context
 - [x] Core-backed envelope generation shared by npm/MCP and the Cloudflare Worker
 - [x] Semantic deduplication via fingerprinting
@@ -489,10 +490,26 @@ Split three ways so that genuine engineering risk is never filed as optionality.
 - [x] METHODOLOGY.md — methodology and engineering documentation
 - [x] Published on npm and listed for MCP usage; Apify/feed assets separated from the MCP runtime package
 - [x] GitHub Actions release workflow — manual or `v*` tag-triggered npm publish path
+- [x] **Independently verifiable Ed25519 attestation (E-2).** Every new verdict row in the
+  ledger is signed `FRESHCONTEXT_HA_PRI_V4` with Ed25519. A third party can verify a verdict
+  with no FreshContext account, no API key and no call to FreshContext — using the key
+  document the Worker publishes at `/.well-known/freshcontext-signing-keys.json` and either
+  verifier shipped in the npm tarball: `scripts/verify-offline.mjs` (Node, standard library)
+  or `scripts/verify_offline.py` (Python, no dependencies at all). Written up for the
+  sceptic rather than the maintainer in [VERIFYING.md](./docs/VERIFYING.md).
+- [x] Signing key `fc-2026-09-ceced1ab` published and active. Keys are append-only, so a
+  rotation never invalidates a verdict signed under a key that has since been retired.
+- [x] `attestation-proof.yml` — obtains a live verdict, verifies it with **both** shipped
+  verifiers, runs tampered-payload and tampered-signature negative controls, and confirms
+  the stored ledger row is V4 rather than only the emitted response block. On demand and
+  daily; every input it uses is public, so it needs no credentials to run.
 
 In flight on the core, not an expansion surface:
 
-- [ ] Ha-Pri v2 Worker/D1 production enforcement (design document complete; hard tamper enforcement not yet live)
+- [ ] Ha-Pri v2 Worker/D1 production enforcement for stored **signals** — the feed rows,
+  which still carry Ha-Pri v1 SHA-256 stamps. This is a separate path from the verdict
+  ledger above: verdicts are V4/Ed25519 today, signals are not. Design document complete;
+  hard tamper enforcement on the signals path is not live.
 
 ### Expansion surfaces — deliberately open, not built
 
