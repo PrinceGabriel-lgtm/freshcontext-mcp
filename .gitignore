@@ -71,3 +71,9 @@ tmp/
 *.log
 npm-debug.log*
 *.tgz
+
+# Python bytecode. scripts/verify_offline.py is loaded as a module by
+# tests/offlineVerification.test.ts to run the RFC 8032 vectors, which makes CPython
+# write __pycache__ next to it.
+__pycache__/
+*.py[cod]
