@@ -21,6 +21,15 @@ import {
   replaceFreshContextJson,
   stamp,
 } from "./freshcontextEnvelope.js";
+import {
+  ED25519_ALGORITHM,
+  ED25519_SIGNATURE_VERSION,
+  activeSigningConfig,
+  buildHaPriPayloadV4,
+  publishedSigningKeys,
+  signEd25519,
+} from "./ed25519Attestation.js";
+import type { Ed25519SigningEnv } from "./ed25519Attestation.js";
 
 const SERVICE_VERSION = "0.5.1";
 const SERVICE_UA = `freshcontext-mcp/${SERVICE_VERSION} (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)`;
@@ -43,7 +52,9 @@ const signalInputSchema = z.object({
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Env {
+// Extends Ed25519SigningEnv so the FC_ED25519_* bindings are declared in exactly one
+// place and worker.ts, worker-e2.ts and the signing helpers all agree on their shape.
+interface Env extends Ed25519SigningEnv {
   BROWSER: Fetcher;
   CACHE: KVNamespace;
   DB: D1Database;
@@ -81,6 +92,9 @@ type LogFields = {
   watched_query_id?: string;
   input_hash?: string;
   phase?: string;
+  // Which evaluation result a snapshot_write_error refers to, so a signing failure
+  // names the row it dropped rather than just the fact that one was dropped.
+  result_id?: string;
 };
 
 function sanitizeLogText(value: unknown): string {
@@ -1255,6 +1269,9 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
       // Built from the SAME v3Payload/v3Sig computed below for the ledger row: this
       // makes "emitted v3 == ledger row" true by construction, not by a second HMAC.
       const sigLinesV3: string[] = [];
+      // v4 lines — Ed25519, independently verifiable. Populated only when the signing
+      // key bindings are present; absent otherwise, and the block is then not emitted.
+      const sigLinesV4: string[] = [];
       const snapshotRows: Array<{
         id: string;
         verdict_id: string;
@@ -1322,6 +1339,45 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
             `sig=${v3Sig} payload=${JSON.stringify(v3Payload)}`
           );
 
+          // v4 — Ed25519 over the same verdict-bound fields plus key_id. Computed HERE,
+          // once, and used for BOTH the emitted [FRESHCONTEXT_SIG_V4] block and the
+          // ledger row, exactly as v3 above is. That is what makes "the block a caller
+          // verified" and "the row the ledger stores" the same bytes by construction
+          // rather than by a second signing pass that could drift.
+          //
+          // It also replaces the wrapper's previous approach of parsing the V3 block
+          // back out of its own JSON response and re-signing what it found — a step that
+          // silently emitted nothing whenever the output format shifted.
+          //
+          // When Ed25519 is not configured the row stays V3/HMAC, so the Worker remains
+          // deployable before a production keypair exists. That is the ONLY case where a
+          // new verdict is not V4.
+          let rowPayload = v3Payload;
+          let rowSig = v3Sig;
+          let rowVersion = "FRESHCONTEXT_HA_PRI_V3";
+
+          const signing = activeSigningConfig(env);
+          if (signing) {
+            const v4Payload = buildHaPriPayloadV4(v3Payload, signing.keyId);
+            let v4Sig: string;
+            try {
+              v4Sig = await signEd25519(signing.privateKeyPkcs8Base64, v4Payload);
+            } catch (err: unknown) {
+              // Ed25519 was configured and signing still failed — the key material is
+              // bad. Drop the row rather than storing it under a version whose signature
+              // cannot be reproduced. E-2 section 8: never an unsigned or mislabelled insert.
+              logEvent("snapshot_write_error", { result_id: resultId }, err);
+              continue;
+            }
+            sigLinesV4.push(
+              `item=${i + 1} result_id=${resultId} verdict_id=${decision.verdict_id} ` +
+              `sig=${v4Sig} payload=${JSON.stringify(v4Payload)}`
+            );
+            rowPayload = v4Payload;
+            rowSig = v4Sig;
+            rowVersion = ED25519_SIGNATURE_VERSION;
+          }
+
           snapshotRows.push({
             id: crypto.randomUUID(),
             verdict_id: decision.verdict_id,
@@ -1337,9 +1393,9 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
             revalidate_after: decision.revalidate_after ?? null,
             engine_version: SERVICE_VERSION,
             canonical_content_sha256: contentHash,
-            signing_payload: v3Payload,
-            signature: v3Sig,
-            signature_version: "FRESHCONTEXT_HA_PRI_V3",
+            signing_payload: rowPayload,
+            signature: rowSig,
+            signature_version: rowVersion,
             created_at: new Date().toISOString(),
           });
         }
@@ -1367,6 +1423,20 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
             "algo=HMAC-SHA256",
             ...sigLinesV3,
             "[/FRESHCONTEXT_SIG_V3]",
+          ].join("\n")
+        : null;
+
+      // v4 block — Ed25519, independently verifiable. Same lines already computed for
+      // the ledger rows, so what a caller verifies here and what the ledger stores are
+      // the same bytes. Emitted only when signing is configured; its absence is how a
+      // caller can tell this Worker has no published key rather than a broken one.
+      const sigBlockV4 = sigLinesV4.length > 0
+        ? [
+            "[FRESHCONTEXT_SIG_V4]",
+            `algo=${ED25519_ALGORITHM}`,
+            `key_id=${activeSigningConfig(env)?.keyId ?? ""}`,
+            ...sigLinesV4,
+            "[/FRESHCONTEXT_SIG_V4]",
           ].join("\n")
         : null;
 
@@ -1403,7 +1473,8 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
       }
 
       const withV3 = sigBlockV3 ? "\n" + sigBlockV3 : "";
-      return ok(formatted + "\n" + sigBlock + withV3);
+      const withV4 = sigBlockV4 ? "\n" + sigBlockV4 : "";
+      return ok(formatted + "\n" + sigBlock + withV3 + withV4);
     } catch (err) {
       if (err instanceof EvaluateContextInputError) {
         return ok(`[FreshContext evaluate_context error]\n${err.message}`);
@@ -2560,7 +2631,16 @@ export default {
             );
           }
         }
-        return await handleRestRequest(request, env.FC_HMAC_SECRET, env.DB);
+        // The public-key resolver is injected the same way the HMAC secret and the
+        // ledger are: handler.ts ships in the npm package and holds no key material of
+        // its own. Resolving from publishedSigningKeys means retired keys resolve too,
+        // which is what keeps historical V4 verdicts verifiable after a rotation.
+        return await handleRestRequest(
+          request,
+          env.FC_HMAC_SECRET,
+          env.DB,
+          (keyId) => publishedSigningKeys(env).find((k) => k.key_id === keyId)?.public_key_spki_b64
+        );
       } catch (err: unknown) {
         return routeError(err);
       }

@@ -2,7 +2,7 @@ import { SELF } from "cloudflare:test";
 import { describe, expect, test } from "vitest";
 import {
   ED25519_SIGNATURE_VERSION,
-  appendEd25519Attestations,
+
   buildHaPriPayloadV4,
   keyIdFromV4Payload,
   signEd25519,
@@ -44,36 +44,12 @@ describe("E-2 Ed25519 attestation primitives", () => {
     expect(await verifyEd25519(PUBLIC_KEY_B64, `${payload}\ntampered=true`, signature)).toBe(false);
   });
 
-  test("additive V4 block signs the exact embedded decision-bound payload", async () => {
-    const legacy = [
-      "[FRESHCONTEXT_SIG_V3]",
-      "algo=HMAC-SHA256",
-      `item=1 result_id=fc-e2-test-001 verdict_id=${"c".repeat(64)} sig=${"d".repeat(64)} payload=${JSON.stringify(V3_PAYLOAD)}`,
-      "[/FRESHCONTEXT_SIG_V3]",
-    ].join("\n");
-
-    const upgraded = await appendEd25519Attestations(legacy, {
-      FC_ED25519_KEY_ID: KEY_ID,
-      FC_ED25519_PRIVATE_KEY_B64: PRIVATE_KEY_B64,
-      FC_ED25519_PUBLIC_KEY_B64: PUBLIC_KEY_B64,
-    });
-
-    expect(upgraded).toContain("[FRESHCONTEXT_SIG_V4]");
-    expect(upgraded).toContain("algo=Ed25519");
-    expect(upgraded).toContain(`key_id=${KEY_ID}`);
-
-    const v4 = upgraded.slice(upgraded.indexOf("[FRESHCONTEXT_SIG_V4]"));
-    const line = v4.split("\n").find((candidate) => candidate.startsWith("item=1 ") && candidate.includes(" payload="));
-    expect(line).toBeTruthy();
-    const marker = " payload=";
-    const payloadAt = line!.indexOf(marker);
-    const left = line!.slice(0, payloadAt);
-    const sigMatch = left.match(/ sig=([^ ]+)$/);
-    expect(sigMatch).toBeTruthy();
-    const payload = JSON.parse(line!.slice(payloadAt + marker.length)) as string;
-    expect(payload.startsWith(`${ED25519_SIGNATURE_VERSION}\n`)).toBe(true);
-    expect(await verifyEd25519(PUBLIC_KEY_B64, payload, sigMatch![1])).toBe(true);
-  });
+  // NOTE: the test that used to sit here drove appendEd25519Attestations — the wrapper's
+  // scrape-own-output-and-re-sign path, deleted in this change. It is not being dropped
+  // silently: worker.ts now signs V4 inline alongside V2/V3, and the behaviour that
+  // actually matters (a V4 row reaching the ledger and verifying through /v1/verify
+  // Mode 2) is covered end to end in verifyRoute.test.ts, which exercises the real
+  // Worker against a real D1 rather than a hand-built string.
 });
 
 describe("E-2 mounted Worker surface", () => {
@@ -108,13 +84,17 @@ describe("E-2 mounted Worker surface", () => {
     const body = await response.json() as {
       status: string;
       signature_version: string;
-      algorithm: string;
+      verification_method: string;
+      issuer_attested?: boolean;
       key_id: string;
     };
     expect(body.status).toBe("valid");
     expect(body.signature_version).toBe(ED25519_SIGNATURE_VERSION);
-    expect(body.algorithm).toBe("Ed25519");
     expect(body.key_id).toBe(KEY_ID);
+    // The field that matters to a caller: this result is independently verifiable,
+    // not something FreshContext attested to under a secret only FreshContext holds.
+    expect(body.verification_method).toBe("ed25519");
+    expect(body.issuer_attested).toBeUndefined();
   });
 
   test("/v1/verify rejects a tampered V4 payload", async () => {

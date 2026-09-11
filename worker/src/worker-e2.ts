@@ -1,32 +1,13 @@
 import baseWorker from "./worker.js";
-import {
-  ED25519_ALGORITHM,
-  ED25519_SIGNATURE_VERSION,
-  appendEd25519Attestations,
-  signingKeyDocument,
-  verifyV4Payload,
-} from "./ed25519Attestation.js";
+import { signingKeyDocument } from "./ed25519Attestation.js";
 import type { Ed25519SigningEnv } from "./ed25519Attestation.js";
-import { checkVerifyRateLimit } from "./rateLimit.js";
-import type { RateLimitBinding } from "./rateLimit.js";
 
 interface Env extends Ed25519SigningEnv {
-  VERIFY_RATE_LIMITER?: RateLimitBinding;
   [key: string]: unknown;
 }
 
 const KEY_PATH = "/.well-known/freshcontext-signing-keys.json";
 const JSON_CONTENT_TYPE = "application/json";
-
-function responseWithBody(response: Response, body: string): Response {
-  const headers = new Headers(response.headers);
-  headers.delete("content-length");
-  return new Response(body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-}
 
 function jsonResponse(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -39,117 +20,32 @@ function jsonResponse(body: unknown, status = 200, extraHeaders: Record<string, 
   });
 }
 
-async function upgradeJsonStrings(value: unknown, env: Env): Promise<unknown> {
-  if (typeof value === "string") {
-    return value.includes("[FRESHCONTEXT_SIG_V3]")
-      ? appendEd25519Attestations(value, env)
-      : value;
-  }
-  if (Array.isArray(value)) {
-    return Promise.all(value.map((entry) => upgradeJsonStrings(entry, env)));
-  }
-  if (value && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-      out[key] = await upgradeJsonStrings(entry, env);
-    }
-    return out;
-  }
-  return value;
-}
+// The response-rewriting layer that used to live here is gone. It walked every string
+// in the MCP JSON response, found the [FRESHCONTEXT_SIG_V3] block, parsed the payload
+// back out of its own output, re-signed it, and spliced a V4 block in.
+//
+// That worked, but it made V4 depend on the Worker successfully parsing text it had
+// just produced — so any shift in the emitted format would have made attestations
+// silently stop, returning the response unchanged with no error anywhere. It also
+// signed a *second* time over bytes reconstructed from a string, rather than over the
+// bytes the ledger stored.
+//
+// worker.ts now signs V4 where it already signs V2 and V3, from the same computed
+// payload that goes into the ledger row. The emitted block and the stored row are the
+// same bytes by construction. This wrapper is left with the two things it alone can
+// do: serve the public key document, and answer V4 verification requests.
 
-async function maybeUpgradeMcpResponse(
-  request: Request,
-  response: Response,
-  env: Env
-): Promise<Response> {
-  const url = new URL(request.url);
-  if ((url.pathname !== "/mcp" && url.pathname !== "/mcp/") || request.method !== "POST") {
-    return response;
-  }
-  if (!response.ok || !(response.headers.get("Content-Type") ?? "").toLowerCase().includes(JSON_CONTENT_TYPE)) {
-    return response;
-  }
-
-  const raw = await response.clone().text();
-  if (!raw.includes("[FRESHCONTEXT_SIG_V3]")) return response;
-
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    const upgraded = await upgradeJsonStrings(parsed, env);
-    return responseWithBody(response, JSON.stringify(upgraded));
-  } catch {
-    // A malformed/non-standard MCP response is the base Worker's concern. Never break
-    // an otherwise valid response merely because the additive attestation layer cannot
-    // parse it.
-    return response;
-  }
-}
-
-async function maybeHandleV4Verify(request: Request, env: Env): Promise<Response | null> {
-  const url = new URL(request.url);
-  if (url.pathname !== "/v1/verify" || request.method !== "POST") return null;
-
-  let body: Record<string, unknown>;
-  try {
-    const parsed: unknown = await request.clone().json();
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    body = parsed as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-
-  const payload = body.signing_payload;
-  const explicitlyV4 = body.signature_version === ED25519_SIGNATURE_VERSION;
-  const payloadIsV4 = typeof payload === "string" && payload.startsWith(`${ED25519_SIGNATURE_VERSION}\n`);
-  if (!explicitlyV4 && !payloadIsV4) return null;
-
-  // Preserve the same public-endpoint abuse boundary as the legacy HMAC verifier.
-  // Local/miniflare has no native binding, so checkVerifyRateLimit intentionally allows.
-  const rlKey = request.headers.get("CF-Connecting-IP") ?? "unknown";
-  if (!(await checkVerifyRateLimit(env.VERIFY_RATE_LIMITER, rlKey))) {
-    return jsonResponse(
-      { error: "Rate limit exceeded — max 100 requests per minute per IP on /v1/verify." },
-      429,
-      { "Retry-After": "60" }
-    );
-  }
-
-  if (typeof payload !== "string" || payload.trim() === "") {
-    return jsonResponse({
-      error: { code: "invalid_request", message: "signing_payload must be a non-empty string.", details: [] },
-    }, 400);
-  }
-
-  if (body.signature === undefined || body.signature === null || body.signature === "") {
-    return jsonResponse({
-      status: "unknown",
-      signature_version: ED25519_SIGNATURE_VERSION,
-      algorithm: ED25519_ALGORITHM,
-      reasons: ["signature missing or empty; verification status unknown"],
-    });
-  }
-  if (typeof body.signature !== "string") {
-    return jsonResponse({
-      error: { code: "invalid_request", message: "signature must be a string.", details: [] },
-    }, 400);
-  }
-
-  const verification = await verifyV4Payload(payload, body.signature, env);
-  if (body.key_id !== undefined && body.key_id !== verification.key_id) {
-    return jsonResponse({
-      error: { code: "invalid_request", message: "key_id does not match the signing_payload.", details: [] },
-    }, 400);
-  }
-
-  return jsonResponse({
-    status: verification.status,
-    signature_version: ED25519_SIGNATURE_VERSION,
-    algorithm: ED25519_ALGORITHM,
-    key_id: verification.key_id,
-    reasons: verification.reasons,
-  });
-}
+// V4 verification used to be intercepted here, ahead of the base Worker. It no longer
+// is. src/rest/handler.ts now branches on signature_version and verifies V4 against a
+// published key resolver injected by worker.ts, which means /v1/verify has ONE
+// implementation covering V2, V3 and V4 across both stateless and ledger-backed modes.
+//
+// Two implementations of the same endpoint is a correctness hazard, not redundancy:
+// they can disagree, and the one in front wins silently. This intercept also sat before
+// worker.ts's rate limiter, so it had to re-implement that too, and a V4 request took a
+// different abuse path from a V3 one hitting the same URL.
+//
+// What is left is the one thing only this wrapper can do: publish the keys.
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -177,11 +73,7 @@ export default {
       return jsonResponse(document, 200, { "Cache-Control": "public, max-age=300" });
     }
 
-    const v4Verify = await maybeHandleV4Verify(request, env);
-    if (v4Verify) return v4Verify;
-
-    const response = await (baseWorker as any).fetch(request, env, ctx);
-    return maybeUpgradeMcpResponse(request, response, env);
+    return (baseWorker as any).fetch(request, env, ctx);
   },
 
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
