@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, test } from "vitest";
 import {
   ED25519_SIGNATURE_VERSION,
@@ -9,9 +9,13 @@ import {
   verifyEd25519,
 } from "../src/ed25519Attestation.js";
 
-const KEY_ID = "fc-test-2026-09";
-const PRIVATE_KEY_B64 = "MC4CAQAwBQYDK2VwBCIEICysCF/82Ccv4o4HQf4xJdYoGC8FfpFbcQrgfZUonk5q";
-const PUBLIC_KEY_B64 = "MCowBQYDK2VwAyEAWaIFrc+B+rHA/Sk5Fco3UWUq2wuBHGsU/fDgWLXmvaE=";
+// Read from the Worker's own bindings, never restated here. vitest.config.mts generates
+// a fresh Ed25519 keypair per run, so no private key material exists in the repository —
+// and these tests exercise the exact key the Worker under test is configured with rather
+// than a copy that could drift from it.
+const KEY_ID = env.FC_ED25519_KEY_ID as string;
+const PRIVATE_KEY_B64 = env.FC_ED25519_PRIVATE_KEY_B64 as string;
+const PUBLIC_KEY_B64 = env.FC_ED25519_PUBLIC_KEY_B64 as string;
 
 const V3_PAYLOAD = [
   "FRESHCONTEXT_HA_PRI_V3",

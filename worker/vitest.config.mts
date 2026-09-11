@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { generateKeyPairSync } from "node:crypto";
 import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
 
 // Integration harness for the mounted REST surface. Runs the REAL Worker wrapper in
@@ -104,9 +105,23 @@ if (compatibilityDate > runtime.date) {
   );
 }
 
-// The Ed25519 keypair in the bindings below is TEST-ONLY. It was generated specifically
-// for this fixture and is safe to commit; production keys live only as Worker secrets and
-// must never reach the repository. GitGuardian flags it — that alert is expected here.
+// The Ed25519 test keypair is GENERATED HERE, per run, and never committed.
+//
+// It used to be a literal in the bindings below, labelled test-only. That was true, but
+// GitGuardian flagged it on every push and it was going to stay flagged forever. A
+// security check that is permanently red is indistinguishable from one that is broken,
+// and the next real secret to land would have looked exactly like this one — so the
+// answer is to remove the finding, not to silence the scanner with an ignore rule.
+//
+// A fresh keypair each run is also a stronger test: nothing can accidentally depend on
+// one specific key's bytes. The tests read these back out of the Worker's own bindings
+// (env.FC_ED25519_*) rather than restating them, which is the same
+// declare-it-once-and-derive-the-rest rule the compatibility target above follows.
+const TEST_KEY_ID = "fc-test-ephemeral";
+const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+const TEST_PRIVATE_KEY_B64 = privateKey.export({ type: "pkcs8", format: "der" }).toString("base64");
+const TEST_PUBLIC_KEY_B64 = publicKey.export({ type: "spki", format: "der" }).toString("base64");
+
 export default defineWorkersConfig({
   test: {
     include: ["test/**/*.test.ts"],
@@ -133,9 +148,9 @@ export default defineWorkersConfig({
           d1Databases: { DB: "test-ledger" },
           bindings: {
             FC_HMAC_SECRET: "miniflare-integration-secret-not-prod",
-            FC_ED25519_KEY_ID: "fc-test-2026-09",
-            FC_ED25519_PRIVATE_KEY_B64: "MC4CAQAwBQYDK2VwBCIEICysCF/82Ccv4o4HQf4xJdYoGC8FfpFbcQrgfZUonk5q",
-            FC_ED25519_PUBLIC_KEY_B64: "MCowBQYDK2VwAyEAWaIFrc+B+rHA/Sk5Fco3UWUq2wuBHGsU/fDgWLXmvaE=",
+            FC_ED25519_KEY_ID: TEST_KEY_ID,
+            FC_ED25519_PRIVATE_KEY_B64: TEST_PRIVATE_KEY_B64,
+            FC_ED25519_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64,
           },
         },
       },

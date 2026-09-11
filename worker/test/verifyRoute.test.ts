@@ -14,6 +14,9 @@ const PKG_VERSION: string = pkg.version;
 // path recomputes the same HMAC we sign the seeded row with.
 const SECRET = "miniflare-integration-secret-not-prod";
 
+// Generated per run by vitest.config.mts; never committed.
+const TEST_KEY_ID = env.FC_ED25519_KEY_ID as string;
+
 // ─── Integration test for the MOUNTED /v1 route (F3) ───────────────────────────
 //
 // This is the test that would have caught F1. It drives the REAL Worker fetch handler
@@ -191,11 +194,11 @@ describe("mounted /v1 route — real Worker fetch (F3)", () => {
         decision: SEED.decision,
       });
       // Same builder and same signer the Worker's writer path uses — a real row.
-      v4Payload = buildHaPriPayloadV4(v3, "fc-test-2026-09");
-      v4Signature = await signEd25519(
-        "MC4CAQAwBQYDK2VwBCIEICysCF/82Ccv4o4HQf4xJdYoGC8FfpFbcQrgfZUonk5q",
-        v4Payload
-      );
+      // Key id and private key come from the Worker's own bindings — vitest.config.mts
+      // generates a fresh keypair per run, so nothing is committed and this signs with
+      // exactly the key the Worker under test resolves.
+      v4Payload = buildHaPriPayloadV4(v3, TEST_KEY_ID);
+      v4Signature = await signEd25519(env.FC_ED25519_PRIVATE_KEY_B64 as string, v4Payload);
 
       await env.DB.prepare(
         "INSERT INTO evaluation_snapshots " +
@@ -221,7 +224,7 @@ describe("mounted /v1 route — real Worker fetch (F3)", () => {
       expect(body.status).toBe("valid");
       expect(body.signature_version).toBe("FRESHCONTEXT_HA_PRI_V4");
       expect(body.verification_method).toBe("ed25519");
-      expect(body.key_id).toBe("fc-test-2026-09");
+      expect(body.key_id).toBe(TEST_KEY_ID);
       expect(body.issuer_attested).toBeUndefined();
     });
 
@@ -239,7 +242,7 @@ describe("mounted /v1 route — real Worker fetch (F3)", () => {
     });
 
     test("a V4 payload naming an unpublished key_id is unknown — never an HMAC fallback", async () => {
-      const foreign = v4Payload.replace("key_id=fc-test-2026-09", "key_id=fc-not-published-2026-01");
+      const foreign = v4Payload.replace(`key_id=${TEST_KEY_ID}`, "key_id=fc-not-published-2026-01");
       const r = await SELF.fetch(post({ signing_payload: foreign, signature: v4Signature }));
       const body = await r.json() as { status: string; key_id: string; verification_method: string; reasons: string[] };
       expect(body.status).toBe("unknown");
