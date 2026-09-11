@@ -2863,8 +2863,8 @@ export default {
           debug_db: "GET /debug/db",
           debug_scrape: "GET /debug/scrape?adapter=X&query=Y",
         },
-        docs: "https://freshcontext-site.pages.dev",
-        spec: "https://freshcontext-site.pages.dev/spec.html",
+        docs: "https://freshcontext.dev",
+        spec: "https://freshcontext.dev/spec.html",
         github: "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp",
       }, null, 2), {
         headers: { "Content-Type": "application/json" },

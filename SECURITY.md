@@ -11,7 +11,7 @@ Please use the latest published release when reporting a vulnerability, and incl
 
 FreshContext accepts responsible security reports by email:
 
-- gimmanuel73@gmail.com
+- security@freshcontext.dev
 
 Please do not post secrets, tokens, private logs, customer data, exploit payloads, or sensitive operational details in public GitHub issues.
 

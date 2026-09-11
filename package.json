@@ -91,6 +91,7 @@
     "batch:validate": "node package-script-guard.mjs batch:validate",
     "core:fixture": "node package-script-guard.mjs core:fixture",
     "smoke:stdio": "node package-script-guard.mjs smoke:stdio",
+    "prove:attestation": "node package-script-guard.mjs prove:attestation",
     "trust:gate": "node package-script-guard.mjs trust:gate",
     "trust:report": "node package-script-guard.mjs trust:report",
     "trust:report:json": "node package-script-guard.mjs trust:report:json",

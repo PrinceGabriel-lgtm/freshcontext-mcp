@@ -16,7 +16,7 @@
 
 import { enforceEvaluateContext } from "../dist/index.js";
 
-const ENDPOINT = "https://freshcontext-mcp.gimmanuel73.workers.dev/mcp";
+const ENDPOINT = "https://api.freshcontext.dev/mcp";
 
 // A mix that exercises all three dispositions: one fresh+strong (admit), one older but
 // usable (demote), one stale (drop), one failed upstream fetch (authoritative veto → drop).

@@ -27,6 +27,19 @@
     "FC_ED25519_KEY_ID": "fc-2026-09-ceced1ab",
     "FC_ED25519_PUBLIC_KEY_B64": "MCowBQYDK2VwAyEAD13q6UUVb2iTZPH9PyRHHBmwoHMjvwb2Nnb9KRkq+r0="
   },
+  // Custom domain for the public endpoint. Previously this Worker was only reachable at
+  // freshcontext-mcp.<subdomain>.workers.dev, which meant every MCP client config anyone
+  // copied embedded a personal account subdomain, and the published endpoint could never
+  // outlive the account it was named after. `custom_domain: true` makes Cloudflare create
+  // and manage the DNS record and certificate for this hostname on deploy.
+  //
+  // This requires the freshcontext.dev zone to be active on the account first. A deploy
+  // before that will fail on this route rather than silently skipping it — which is the
+  // behaviour we want: a deploy that cannot serve the published endpoint should not pass.
+  // The workers.dev hostname keeps working, so existing clients do not break at cutover.
+  "routes": [
+    { "pattern": "api.freshcontext.dev", "custom_domain": true }
+  ],
   "browser": {
     "binding": "BROWSER"
   },
