@@ -306,17 +306,37 @@ jobs:
           # Verify answers in its documented shape. A payload with no signature is the
           # "unknown" case, not an error, and it reads nothing from D1 — so this proves
           # the route is alive without writing to the ledger or costing a billable read.
+          #
+          # status alone is NOT enough, and this is the subtle part. handler.ts returns
+          # status "unknown" for TWO different situations:
+          #
+          #   :360  signature absent, secret configured → + signature_version
+          #   :404  FC_HMAC_SECRET missing entirely     → no signature_version
+          #
+          # So an assertion on status alone passes just as happily when verification is
+          # structurally dead — every call answering "unknown" forever because the secret
+          # is gone — and CI would call that deploy a success and never roll back. That is
+          # the exact failure this pipeline exists to catch, so it must not live inside the
+          # check itself. signature_version is present only on the secret-configured path,
+          # which makes it the field that tells the two apart.
           verify="$(curl -fsS --max-time 20 -X POST "$BASE/v1/verify" \
             -H 'Content-Type: application/json' \
             -d '{"signing_payload":"FRESHCONTEXT_HA_PRI_V3\nsmoke=1"}')" \
             || { echo "::error::/v1/verify did not answer."; exit 1; }
           node -e '
             const body = JSON.parse(process.argv[1]);
+            const fail = (m) => { console.error("::error::" + m); process.exit(1); };
             if (body.status !== "unknown") {
-              console.error("::error::/v1/verify returned status " + body.status + ", expected unknown for an unsigned payload");
-              process.exit(1);
+              fail(`/v1/verify returned status ${body.status}, expected unknown for an unsigned payload`);
             }
-            console.log("/v1/verify ok — status unknown, as documented for a missing signature");
+            if (body.signature_version !== "FRESHCONTEXT_HA_PRI_V3") {
+              fail(
+                "/v1/verify answered \"unknown\" without echoing signature_version, which means the " +
+                "signing secret is not configured on the deployed Worker — verification is dead, not idle. " +
+                "Reasons: " + JSON.stringify(body.reasons ?? [])
+              );
+            }
+            console.log("/v1/verify ok — unknown for a missing signature, signing secret live");
           ' "$verify"
 
           echo "Smoke test passed: $GITHUB_SHA is serving traffic." >> "$GITHUB_STEP_SUMMARY"
