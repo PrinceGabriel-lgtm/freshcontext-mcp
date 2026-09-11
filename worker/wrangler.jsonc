@@ -18,6 +18,15 @@
   // they should be.
   "compatibility_date": "2025-10-11",
   "compatibility_flags": ["nodejs_compat_v2"],
+  // PUBLIC Ed25519 verification key, published deliberately — see docs/VERIFYING.md.
+  // Committed rather than set in the dashboard because `wrangler deploy` deletes vars
+  // absent from this file. Written by scripts/write-public-key-vars.mjs during the key
+  // ceremony; key_id is derived from the key itself, so editing either by hand breaks
+  // the pair. The PRIVATE key is a Worker secret and never appears in this repository.
+  "vars": {
+    "FC_ED25519_KEY_ID": "fc-2026-09-ceced1ab",
+    "FC_ED25519_PUBLIC_KEY_B64": "MCowBQYDK2VwAyEAD13q6UUVb2iTZPH9PyRHHBmwoHMjvwb2Nnb9KRkq+r0="
+  },
   "browser": {
     "binding": "BROWSER"
   },
