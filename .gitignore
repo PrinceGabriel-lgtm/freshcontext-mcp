@@ -77,3 +77,7 @@ npm-debug.log*
 # write __pycache__ next to it.
 __pycache__/
 *.py[cod]
+
+# Output of scripts/prove-live-attestation.mjs (live verdict bytes, regenerated per run).
+proof/
+.attestation-proof/
