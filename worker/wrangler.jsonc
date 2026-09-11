@@ -32,6 +32,19 @@
   "routes": [
     { "pattern": "api.freshcontext.dev", "custom_domain": true }
   ],
+
+  // Keep the workers.dev hostname serving alongside the custom domain. Wrangler
+  // turns workers.dev OFF whenever `routes` is present and this is not set, which
+  // is exactly what happened when the route above first landed: the deploy
+  // succeeded, freshcontext-mcp.<subdomain>.workers.dev began answering 404, the
+  // smoke test (which targets it via WORKER_BASE_URL) failed six attempts, and CI
+  // rolled production back. Twice, on two separate merges.
+  //
+  // It must stay true for as long as anything points at the workers.dev host:
+  // WORKER_BASE_URL, the published MCP registry entry, and every client config
+  // copied before the cutover. Setting it false is a deliberate retirement of that
+  // hostname, not a cleanup.
+  "workers_dev": true,
   "browser": {
     "binding": "BROWSER"
   },
