@@ -33,7 +33,12 @@ function normalizeBase64(input: string): string {
   return pad === 0 ? clean : clean + "=".repeat(4 - pad);
 }
 
-function decodeBase64(input: string): Uint8Array {
+// Uint8Array<ArrayBuffer>, not a bare Uint8Array. TypeScript 5.7 made the view generic
+// over its buffer, so a bare Uint8Array widens to Uint8Array<ArrayBufferLike> — which
+// admits SharedArrayBuffer and is therefore not a valid BufferSource for Web Crypto.
+// Every crypto.subtle call in this file takes the result, so pinning it here fixes all
+// of them at the source rather than casting at three call sites.
+function decodeBase64(input: string): Uint8Array<ArrayBuffer> {
   const normalized = normalizeBase64(input);
   const binary = atob(normalized);
   const out = new Uint8Array(binary.length);
@@ -112,7 +117,7 @@ export async function verifyEd25519(
   payload: string,
   signatureBase64Url: string
 ): Promise<boolean> {
-  let signature: Uint8Array;
+  let signature: Uint8Array<ArrayBuffer>;
   try {
     signature = decodeBase64(signatureBase64Url);
   } catch {

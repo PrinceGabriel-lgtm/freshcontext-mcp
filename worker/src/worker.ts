@@ -55,6 +55,12 @@ interface Env {
   FC_HMAC_SECRET?: string;
   VERIFY_RATE_LIMITER?: RateLimitBinding;
   MCP_RATE_LIMITER?: RateLimitBinding;
+  // Set at deploy time by CI (`wrangler deploy --var GIT_SHA:<sha>`), so the running
+  // Worker can name the commit it was built from. Absent in local dev and in the test
+  // harness, where it reads "dev". This is what lets CI assert against production that
+  // the commit it just deployed is the commit answering requests, rather than
+  // inferring it from a version constant that only changes at release time.
+  GIT_SHA?: string;
 }
 
 type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error" | "cache_error" | "snapshot_write_error" | "cron_adapter_empty" | "cron_adapter_failing" | "briefing_synthesis_error";
@@ -2518,6 +2524,10 @@ export default {
         status: "ok",
         service: "freshcontext-mcp",
         version: SERVICE_VERSION,
+        // The commit this Worker was built from, stamped in at deploy time. SERVICE_VERSION
+        // only moves at release, so it cannot distinguish "the deploy landed" from "the
+        // deploy silently did nothing" — this can, and CI asserts on it after every deploy.
+        git_sha: env.GIT_SHA ?? "dev",
         time: new Date().toISOString(),
       };
       if (request.method === "HEAD") {

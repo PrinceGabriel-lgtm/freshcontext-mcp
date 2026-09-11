@@ -1,6 +1,6 @@
 name: Verify
 
-# Verification only. This workflow does NOT publish.
+# Verify, then deploy.
 #
 # It used to run `npm publish` on every v* tag. That broke on 2026-07-01 when the
 # NPM_TOKEN secret (created 2026-03-26) stopped authenticating — npm's 2FA-bypass
@@ -9,10 +9,16 @@ name: Verify
 # nobody depended on the workflow succeeding. That is the same silent-failure shape as
 # the cron adapters: a broken thing that nothing forced to be true.
 #
-# Publishing stays manual and deliberate — an irreversible, outward-facing action that
-# should be a decision, not a side effect of pushing a tag. What CI is genuinely good at
-# is proving the tree is sound on a clean machine, which the old workflow never did: it
-# ran `npm ci && npm run build && npm publish` and never once ran the test suite.
+# Publishing to npm stays manual and deliberate — an irreversible, outward-facing action
+# that should be a decision, not a side effect of pushing a tag.
+#
+# Deploying the Worker is the opposite case, and this workflow now does it. Deploys were
+# manual only because `wrangler` lived on one workstation, which made every production
+# change depend on that machine being to hand. A deploy is also reversible (`wrangler
+# rollback`) and verifiable from outside (curl the thing). The `deploy` job below
+# publishes the commit SHA into the running Worker and then asserts against production
+# that the SHA came back — so "CI said it deployed" and "this commit is serving traffic"
+# are the same statement rather than two things that happen to usually agree.
 
 on:
   workflow_dispatch:
@@ -26,7 +32,11 @@ on:
       - main
 
 jobs:
+  # ─── verify ────────────────────────────────────────────────────────────────
+  # Proves the tree is sound on a clean machine. Everything here is a function of
+  # the commit: same commit in, same answer out, forever.
   verify:
+    name: Verify
     runs-on: ubuntu-latest
 
     steps:
@@ -51,9 +61,6 @@ jobs:
       - name: Trust gate
         run: npm run trust:gate
 
-      - name: Production dependency audit (root)
-        run: npm audit --omit=dev
-
       - name: Install worker dependencies
         working-directory: worker
         run: npm ci
@@ -67,10 +74,40 @@ jobs:
         run: npm test
 
       # Proves the Worker bundles and every binding resolves, without deploying.
-      # No Cloudflare credentials are needed for a dry run.
+      # No Cloudflare credentials are needed for a dry run. --outdir so the next
+      # step can inspect the bytes that would actually have been uploaded.
       - name: Worker build (dry run)
         working-directory: worker
-        run: npx wrangler deploy --dry-run
+        run: npx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/worker-bundle"
+
+      # The Worker's dependency tree carries `extract-zip` (high severity, no fixed
+      # version upstream) via @cloudflare/puppeteer -> @puppeteer/browsers. That code
+      # exists to download and unpack browser binaries; this Worker gets its browser
+      # from the BROWSER binding and never takes that path, so none of it reaches the
+      # bundle. That is a claim about the artifact, so it is checked against the
+      # artifact rather than asserted in a doc — if a future @cloudflare/puppeteer
+      # release drags the download path in, this breaks the build instead of shipping.
+      # See docs/DEPENDENCY_DILIGENCE.md.
+      - name: Check the Worker bundle carries no browser-download path
+        run: |
+          # Glob every .js the bundler emitted rather than naming one file. wrangler names
+          # its output after the entry point, so changing `main` in wrangler.jsonc renames
+          # the bundle — src/worker.ts -> worker.js, src/worker-e2.ts -> worker-e2.js. A
+          # hardcoded name turns a config change into a confusing CI failure, and would
+          # miss a second chunk entirely if wrangler ever code-splits. Sourcemaps are
+          # excluded on purpose: they embed original source text and would false-positive.
+          shopt -s nullglob
+          bundles=("$RUNNER_TEMP"/worker-bundle/*.js)
+          if [ ${#bundles[@]} -eq 0 ]; then
+            echo "::error::wrangler produced no .js bundle in $RUNNER_TEMP/worker-bundle."
+            exit 1
+          fi
+          if grep -ohE 'extract-zip|@puppeteer/browsers|yauzl' "${bundles[@]}" | sort -u | grep .; then
+            echo "::error::Browser-download code reached the deployed Worker bundle."
+            exit 1
+          fi
+          echo "Bundle clean (${#bundles[@]} file(s), no extract-zip / @puppeteer/browsers / yauzl):"
+          for b in "${bundles[@]}"; do echo "  $(basename "$b") — $(wc -c < "$b") bytes"; done
 
       # The package tarball is a public artifact. Fail if internal audit material ever
       # reaches it — the .gitignore rules are the first line of defence, this is the second.
@@ -83,3 +120,268 @@ jobs:
             if (bad.length) { console.error('Internal material in tarball:', bad.join(', ')); process.exit(1); }
             console.log('Tarball clean:', files.length, 'files');
           "
+
+  # ─── audit ─────────────────────────────────────────────────────────────────
+  # Deliberately its own job, running in parallel with verify rather than in front
+  # of it.
+  #
+  # `npm audit` queries the LIVE advisory database, so unlike everything in `verify`
+  # it is not a function of the commit: the same tree audits clean one week and red
+  # the next with no change at all. That is exactly what happened here — main was
+  # green on 2026-09-03 and red on 2026-09-10 on identical dependencies, when three
+  # Hono advisories were published.
+  #
+  # While the audit sat as step 5 of a single job, that one moving result skipped the
+  # worker install, typecheck, worker tests, dry run and tarball check behind it. A
+  # whole PR's worth of signal was hidden by a fact about the outside world. Split, an
+  # advisory now reports as an advisory and the tree still gets proven.
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      # Blocking. The root tree is what becomes the published npm tarball — a real
+      # public artifact that consumers install.
+      - name: Production dependency audit (root)
+        run: npm audit --omit=dev
+
+      - name: Install worker dependencies
+        working-directory: worker
+        run: npm ci
+
+      # Reported, not gated. The Worker's only outstanding production advisory is
+      # `extract-zip`, which has no fixed release at any version and whose code is
+      # provably absent from the deployed bundle (verify enforces that directly).
+      # A gate whose only remedy is downgrading a dependency that never ships is a
+      # gate people learn to ignore. This keeps the information visible instead.
+      - name: Dependency audit (worker, advisory)
+        working-directory: worker
+        continue-on-error: true
+        run: |
+          {
+            echo '### Worker dependency audit (advisory, non-blocking)'
+            echo
+            echo 'See docs/DEPENDENCY_DILIGENCE.md for what is accepted and why.'
+            echo
+            echo '```'
+            npm audit --omit=dev 2>&1 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Let the step report its real exit code; continue-on-error keeps the job green.
+          # A tolerated failure is honest, a laundered one is not.
+          npm audit --omit=dev
+
+  # ─── deploy ────────────────────────────────────────────────────────────────
+  # Merge to main puts the Worker into production. Needs `verify` only, not `audit`:
+  # a newly published advisory in a transitive dependency is a reason to block a
+  # merge (make `audit` a required check on pull requests), not a reason to freeze
+  # production for code that already passed review. Nothing is lost either way —
+  # new code reaches main through a PR where `audit` has already run.
+  #
+  # Requires, one time:
+  #   secret   CLOUDFLARE_API_TOKEN     — "Edit Cloudflare Workers" scoped token
+  #   variable CLOUDFLARE_ACCOUNT_ID    — wrangler.jsonc carries no account_id
+  #   variable WORKER_BASE_URL          — production origin, for the smoke test
+  #
+  # This job does NOT set Worker secrets (FC_HMAC_SECRET and any signing key stay
+  # dashboard-managed) and does NOT apply D1 migrations. `wrangler deploy` touches
+  # neither.
+  deploy:
+    name: Deploy Worker to production
+    needs: verify
+    # push-to-main only. This workflow also runs on v* tags and on pull requests;
+    # without this guard a release tag would deploy, and so would a fork's PR.
+    if: >-
+      github.event_name == 'push'
+      && github.ref == 'refs/heads/main'
+      && github.repository == 'PrinceGabriel-lgtm/freshcontext-mcp'
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # The Worker imports ../../src/core and ../../src/rest from source, so wrangler's
+      # bundler needs the ROOT node_modules to resolve their third-party imports. This
+      # mirrors exactly what the dry run in `verify` did.
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install worker dependencies
+        working-directory: worker
+        run: npm ci
+
+      - name: Fail early if deploy credentials are missing
+        env:
+          BASE: ${{ vars.WORKER_BASE_URL }}
+        run: |
+          missing=0
+          [ -n "$CLOUDFLARE_API_TOKEN" ]  || { echo "::error::Secret CLOUDFLARE_API_TOKEN is not set."; missing=1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Variable CLOUDFLARE_ACCOUNT_ID is not set."; missing=1; }
+          [ -n "$BASE" ] || { echo "::error::Variable WORKER_BASE_URL is not set; the smoke test cannot run."; missing=1; }
+          exit $missing
+
+      # Deployed with the wrangler pinned in worker/package-lock.json (4.99.0) — the
+      # same binary whose dry run just passed in `verify`, rather than whatever a
+      # third-party action would resolve, and one fewer action inside the token's
+      # blast radius.
+      #
+      # --var GIT_SHA is what makes the smoke test a proof. Without it the strongest
+      # available assertion is "the version constant looks right", which passes
+      # against a stale deploy any time the version did not change.
+      - name: Deploy Worker
+        id: deploy
+        working-directory: worker
+        run: npx wrangler deploy --var GIT_SHA:"$GITHUB_SHA"
+
+      - name: Smoke test production
+        id: smoke
+        env:
+          BASE: ${{ vars.WORKER_BASE_URL }}
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="$(node -p "require('./package.json').version")"
+          echo "Expecting git_sha=$GITHUB_SHA version=$EXPECTED_VERSION at $BASE"
+
+          # Retry: a fresh deploy takes a moment to reach every colo. The extractor
+          # swallows its own parse errors and prints nothing, so a garbled response
+          # costs one attempt instead of killing the loop under `set -e`.
+          health=""
+          for attempt in 1 2 3 4 5 6; do
+            sleep 5
+            if health="$(curl -fsS --max-time 20 "$BASE/health")"; then
+              got_sha="$(node -e "
+                try { process.stdout.write(String(JSON.parse(process.argv[1]).git_sha ?? '')); }
+                catch { process.stdout.write(''); }
+              " "$health")"
+              if [ "$got_sha" = "$GITHUB_SHA" ]; then break; fi
+              echo "attempt $attempt: /health reports git_sha=${got_sha:-<absent>}, waiting for $GITHUB_SHA"
+            else
+              echo "attempt $attempt: /health did not answer"
+            fi
+            health=""
+          done
+
+          [ -n "$health" ] || { echo "::error::/health never returned the deployed commit SHA."; exit 1; }
+          node -e '
+            const body = JSON.parse(process.argv[1]);
+            const [sha, version] = process.argv.slice(2);
+            const fail = (m) => { console.error("::error::" + m); process.exit(1); };
+            if (body.status !== "ok") fail(`/health status is ${body.status}, expected ok`);
+            if (body.git_sha !== sha) fail(`/health git_sha is ${body.git_sha}, expected ${sha}`);
+            if (body.version !== version) fail(`/health version is ${body.version}, expected ${version}`);
+            console.log("/health ok —", body.version, body.git_sha);
+          ' "$health" "$GITHUB_SHA" "$EXPECTED_VERSION"
+
+          # The mounted REST surface is a separate module (src/rest/handler.ts) behind
+          # its own route gate, so it gets its own assertion rather than riding on /health.
+          v1="$(curl -fsS --max-time 20 "$BASE/v1/health")" \
+            || { echo "::error::/v1/health did not answer."; exit 1; }
+          node -e '
+            const body = JSON.parse(process.argv[1]);
+            const version = process.argv[2];
+            const fail = (m) => { console.error("::error::" + m); process.exit(1); };
+            if (body.ok !== true) fail("/v1/health did not report ok:true");
+            if (body.version !== version) fail(`/v1/health version is ${body.version}, expected ${version}`);
+            console.log("/v1/health ok —", body.version);
+          ' "$v1" "$EXPECTED_VERSION"
+
+          # Verify answers in its documented shape. A payload with no signature is the
+          # "unknown" case, not an error, and it reads nothing from D1 — so this proves
+          # the route is alive without writing to the ledger or costing a billable read.
+          #
+          # status alone is NOT enough, and this is the subtle part. handler.ts returns
+          # status "unknown" for TWO different situations:
+          #
+          #   :360  signature absent, secret configured → + signature_version
+          #   :404  FC_HMAC_SECRET missing entirely     → no signature_version
+          #
+          # So an assertion on status alone passes just as happily when verification is
+          # structurally dead — every call answering "unknown" forever because the secret
+          # is gone — and CI would call that deploy a success and never roll back. That is
+          # the exact failure this pipeline exists to catch, so it must not live inside the
+          # check itself. signature_version is present only on the secret-configured path,
+          # which makes it the field that tells the two apart.
+          verify="$(curl -fsS --max-time 20 -X POST "$BASE/v1/verify" \
+            -H 'Content-Type: application/json' \
+            -d '{"signing_payload":"FRESHCONTEXT_HA_PRI_V3\nsmoke=1"}')" \
+            || { echo "::error::/v1/verify did not answer."; exit 1; }
+          node -e '
+            const body = JSON.parse(process.argv[1]);
+            const fail = (m) => { console.error("::error::" + m); process.exit(1); };
+            if (body.status !== "unknown") {
+              fail(`/v1/verify returned status ${body.status}, expected unknown for an unsigned payload`);
+            }
+            if (body.signature_version !== "FRESHCONTEXT_HA_PRI_V3") {
+              fail(
+                "/v1/verify answered \"unknown\" without echoing signature_version, which means the " +
+                "signing secret is not configured on the deployed Worker — verification is dead, not idle. " +
+                "Reasons: " + JSON.stringify(body.reasons ?? [])
+              );
+            }
+            console.log("/v1/verify ok — unknown for a missing signature, signing secret live");
+          ' "$verify"
+
+          echo "Smoke test passed: $GITHUB_SHA is serving traffic." >> "$GITHUB_STEP_SUMMARY"
+
+      # A deploy that answers wrongly is worse than one that failed loudly, so the
+      # smoke test failing takes production back to the previous version rather than
+      # leaving it broken while someone reads the logs. The job still ends red either
+      # way: it must never exit green having done neither.
+      - name: Roll back on failed smoke test
+        if: failure() && steps.smoke.outcome == 'failure'
+        working-directory: worker
+        run: |
+          set -euo pipefail
+          echo "::warning::Smoke test failed for $GITHUB_SHA — rolling back."
+          # No version id: `wrangler rollback` defaults to the previous deployment, and
+          # -y accepts that default non-interactively. Asking wrangler for the id first
+          # would only add a way for the rollback itself to fail.
+          npx wrangler rollback --yes \
+            --message "Automated rollback: smoke test failed for $GITHUB_SHA"
+          {
+            echo '### Rolled back'
+            echo
+            echo "Smoke test failed for \`$GITHUB_SHA\`; production was returned to the previous version."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record the deployment
+        if: always() && steps.deploy.outcome == 'success'
+        working-directory: worker
+        continue-on-error: true
+        run: |
+          {
+            echo '### Deployment status'
+            echo
+            echo '```'
+            npx wrangler deployments status 2>&1 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
