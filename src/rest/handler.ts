@@ -34,7 +34,18 @@ interface SnapshotRow {
   signature_version: string;
 }
 
-type HaPriSignatureVersion = "FRESHCONTEXT_HA_PRI_V2" | "FRESHCONTEXT_HA_PRI_V3";
+type HaPriSignatureVersion =
+  | "FRESHCONTEXT_HA_PRI_V2"
+  | "FRESHCONTEXT_HA_PRI_V3"
+  | "FRESHCONTEXT_HA_PRI_V4";
+
+const HA_PRI_V4 = "FRESHCONTEXT_HA_PRI_V4";
+const ED25519 = "Ed25519";
+
+// Resolves a key_id to its published SPKI public key (base64). Injected call-scoped,
+// exactly as hmacSecret and ledger are: handler.ts ships in the npm package and must
+// not import edge-only modules or hold key material of its own.
+export type PublicKeyResolver = (keyId: string) => string | undefined | Promise<string | undefined>;
 
 type RestErrorCode =
   | "invalid_request"
@@ -216,21 +227,124 @@ async function timingSafeEqualHex(hmacSecret: string, a: string, b: string): Pro
   return diff === 0;
 }
 
-// Recompute HMAC over a stored/presented payload and compare to the presented/stored
-// signature. Shared by both verify modes so the compare logic exists in exactly one place.
+// Base64 (standard or URL-safe) to bytes, without atob or Buffer. handler.ts runs both
+// on Node and on the edge and is compiled under a DOM-free lib, so it leans on neither.
+const B64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+function base64ToBytes(input: string): Uint8Array<ArrayBuffer> | null {
+  const clean = input.trim().replace(/-/g, "+").replace(/_/g, "/").replace(/=+$/g, "");
+  const out = new Uint8Array(Math.floor((clean.length * 6) / 8));
+  let bits = 0;
+  let acc = 0;
+  let written = 0;
+  for (const ch of clean) {
+    const index = B64_ALPHABET.indexOf(ch);
+    if (index < 0) return null; // Not base64 — an invalid signature, not a crash.
+    acc = (acc << 6) | index;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out[written++] = (acc >> bits) & 0xff;
+    }
+  }
+  return out.subarray(0, written) as Uint8Array<ArrayBuffer>;
+}
+
+// Ed25519 verification. Constant-time by construction, so unlike the HMAC path there is
+// no double-MAC compare to do here. Any malformed input verifies as false rather than
+// throwing: a bad signature is an answer, not an error.
+async function verifyEd25519(
+  publicKeySpkiB64: string,
+  payload: string,
+  signatureB64: string
+): Promise<boolean> {
+  const signature = base64ToBytes(signatureB64);
+  const spki = base64ToBytes(publicKeySpkiB64);
+  if (!signature || !spki) return false;
+  try {
+    const key = await crypto.subtle.importKey("spki", spki, { name: ED25519 }, false, ["verify"]);
+    return await crypto.subtle.verify(ED25519, key, signature, new TextEncoder().encode(payload));
+  } catch {
+    return false;
+  }
+}
+
+// key_id is carried INSIDE the signed payload, so it is covered by the signature and
+// therefore tamper-evident — swapping it to another published key breaks verification
+// rather than silently verifying under the wrong key.
+function keyIdFromV4Payload(payload: string): string | null {
+  const lines = payload.split(/\r?\n/);
+  if (lines[0] !== HA_PRI_V4) return null;
+  if (!lines.includes(`signature_algorithm=${ED25519}`)) return null;
+  const line = lines.find((l) => l.startsWith("key_id="));
+  const keyId = line?.slice("key_id=".length) ?? "";
+  return keyId === "" ? null : keyId;
+}
+
+// Verify a stored/presented payload against its signature, choosing the scheme from the
+// payload's own version rather than assuming one.
+//
+// This branch is not optional. Before it existed, verifyRow recomputed HMAC over every
+// row unconditionally — so the moment the writer began storing V4 rows, a verdict_id
+// lookup would have HMAC'd an Ed25519 signature, seen a mismatch, and reported a
+// perfectly good verdict as "invalid". Confidently wrong, which is the one outcome this
+// ledger exists to avoid.
 async function verifyRow(
   row: SnapshotRow,
-  hmacSecret: string,
-  extra: JsonRecord
+  hmacSecret: string | undefined,
+  extra: JsonRecord,
+  resolvePublicKey?: PublicKeyResolver
 ): Promise<Response> {
-  const expected = await hmacHex(hmacSecret, row.signing_payload);
-  const valid = await timingSafeEqualHex(hmacSecret, row.signature, expected);
-  return jsonResponse({
-    status: valid ? "valid" : "invalid",
+  const base = {
     ...extra,
     evaluated_at: row.evaluated_at,
     engine_version: row.engine_version,
     signature_version: row.signature_version,
+  };
+
+  if (row.signature_version === HA_PRI_V4) {
+    const keyId = keyIdFromV4Payload(row.signing_payload);
+    if (!keyId) {
+      return jsonResponse({
+        status: "invalid", ...base, verification_method: "ed25519",
+        reasons: ["stored payload is labelled V4 but carries no usable key_id"],
+      });
+    }
+    const publicKey = resolvePublicKey ? await resolvePublicKey(keyId) : undefined;
+    if (!publicKey) {
+      // Explicitly NOT an HMAC fallback. An unknown key_id is unknown, never "invalid"
+      // and never quietly re-checked under the shared secret.
+      return jsonResponse({
+        status: "unknown", ...base, key_id: keyId, verification_method: "ed25519",
+        reasons: [`no published verification key for key_id=${keyId}`],
+      });
+    }
+    const valid = await verifyEd25519(publicKey, row.signing_payload, row.signature);
+    return jsonResponse({
+      status: valid ? "valid" : "invalid", ...base, key_id: keyId,
+      verification_method: "ed25519",
+      reasons: valid ? [] : ["stored signature does not verify against the published Ed25519 key"],
+    });
+  }
+
+  if (!hmacSecret) {
+    return jsonResponse({
+      status: "unknown", ...base, verification_method: "hmac",
+      reasons: ["signing secret not configured on this host; cannot verify this V2/V3 row"],
+    });
+  }
+  const expected = await hmacHex(hmacSecret, row.signing_payload);
+  const valid = await timingSafeEqualHex(hmacSecret, row.signature, expected);
+  return jsonResponse({
+    status: valid ? "valid" : "invalid",
+    ...base,
+    verification_method: "hmac",
+    // Said plainly on every legacy row rather than left for a reader to infer from the
+    // version string. It lives in its own field, NOT in reasons: reasons explains a
+    // non-valid outcome, and "valid with empty reasons" is a contract two existing tests
+    // assert. A ledger that labels its own weaker historical guarantee is more credible
+    // than one that pretends uniformity — but not at the cost of changing a shipped API.
+    issuer_attested: true,
+    attestation_note: "HMAC verification recomputes the signature under FreshContext's own secret. It proves the stored payload is unaltered, but only FreshContext can perform the check, so this is issuer attestation — not independent verification. Ed25519 (V4) verdicts are verifiable by anyone from the published key, with no FreshContext involvement.",
     reasons: valid ? [] : ["stored signature does not match recomputed HMAC over the stored payload"],
   });
 }
@@ -269,8 +383,9 @@ async function ledgerRowById(ledger: LedgerReader, id: string): Promise<Snapshot
 // reports matched_rows; an id lookup targets one exact row.
 async function handleVerifyLedger(
   body: JsonRecord,
-  hmacSecret: string,
-  ledger: LedgerReader | undefined
+  hmacSecret: string | undefined,
+  ledger: LedgerReader | undefined,
+  resolvePublicKey?: PublicKeyResolver
 ): Promise<Response> {
   if (!ledger) {
     return jsonResponse({
@@ -294,7 +409,7 @@ async function handleVerifyLedger(
     if (!row) {
       return jsonResponse({ status: "unknown", matched_rows: 0, reasons: ["no ledger row for this id"] });
     }
-    return verifyRow(row, hmacSecret, { matched_rows: 1 });
+    return verifyRow(row, hmacSecret, { matched_rows: 1 }, resolvePublicKey);
   }
 
   // Mode 2a — lookup by verdict_id (non-unique → verify most recent).
@@ -321,12 +436,16 @@ async function handleVerifyLedger(
     verdict_id: verdictId,
     matched_rows: rows.length,
     matched_rows_capped: rows.length >= LEDGER_LOOKUP_LIMIT,
-  });
+  }, resolvePublicKey);
 }
 
 function signatureVersionFromPayload(signingPayload: string): HaPriSignatureVersion | null {
   const firstLine = signingPayload.split(/\r?\n/, 1)[0];
-  if (firstLine === "FRESHCONTEXT_HA_PRI_V2" || firstLine === "FRESHCONTEXT_HA_PRI_V3") {
+  if (
+    firstLine === "FRESHCONTEXT_HA_PRI_V2" ||
+    firstLine === "FRESHCONTEXT_HA_PRI_V3" ||
+    firstLine === HA_PRI_V4
+  ) {
     return firstLine;
   }
   return null;
@@ -334,7 +453,11 @@ function signatureVersionFromPayload(signingPayload: string): HaPriSignatureVers
 
 // Mode 1 — stateless. Caller presents the full payload + signature; we recompute
 // and compare. No DB touched. Byte-identical to the pre-two-mode behavior.
-async function handleVerifyStateless(body: JsonRecord, hmacSecret: string): Promise<Response> {
+async function handleVerifyStateless(
+  body: JsonRecord,
+  hmacSecret: string | undefined,
+  resolvePublicKey?: PublicKeyResolver
+): Promise<Response> {
   const { signing_payload, signature } = body;
 
   if (typeof signing_payload !== "string" || signing_payload.trim() === "") {
@@ -377,30 +500,40 @@ async function handleVerifyStateless(body: JsonRecord, hmacSecret: string): Prom
     });
   }
 
-  const expected = await hmacHex(hmacSecret, signing_payload);
-
-  if (await timingSafeEqualHex(hmacSecret, signature, expected)) {
+  // V4 — Ed25519 against a published key. Never falls back to HMAC: if the key_id is
+  // unknown the honest answer is "unknown", not a second attempt under a shared secret
+  // that would turn an unverifiable claim into an apparently verified one.
+  if (payloadSignatureVersion === HA_PRI_V4) {
+    const keyId = keyIdFromV4Payload(signing_payload);
+    if (!keyId) {
+      return jsonResponse({
+        status: "invalid",
+        signature_version: HA_PRI_V4,
+        verification_method: "ed25519",
+        reasons: ["payload is labelled V4 but carries no usable key_id or signature_algorithm line"],
+      });
+    }
+    const publicKey = resolvePublicKey ? await resolvePublicKey(keyId) : undefined;
+    if (!publicKey) {
+      return jsonResponse({
+        status: "unknown",
+        signature_version: HA_PRI_V4,
+        key_id: keyId,
+        verification_method: "ed25519",
+        reasons: [`no published verification key for key_id=${keyId}`],
+      });
+    }
+    const valid = await verifyEd25519(publicKey, signing_payload, signature);
     return jsonResponse({
-      status: "valid",
-      signature_version: payloadSignatureVersion ?? "unknown",
-      reasons: [],
+      status: valid ? "valid" : "invalid",
+      signature_version: HA_PRI_V4,
+      key_id: keyId,
+      verification_method: "ed25519",
+      reasons: valid ? [] : ["Ed25519 signature does not verify against the published key"],
     });
   }
 
-  return jsonResponse({
-    status: "invalid",
-    signature_version: payloadSignatureVersion ?? "unknown",
-    reasons: ["HMAC does not match recomputed signature"],
-  });
-}
-
-async function handleVerify(
-  request: Request,
-  hmacSecret: string | undefined,
-  ledger: LedgerReader | undefined
-): Promise<Response> {
-  if (request.method !== "POST") return methodNotAllowed("POST");
-
+  // V2/V3 — HMAC. Only reachable with the shared secret, which only FreshContext holds.
   if (!hmacSecret) {
     return jsonResponse({
       status: "unknown",
@@ -408,6 +541,42 @@ async function handleVerify(
     });
   }
 
+  const expected = await hmacHex(hmacSecret, signing_payload);
+
+  if (await timingSafeEqualHex(hmacSecret, signature, expected)) {
+    return jsonResponse({
+      status: "valid",
+      signature_version: payloadSignatureVersion ?? "unknown",
+      verification_method: "hmac",
+      issuer_attested: true,
+      attestation_note: "HMAC verification recomputes the signature under FreshContext's own secret. It proves the stored payload is unaltered, but only FreshContext can perform the check, so this is issuer attestation — not independent verification. Ed25519 (V4) verdicts are verifiable by anyone from the published key, with no FreshContext involvement.",
+      reasons: [],
+    });
+  }
+
+  return jsonResponse({
+    status: "invalid",
+    signature_version: payloadSignatureVersion ?? "unknown",
+    verification_method: "hmac",
+    issuer_attested: true,
+    attestation_note: "HMAC verification recomputes the signature under FreshContext's own secret. It proves the stored payload is unaltered, but only FreshContext can perform the check, so this is issuer attestation — not independent verification. Ed25519 (V4) verdicts are verifiable by anyone from the published key, with no FreshContext involvement.",
+    reasons: ["HMAC does not match recomputed signature"],
+  });
+}
+
+async function handleVerify(
+  request: Request,
+  hmacSecret: string | undefined,
+  ledger: LedgerReader | undefined,
+  resolvePublicKey?: PublicKeyResolver
+): Promise<Response> {
+  if (request.method !== "POST") return methodNotAllowed("POST");
+
+  // The missing-secret check used to live here and refused every request. It is now
+  // version-aware and pushed down to the HMAC branches: a host with published Ed25519
+  // keys but no HMAC secret can still verify V4 perfectly well, and refusing it up here
+  // would make independent verification depend on a secret only we hold — the exact
+  // coupling E-2 exists to remove.
   const parsed = await readJsonBody(request);
   if (!parsed.ok) return parsed.response;
 
@@ -426,10 +595,10 @@ async function handleVerify(
   }
 
   if (wantsLedger) {
-    return handleVerifyLedger(body, hmacSecret, ledger);
+    return handleVerifyLedger(body, hmacSecret, ledger, resolvePublicKey);
   }
 
-  return handleVerifyStateless(body, hmacSecret);
+  return handleVerifyStateless(body, hmacSecret, resolvePublicKey);
 }
 
 // hmacSecret and ledger are injected by the Worker (env.FC_HMAC_SECRET, env.DB) when
@@ -441,7 +610,8 @@ async function handleVerify(
 export async function handleRestRequest(
   request: Request,
   hmacSecret?: string,
-  ledger?: LedgerReader
+  ledger?: LedgerReader,
+  resolvePublicKey?: PublicKeyResolver
 ): Promise<Response> {
   const url = new URL(request.url);
 
@@ -449,7 +619,7 @@ export async function handleRestRequest(
     if (url.pathname === "/v1/health") return handleHealth(request);
     if (url.pathname === "/v1/evaluate") return handleEvaluate(request);
     if (url.pathname === "/v1/evaluate-batch") return handleEvaluateBatch(request);
-    if (url.pathname === "/v1/verify") return handleVerify(request, hmacSecret, ledger);
+    if (url.pathname === "/v1/verify") return handleVerify(request, hmacSecret, ledger, resolvePublicKey);
 
     return errorResponse("not_found", `Not found: ${url.pathname}.`, 404);
   } catch {

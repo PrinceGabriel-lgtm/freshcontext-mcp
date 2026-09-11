@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
+import { generateKeyPairSync } from "node:crypto";
 import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
 
-// Integration harness for the mounted REST surface (F3). Runs the REAL Worker in
+// Integration harness for the mounted REST surface. Runs the REAL Worker wrapper in
 // workerd via SELF.fetch, with a REAL local D1 for the ledger. Deliberately does NOT
 // load wrangler.jsonc wholesale: the live config carries a BROWSER (Browser Rendering)
 // binding that miniflare cannot provision, and the verify path never touches it. We
@@ -104,6 +105,36 @@ if (compatibilityDate > runtime.date) {
   );
 }
 
+// The Ed25519 test keypair is GENERATED HERE, per run, and never committed.
+//
+// It used to be a literal in the bindings below, labelled test-only. That was true, but
+// GitGuardian flagged it on every push and it was going to stay flagged forever. A
+// security check that is permanently red is indistinguishable from one that is broken,
+// and the next real secret to land would have looked exactly like this one — so the
+// answer is to remove the finding, not to silence the scanner with an ignore rule.
+//
+// A fresh keypair each run is also a stronger test: nothing can accidentally depend on
+// one specific key's bytes. The tests read these back out of the Worker's own bindings
+// (env.FC_ED25519_*) rather than restating them, which is the same
+// declare-it-once-and-derive-the-rest rule the compatibility target above follows.
+const TEST_KEY_ID = "fc-test-ephemeral";
+const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+const TEST_PRIVATE_KEY_B64 = privateKey.export({ type: "pkcs8", format: "der" }).toString("base64");
+const TEST_PUBLIC_KEY_B64 = publicKey.export({ type: "spki", format: "der" }).toString("base64");
+
+// A SECOND keypair, published as retired, so rotation is actually testable rather than
+// only documented. E-2 makes keys append-only: a rotated key is never removed from the
+// published document, because verdicts signed under it must stay verifiable forever or
+// the ledger's value evaporates. The only way to know that holds is to sign something
+// with the retired key and check it still verifies.
+//
+// The retired PRIVATE key is exposed as a test-only binding. Production never has one:
+// FC_ED25519_PUBLIC_KEYS_JSON carries public halves only, by design.
+const TEST_RETIRED_KEY_ID = "fc-test-ephemeral-retired";
+const retired = generateKeyPairSync("ed25519");
+const TEST_RETIRED_PRIVATE_KEY_B64 = retired.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64");
+const TEST_RETIRED_PUBLIC_KEY_B64 = retired.publicKey.export({ type: "spki", format: "der" }).toString("base64");
+
 export default defineWorkersConfig({
   test: {
     include: ["test/**/*.test.ts"],
@@ -122,7 +153,7 @@ export default defineWorkersConfig({
     },
     poolOptions: {
       workers: {
-        main: "./src/worker.ts",
+        main: "./src/worker-e2.ts",
         miniflare: {
           // Read from wrangler.jsonc — see compatibilityTargetFromWranglerConfig above.
           compatibilityDate,
@@ -130,6 +161,20 @@ export default defineWorkersConfig({
           d1Databases: { DB: "test-ledger" },
           bindings: {
             FC_HMAC_SECRET: "miniflare-integration-secret-not-prod",
+            FC_ED25519_KEY_ID: TEST_KEY_ID,
+            FC_ED25519_PRIVATE_KEY_B64: TEST_PRIVATE_KEY_B64,
+            FC_ED25519_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64,
+            FC_ED25519_PUBLIC_KEYS_JSON: JSON.stringify([
+              {
+                key_id: TEST_RETIRED_KEY_ID,
+                algorithm: "Ed25519",
+                public_key_spki_b64: TEST_RETIRED_PUBLIC_KEY_B64,
+                status: "retired",
+                valid_until: "2026-09-01T00:00:00Z",
+              },
+            ]),
+            // Test scaffolding only — production has no retired PRIVATE key anywhere.
+            TEST_RETIRED_PRIVATE_KEY_B64,
           },
         },
       },

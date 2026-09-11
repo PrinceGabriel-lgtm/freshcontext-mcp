@@ -1,1 +1,13 @@
+# Legacy HMAC verification/signing path. Kept during E-2 migration so historical
+# FRESHCONTEXT_HA_PRI_V2/V3 rows remain verifiable.
 FC_HMAC_SECRET=your-hmac-secret-here
+
+# E-2 Ed25519 asymmetric attestation. Generate your own pair; never reuse these
+# placeholders or commit a real private key.
+FC_ED25519_KEY_ID=fc-dev-YYYY-MM
+FC_ED25519_PRIVATE_KEY_B64=your-pkcs8-der-base64-private-key
+FC_ED25519_PUBLIC_KEY_B64=your-spki-der-base64-public-key
+
+# Optional JSON array of retired/public verification keys retained for historical
+# signatures. Example:
+# FC_ED25519_PUBLIC_KEYS_JSON=[{"key_id":"fc-prod-2026-08","public_key_spki_b64":"...","status":"retired","valid_until":"2026-09-01T00:00:00Z"}]

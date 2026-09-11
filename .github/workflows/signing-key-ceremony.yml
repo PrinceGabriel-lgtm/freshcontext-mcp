@@ -1,0 +1,209 @@
+name: Ed25519 signing key ceremony
+
+# Generate a production Ed25519 signing keypair WITHOUT the private key ever reaching a
+# human, a log, a chat transcript, or the repository.
+#
+# The E-2 spec's suggested path is "generate locally, base64 it, paste it into the
+# dashboard, discard the local copy". That assumes a workstation, and it routes the most
+# security-critical value FreshContext will ever hold through a clipboard.
+#
+# This does it in one pipe instead:
+#
+#     node scripts/generate-signing-key.mjs | wrangler secret put FC_ED25519_PRIVATE_KEY_B64
+#
+# The private half exists only in the pipe between two processes on an ephemeral runner.
+# It is never assigned to a shell variable, never written to disk, never printed. The
+# public half and the derived key_id go to the job summary, because those are meant to be
+# published.
+#
+# This is not a trust expansion: the runner already holds CLOUDFLARE_API_TOKEN, which can
+# set Worker secrets anyway. It narrows exposure rather than widening it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type GENERATE to confirm. This creates production key material.'
+        required: true
+        type: string
+      rotating:
+        description: 'Rotating an EXISTING key? Read the checklist in the job summary first.'
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  ceremony:
+    name: Generate and install the signing key
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: signing-key-ceremony
+      cancel-in-progress: false
+    permissions:
+      # write, because the final step commits the PUBLIC key values and opens a PR.
+      # The private key is never touched by any of this — it went straight into a Worker
+      # secret and exists nowhere a token can reach.
+      contents: write
+      pull-requests: write
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - name: Refuse unless explicitly confirmed
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM" != "GENERATE" ]; then
+            echo "::error::Confirmation input must be exactly GENERATE. Nothing was done."
+            exit 1
+          fi
+          [ -n "$CLOUDFLARE_API_TOKEN" ]  || { echo "::error::Secret CLOUDFLARE_API_TOKEN is not set."; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Variable CLOUDFLARE_ACCOUNT_ID is not set."; exit 1; }
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install worker dependencies
+        working-directory: worker
+        run: npm ci
+
+      # Overwriting a live signing key without first publishing the outgoing public key as
+      # retired orphans every verdict ever signed under it — they become unverifiable, and
+      # unverifiable is indistinguishable from forged to anyone checking. E-2 §3 puts the
+      # retirement step FIRST for exactly this reason, so this refuses to proceed blind.
+      - name: Refuse to clobber an existing key unless rotating
+        working-directory: worker
+        env:
+          ROTATING: ${{ inputs.rotating }}
+        run: |
+          set -euo pipefail
+          # secret list returns NAMES only, never values.
+          if npx wrangler secret list --format json 2>/dev/null | grep -q "FC_ED25519_PRIVATE_KEY_B64"; then
+            echo "A signing key already exists on this Worker."
+            if [ "$ROTATING" != "true" ]; then
+              echo "::error::FC_ED25519_PRIVATE_KEY_B64 is already set. Re-run with 'rotating' checked, and only after moving the outgoing public key into FC_ED25519_PUBLIC_KEYS_JSON with status retired. Nothing was changed."
+              exit 1
+            fi
+            echo "::warning::Rotating. The OUTGOING public key must already be published as retired in FC_ED25519_PUBLIC_KEYS_JSON, or existing verdicts stop verifying."
+          else
+            echo "No existing signing key — this is a first install."
+          fi
+
+      # The one step that touches key material. stdout of the generator goes straight into
+      # wrangler's stdin; nothing in between can observe it.
+      - name: Generate the keypair and install the private half as a Worker secret
+        id: ceremony
+        working-directory: worker
+        run: |
+          set -euo pipefail
+          node ../scripts/generate-signing-key.mjs \
+            | npx wrangler secret put FC_ED25519_PRIVATE_KEY_B64
+          echo "Private key installed as a Worker secret. It was never written to disk."
+
+      - name: Commit the public key and open a PR
+        id: pr
+        env:
+          KEY_ID: ${{ steps.ceremony.outputs.key_id }}
+          PUBLIC_KEY: ${{ steps.ceremony.outputs.public_key_spki_b64 }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # These two values are PUBLIC by design and belong in the config, not in the
+          # dashboard. Cloudflare's own docs are explicit: "Wrangler will delete all vars
+          # before setting those found in the Wrangler configuration." wrangler.jsonc
+          # declares no vars, so a value set by hand in the dashboard is removed by the
+          # next deploy — and a published key that quietly disappears makes every verdict
+          # signed under it unverifiable, which is indistinguishable from forged.
+          #
+          # Secrets are the opposite and are never deleted by a deploy, which is exactly
+          # why the private half is a secret and appears nowhere in this repository.
+          node scripts/write-public-key-vars.mjs "$KEY_ID" "$PUBLIC_KEY"
+
+          BRANCH="claude/ed25519-public-key-${KEY_ID}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add worker/wrangler.jsonc
+          git commit -m "E-2: publish Ed25519 verification key ${KEY_ID}
+
+          Written by the key ceremony workflow. Both values are PUBLIC by design: they are
+          what a third party needs in order to verify a FreshContext verdict without asking
+          FreshContext anything. The matching private key was installed as a Worker secret
+          in the same run and appears nowhere in this repository.
+
+          Committed rather than set in the dashboard because \`wrangler deploy\` deletes vars
+          that are absent from wrangler.jsonc. A dashboard-set value would survive until the
+          next deploy and then vanish, taking every verdict signed under this key with it.
+
+          key_id is derived from the key itself (sha256 of the SPKI bytes), so the two
+          values are a matched pair — editing either by hand breaks verification silently."
+          git push -u origin "$BRANCH"
+
+          PR_URL="$(gh pr create \
+            --title "E-2: publish Ed25519 verification key ${KEY_ID}" \
+            --body "Generated by the [key ceremony workflow](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+
+          The private key is already installed as a Worker secret. **Merging this deploys the public half**, after which \`/.well-known/freshcontext-signing-keys.json\` serves \`${KEY_ID}\` and verdicts signed under it become independently verifiable.
+
+          Both values here are public by design — they are what a third party needs to verify a verdict without contacting FreshContext. See \`docs/VERIFYING.md\`.
+
+          After merging, confirm E-2 is actually live rather than merely installed:
+
+          \`\`\`
+          curl https://freshcontext-mcp.gimmanuel73.workers.dev/.well-known/freshcontext-signing-keys.json
+          \`\`\`
+
+          then produce a verdict and check it with \`node scripts/verify-offline.mjs\`. Until a real V4 attestation has verified offline, E-2 is installed but not proven.
+
+          ---
+          _Generated by [Claude Code](https://claude.ai/code)_" \
+            --base main --head "$BRANCH")"
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "Opened $PR_URL"
+
+      - name: Summarise
+        env:
+          KEY_ID: ${{ steps.ceremony.outputs.key_id }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Ed25519 signing key installed'
+            echo
+            echo "Key id: \`${KEY_ID}\`"
+            echo
+            echo 'The private key is now a Worker secret. It was never written to disk, never'
+            echo 'assigned to a variable, and appears nowhere in these logs or in the repository.'
+            echo 'There is no copy of it anywhere else — if it is lost, generate a new one and'
+            echo 'retire this key id.'
+            echo
+            echo "### One thing left: merge ${PR_URL}"
+            echo
+            echo 'It carries the PUBLIC key values into wrangler.jsonc. Merging deploys them.'
+            echo 'Nothing to copy by hand — the values are already in the diff.'
+            echo
+            echo '### Then prove it'
+            echo
+            echo '```'
+            echo 'curl https://freshcontext-mcp.gimmanuel73.workers.dev/.well-known/freshcontext-signing-keys.json'
+            echo '```'
+            echo
+            echo 'Produce a verdict and verify it with `node scripts/verify-offline.mjs`.'
+            echo 'Until a real V4 attestation verifies offline, E-2 is installed but not proven.'
+            echo
+            echo '### When you later rotate'
+            echo
+            echo 'Order matters. Move this public key into `FC_ED25519_PUBLIC_KEYS_JSON` with'
+            echo '`"status": "retired"` **before** running this workflow again, or every verdict'
+            echo 'signed under it becomes unverifiable — and unverifiable looks identical to'
+            echo 'forged to anyone checking. Keys are append-only: a retired public key stays'
+            echo 'published forever.'
+          } >> "$GITHUB_STEP_SUMMARY"

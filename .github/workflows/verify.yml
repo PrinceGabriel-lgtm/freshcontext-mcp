@@ -90,13 +90,24 @@ jobs:
       # See docs/DEPENDENCY_DILIGENCE.md.
       - name: Check the Worker bundle carries no browser-download path
         run: |
-          bundle="$RUNNER_TEMP/worker-bundle/worker.js"
-          test -f "$bundle" || { echo "No bundle at $bundle"; exit 1; }
-          if grep -oE 'extract-zip|@puppeteer/browsers|yauzl' "$bundle" | sort -u | grep .; then
+          # Glob every .js the bundler emitted rather than naming one file. wrangler names
+          # its output after the entry point, so changing `main` in wrangler.jsonc renames
+          # the bundle — src/worker.ts -> worker.js, src/worker-e2.ts -> worker-e2.js. A
+          # hardcoded name turns a config change into a confusing CI failure, and would
+          # miss a second chunk entirely if wrangler ever code-splits. Sourcemaps are
+          # excluded on purpose: they embed original source text and would false-positive.
+          shopt -s nullglob
+          bundles=("$RUNNER_TEMP"/worker-bundle/*.js)
+          if [ ${#bundles[@]} -eq 0 ]; then
+            echo "::error::wrangler produced no .js bundle in $RUNNER_TEMP/worker-bundle."
+            exit 1
+          fi
+          if grep -ohE 'extract-zip|@puppeteer/browsers|yauzl' "${bundles[@]}" | sort -u | grep .; then
             echo "::error::Browser-download code reached the deployed Worker bundle."
             exit 1
           fi
-          echo "Bundle clean: no extract-zip / @puppeteer/browsers / yauzl ($(wc -c < "$bundle") bytes)"
+          echo "Bundle clean (${#bundles[@]} file(s), no extract-zip / @puppeteer/browsers / yauzl):"
+          for b in "${bundles[@]}"; do echo "  $(basename "$b") — $(wc -c < "$b") bytes"; done
 
       # The package tarball is a public artifact. Fail if internal audit material ever
       # reaches it — the .gitignore rules are the first line of defence, this is the second.

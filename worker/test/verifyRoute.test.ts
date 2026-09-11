@@ -1,6 +1,7 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, test, expect, beforeAll } from "vitest";
 import { buildHaPriPayloadV3 } from "../../src/core/index.js";
+import { buildHaPriPayloadV4, signEd25519 } from "../src/ed25519Attestation.js";
 import { hmacSha256 } from "../src/intelligence.js";
 import pkg from "../../package.json" with { type: "json" };
 
@@ -12,6 +13,9 @@ const PKG_VERSION: string = pkg.version;
 // Must equal the FC_HMAC_SECRET binding in vitest.config.mts so the Worker's verify
 // path recomputes the same HMAC we sign the seeded row with.
 const SECRET = "miniflare-integration-secret-not-prod";
+
+// Generated per run by vitest.config.mts; never committed.
+const TEST_KEY_ID = env.FC_ED25519_KEY_ID as string;
 
 // ─── Integration test for the MOUNTED /v1 route (F3) ───────────────────────────
 //
@@ -163,6 +167,100 @@ describe("mounted /v1 route — real Worker fetch (F3)", () => {
     const body = await r.json() as { status: string; matched_rows: number };
     expect(body.status).toBe("unknown");
     expect(body.matched_rows).toBe(0);
+  });
+
+  // ─── E-2: V4 rows on the ledger ───────────────────────────────────────────────
+  //
+  // This is the test that would have caught the bug pairing E-2's writer change with
+  // its verify change. verifyRow() used to recompute HMAC over every row regardless of
+  // signature_version, so the moment the writer began storing Ed25519 rows a verdict_id
+  // lookup would have HMAC'd a V4 signature, missed, and reported a perfectly good
+  // verdict as "invalid" — confidently wrong, which is the one thing a ledger must not be.
+  describe("E-2 — Ed25519 rows through Mode 2", () => {
+    const V4_VERDICT_ID = "e".repeat(64);
+    let v4Payload: string;
+    let v4Signature: string;
+
+    beforeAll(async () => {
+      const v3 = buildHaPriPayloadV3({
+        resultId: "fc-e2-ledger-001",
+        rawContent: SEED.content,
+        semanticFingerprint: null,
+        adapter: SEED.adapter,
+        publishedAt: SEED.published_at,
+        retrievedAt: SEED.retrieved_at,
+        engineVersion: SEED.engine_version,
+        verdictId: V4_VERDICT_ID,
+        decision: SEED.decision,
+      });
+      // Same builder and same signer the Worker's writer path uses — a real row.
+      // Key id and private key come from the Worker's own bindings — vitest.config.mts
+      // generates a fresh keypair per run, so nothing is committed and this signs with
+      // exactly the key the Worker under test resolves.
+      v4Payload = buildHaPriPayloadV4(v3, TEST_KEY_ID);
+      v4Signature = await signEd25519(env.FC_ED25519_PRIVATE_KEY_B64 as string, v4Payload);
+
+      await env.DB.prepare(
+        "INSERT INTO evaluation_snapshots " +
+        "(id, verdict_id, result_id, signal_source, signal_source_type, signal_published_at, " +
+        "decision, decision_label, source_profile_id, intent_profile_id, evaluated_at, " +
+        "revalidate_after, engine_version, canonical_content_sha256, signing_payload, " +
+        "signature, signature_version, created_at) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ).bind(
+        "row-e2-v4", V4_VERDICT_ID, "fc-e2-ledger-001", "https://arxiv.org/abs/2606.e2",
+        SEED.adapter, SEED.published_at, SEED.decision, "Use first", "academic_research",
+        "citation_check", "2026-09-11T00:00:00.000Z", null, SEED.engine_version, null,
+        v4Payload, v4Signature, "FRESHCONTEXT_HA_PRI_V4", "2026-09-11T00:00:00.000Z"
+      ).run();
+    });
+
+    test("a stored V4 row verifies as valid and reports ed25519, not hmac", async () => {
+      const r = await SELF.fetch(post({ verdict_id: V4_VERDICT_ID }));
+      const body = await r.json() as {
+        status: string; signature_version: string; verification_method: string;
+        key_id: string; issuer_attested?: boolean;
+      };
+      expect(body.status).toBe("valid");
+      expect(body.signature_version).toBe("FRESHCONTEXT_HA_PRI_V4");
+      expect(body.verification_method).toBe("ed25519");
+      expect(body.key_id).toBe(TEST_KEY_ID);
+      expect(body.issuer_attested).toBeUndefined();
+    });
+
+    test("the legacy V3 row still verifies, and says plainly that it is issuer-attested", async () => {
+      const r = await SELF.fetch(post({ verdict_id: SEED.verdict_id }));
+      const body = await r.json() as {
+        status: string; signature_version: string; verification_method: string;
+        issuer_attested?: boolean; attestation_note?: string;
+      };
+      expect(body.status).toBe("valid");
+      expect(body.signature_version).toBe("FRESHCONTEXT_HA_PRI_V3");
+      expect(body.verification_method).toBe("hmac");
+      expect(body.issuer_attested).toBe(true);
+      expect(body.attestation_note).toContain("issuer attestation");
+    });
+
+    test("a V4 payload naming an unpublished key_id is unknown — never an HMAC fallback", async () => {
+      const foreign = v4Payload.replace(`key_id=${TEST_KEY_ID}`, "key_id=fc-not-published-2026-01");
+      const r = await SELF.fetch(post({ signing_payload: foreign, signature: v4Signature }));
+      const body = await r.json() as { status: string; key_id: string; verification_method: string; reasons: string[] };
+      expect(body.status).toBe("unknown");
+      expect(body.key_id).toBe("fc-not-published-2026-01");
+      expect(body.verification_method).toBe("ed25519");
+      expect(body.reasons.join(" ")).toContain("no published verification key");
+    });
+
+    test("key_id is covered by the signature: swapping it to the published key still fails", async () => {
+      // Same key_id the signature was made under, but reached by mutating a payload that
+      // named a different one — proving the bytes, not the lookup, are what verification
+      // turns on. A verifier that resolved the key and stopped thinking would pass this.
+      const tampered = v4Payload.replace("decision=use_first", "decision=exclude");
+      const r = await SELF.fetch(post({ signing_payload: tampered, signature: v4Signature }));
+      const body = await r.json() as { status: string; verification_method: string };
+      expect(body.status).toBe("invalid");
+      expect(body.verification_method).toBe("ed25519");
+    });
   });
 
   test("/v1/evaluate is NOT mounted → 404, never reaches the engine", async () => {
