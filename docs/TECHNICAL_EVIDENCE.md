@@ -73,53 +73,55 @@ actual secret scanner for that case. This caveat is written into the allowlist f
 | Production Worker deploys from `main` with a smoke test and automatic rollback | `verify.yml` → `Deploy Worker to production` |
 | Published schema resolves at its own `$id` | `https://freshcontext.dev/freshcontext.schema.json`; mirror drift checked in CI |
 | Specification is published and MIT-licensed | `FRESHCONTEXT_SPEC.md` |
-| **The canonical hostname serves this Worker** | `canonical-endpoint-proof` workflow — **currently FAILING, see below** |
+| **The canonical hostname serves this Worker** | `canonical-endpoint-proof` workflow — passing; daily 07:30 UTC |
 
-### Open: Cloudflare Bot Fight Mode challenges `api.freshcontext.dev`
+### Resolved 2026-09-13: Bot Fight Mode was challenging the canonical hostname
 
-Established by the `canonical-endpoint-proof` workflow on 2026-09-13, run with `diagnose`:
+Kept in full rather than deleted. An evidence index that only records what currently passes
+says nothing about whether the controls work; this row says they do.
 
-| Path | Default client | Browser User-Agent |
+**2026-09-13** — the canonical-host proof detected Cloudflare Bot Fight Mode challenging
+programmatic traffic to the published MCP endpoint. Signing-key discovery remained publicly
+accessible throughout. Edge policy was corrected and the canonical endpoint proof
+subsequently passed.
+
+**What was found.** The proof failed on its first real run. Every refusal carried
+`cf-mitigated: challenge`, `server: cloudflare`, and a `Just a moment...` body — a managed
+challenge, not a WAF block (Error 1020 body), not Access (redirect), not rate limiting (429).
+A browser User-Agent did not help, because the challenge requires executing JavaScript, so no
+API client could satisfy it however it identified itself.
+
+| Path | Before | After |
 | --- | --- | --- |
-| `/health` | **403** | **403** |
-| `/v1/health` | **403** | not retried |
-| `/mcp` | **403** | not retried |
-| `/` | **403** | not retried |
-| `/.well-known/freshcontext-signing-keys.json` | **200**, `application/json` | **200** |
+| `/health` | 403 challenge | **200**, `status: ok`, version 0.5.1 |
+| `/v1/health` | 403 challenge | **200**, `ok: true` |
+| `/mcp` | 403 challenge | reachable |
+| `/` | 403 challenge | reachable |
+| `/.well-known/freshcontext-signing-keys.json` | **200 throughout** | **200**, publishes `fc-2026-09-ceced1ab`, status `active` |
 
-Every 403 carries `cf-mitigated: challenge`, `server: cloudflare`, and a
-`<title>Just a moment...</title>` body. That is a Cloudflare **managed challenge**, not a WAF
-block (which returns an Error 1020 body), not Access (a redirect), and not rate limiting (429).
-The Worker is never reached: its source contains no 403 path at all, and unknown routes return
-404.
+**Blast radius.** `/mcp` — the endpoint `server.json` publishes to MCP registry clients —
+plus the health endpoints. Offline verification was never affected: the key document answered
+default clients throughout, so `docs/VERIFYING.md` held for the whole period.
 
-**A browser User-Agent does not help.** The challenge requires executing JavaScript, so no API
-client can satisfy it regardless of how it identifies itself. This is not a User-Agent filter.
+**Why the obvious fix would not have worked.** Bot Fight Mode cannot be skipped by a WAF
+custom rule; it does not run on the Ruleset Engine, so `Skip`, `Bypass` and `Allow` have no
+effect on it, and JavaScript Detections is force-enabled. A path-scoped skip rule would have
+been time spent on something that cannot work. The resolution was to turn Bot Fight Mode off
+for the zone. Super Bot Fight Mode, which does run on the Ruleset Engine and accepts a `Skip`
+rule scoped to `http.host eq "api.freshcontext.dev"`, remains the option if bot protection is
+wanted on the marketing surface later.
 
-**The offline-verification path is not affected.** `/.well-known/freshcontext-signing-keys.json`
-returns 200 to a default client, so a third party can still fetch the public key and verify a
-verdict offline. The claim in `docs/VERIFYING.md` holds.
+**A second defect, found by the same run.** Once the domain started answering, the
+key-document check failed against a healthy document: it filtered on `public_key`, while
+`PublishedSigningKey` publishes `public_key_spki_b64`. The bug was latent — earlier runs never
+reached that step — and would have misreported precisely when the check began to matter. Fixed,
+and the check now also asserts the published key is `active` rather than merely present.
 
-**What is affected:** `/mcp` — the endpoint `server.json` publishes to MCP registry clients —
-plus `/health`, `/v1/health` and `/`. An MCP client connecting over the canonical hostname
-receives a challenge it cannot solve.
-
-#### Why the usual fix does not apply
-
-Per Cloudflare's documentation, **Bot Fight Mode cannot be skipped by a WAF custom rule**: it
-does not run on the Ruleset Engine, so `Skip`, `Bypass` and `Allow` actions have no effect on it.
-JavaScript Detections is also force-enabled for Bot Fight Mode and cannot be turned off.
-
-That leaves two real options:
-
-1. Turn Bot Fight Mode **off** for the zone (Security → Settings → Bot traffic), or
-2. Move to **Super Bot Fight Mode**, which does run on the Ruleset Engine, and add a WAF custom
-   rule with the `Skip` action targeting all Super Bot Fight Mode rules, scoped to
-   `http.host eq "api.freshcontext.dev"`.
-
-Option 2 is the one that keeps bot protection on the marketing surface while letting the API
-hostname answer programmatic clients. Until one is applied, this row stays open, and the
-`canonical-endpoint-proof` workflow will keep failing — which is the workflow behaving correctly.
+**Sequence, verifiable in the Actions history:** canonical-host blind spot identified →
+independent scheduled proof added (#80) → proof detected a real edge-layer misconfiguration
+within the hour → cause established from response fingerprints → configuration corrected →
+proof green. Runs `34762222085` (failed, `main`), `34763598811` (diagnosed), `34764389414`
+(edge fixed, check bug surfaced), `34764444855` (**green**).
 
 ## What this index does not prove
 
