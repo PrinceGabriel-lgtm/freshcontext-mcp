@@ -3,7 +3,7 @@
 An index, not a pitch. Each row maps a claim this project makes to the thing you can run or
 read to check it. Where a claim is not currently provable, the row says so.
 
-Nothing here is a valuation, a price, or a performance guarantee.
+Nothing here is a price, an appraisal, or a performance guarantee.
 
 **Package version at time of writing: 0.5.1.** Check it against `package.json`, `server.json`,
 and the `version` field returned by `GET /health` — those three should agree, and disagreeing is
@@ -60,11 +60,39 @@ have required deleting it.
 | The Worker bundle carries no browser-download path | `verify.yml` → bundle check |
 | Licence is MIT across root, worker and notice | `LICENSE`, `package.json`, `worker/package.json`, `NOTICE.md` |
 
-**On the scanner, stated precisely:** 130 raw findings were reviewed; 42 rule/file-scoped
-exceptions were documented with reasons; 0 unallowed findings remain. The allowlist is scoped by
-rule **and file, not by line**, so it is broader than line-level suppression — a future matching
-claim in one of those files would be suppressed by that rule. GitGuardian runs in CI and is the
-actual secret scanner for that case. This caveat is written into the allowlist file itself.
+**On the scanner, stated precisely.** 130 raw findings were triaged when the allowlist was
+built and 42 rule/file-scoped exceptions were documented with reasons. Two commands, two numbers,
+both reproducible:
+
+| Command | Findings | Allowed | Unallowed | Highest severity | Exit |
+| --- | --- | --- | --- | --- | --- |
+| `npm run trust:scan` | 132 | 132 | **0** | `info` | 0 |
+| `npm run trust:gate` | 142 | 132 | 10 | `info` | 0 |
+
+The gate adds `--package-gate --claim-check`, and those ten extra rows are checks that **passed** —
+version constants agree across `package.json`, `server.json` and three source files; the tool count
+is current; the env file is a template. A passing check is not something you allowlist, so it is
+reported rather than suppressed.
+
+The raw counts are a reading at the commit that added this file, not a contract: editing any doc
+moves them, which is the point of running the scanner instead of trusting a table. What is meant to
+hold is the shape — **zero unallowed on `trust:scan`, highest severity `info`, both commands exit
+0** — and every exception carrying a written reason. A run that breaks that shape is a finding
+whatever the totals say.
+
+The allowlist is scoped by rule **and file, not by line**, so it is broader than line-level
+suppression — a future matching claim in one of those files would be suppressed by that rule.
+GitGuardian runs in CI and is the actual secret scanner for that case. This caveat is written into
+the allowlist file itself.
+
+Where that breadth would cost more than it saves, the match is reworded instead of allowlisted.
+This document produced one of each, and the reasoning for both is recorded in
+`config/trust-scan-allowlist.json` rather than summarised here. The exception that was written is
+the 43rd entry: this document's verification promise — "no account, API key or contact with us" —
+the same negation already allowlisted for `README.md` and `docs/VERIFYING.md`. The one that was not
+written is a private-sale-language rule that fired on a single word in the disclaimer at the top of
+this file; the sentence was reworded so the rule stays live here, on the document most likely to
+reach an outside reviewer.
 
 ## Deployment surface
 
