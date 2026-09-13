@@ -1,3 +1,223 @@
 {
-  "allow": []
+  "_note": [
+    "Reviewed exceptions for the FreshContext Trust Scanner.",
+    "Every entry names a rule, a file, and why that match is expected there. The schema requires a",
+    "reason, which is the point: an allowlist without reasons is just a way to stop looking.",
+    "Triaged 2026-09-13 against a full scan of 130 findings. None were genuine stale public claims.",
+    "Entries are rule+file scoped; the scanner does not support line scoping. For the auth-code",
+    "entries that means a future real key in those files would be suppressed by this rule --",
+    "GitGuardian runs in CI and is the actual secret scanner for that case."
+  ],
+  "allow": [
+    {
+      "ruleId": "overclaim-ha-pri-v2-deployed",
+      "path": "scripts/trust-scan.mjs",
+      "reason": "The scanner's own rule definitions. A rule that detects a phrase necessarily contains that phrase, so this file matches every pattern it defines. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "overclaim-ha-pri-v2-deployed",
+      "path": "tests/trustScan.test.mjs",
+      "reason": "The scanner's own test fixtures. These strings are present on purpose, to prove each rule fires; removing them would delete the tests that defend the rule. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "overclaim-worker-verifies-ha-pri-v2",
+      "path": "tests/trustScan.test.mjs",
+      "reason": "The scanner's own test fixtures. These strings are present on purpose, to prove each rule fires; removing them would delete the tests that defend the rule. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-api-key-boundary",
+      "path": ".gitignore",
+      "reason": "Ignore/packaging metadata. The string is a pattern being excluded, not a value being committed \u2014 naming a file in order to keep it out. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-api-key-boundary",
+      "path": ".npmignore",
+      "reason": "Ignore/packaging metadata. The string is a pattern being excluded, not a value being committed \u2014 naming a file in order to keep it out. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-api-key-boundary",
+      "path": "README.md",
+      "reason": "The phrase is the claim \"no API key required\" \u2014 the verification promise itself, not key material. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-api-key-boundary",
+      "path": "demo/README.md",
+      "reason": "Demo material stating \"no API key required\" and the local regeneration script. No key material; verified 2026-09-13."
+    },
+    {
+      "ruleId": "package-api-key-boundary",
+      "path": "demo/data.json",
+      "reason": "Demo material stating \"no API key required\" and the local regeneration script. No key material; verified 2026-09-13."
+    },
+    {
+      "ruleId": "package-api-key-boundary",
+      "path": "demo/generate.mjs",
+      "reason": "Demo material stating \"no API key required\" and the local regeneration script. No key material; verified 2026-09-13."
+    },
+    {
+      "ruleId": "package-api-key-boundary",
+      "path": "demo/index.html",
+      "reason": "Demo material stating \"no API key required\" and the local regeneration script. No key material; verified 2026-09-13."
+    },
+    {
+      "ruleId": "package-api-key-boundary",
+      "path": "docs/VERIFYING.md",
+      "reason": "The phrase is the claim \"no API key required\" \u2014 the verification promise itself, not key material. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-api-key-boundary",
+      "path": "scripts/trust-scan.mjs",
+      "reason": "The scanner's own rule definitions. A rule that detects a phrase necessarily contains that phrase, so this file matches every pattern it defines. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-api-key-boundary",
+      "path": "src/rest/handler.ts",
+      "reason": "The `env.API_KEY` identifier in the bearer-token auth implementation, and comments about that path. An identifier, not a value. GitGuardian runs in CI as the actual secret scanner. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-api-key-boundary",
+      "path": "src/server.ts",
+      "reason": "The `env.API_KEY` identifier in the bearer-token auth implementation, and comments about that path. An identifier, not a value. GitGuardian runs in CI as the actual secret scanner. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-api-key-boundary",
+      "path": "worker/src/synthesize.ts",
+      "reason": "The `env.API_KEY` identifier in the bearer-token auth implementation, and comments about that path. An identifier, not a value. GitGuardian runs in CI as the actual secret scanner. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-api-key-boundary",
+      "path": "worker/src/worker.ts",
+      "reason": "The `env.API_KEY` identifier in the bearer-token auth implementation, and comments about that path. An identifier, not a value. GitGuardian runs in CI as the actual secret scanner. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-backup-sql",
+      "path": ".gitignore",
+      "reason": "Ignore/packaging metadata. The string is a pattern being excluded, not a value being committed \u2014 naming a file in order to keep it out. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-backup-sql",
+      "path": ".npmignore",
+      "reason": "Ignore/packaging metadata. The string is a pattern being excluded, not a value being committed \u2014 naming a file in order to keep it out. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-backup-sql",
+      "path": "cleanup.ps1",
+      "reason": "Local cleanup script referencing a backup pattern; not shipped (absent from the package files allowlist). Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-backup-sql",
+      "path": "scripts/trust-scan.mjs",
+      "reason": "The scanner's own rule definitions. A rule that detects a phrase necessarily contains that phrase, so this file matches every pattern it defines. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-backup-sql",
+      "path": "tests/trustScan.test.mjs",
+      "reason": "The scanner's own test fixtures. These strings are present on purpose, to prove each rule fires; removing them would delete the tests that defend the rule. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-dotenv-boundary",
+      "path": ".env.example",
+      "reason": "Template file. Every key is present with an empty value; verified no value is set. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-dotenv-boundary",
+      "path": ".gitignore",
+      "reason": "Ignore/packaging metadata. The string is a pattern being excluded, not a value being committed \u2014 naming a file in order to keep it out. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-dotenv-boundary",
+      "path": ".npmignore",
+      "reason": "Ignore/packaging metadata. The string is a pattern being excluded, not a value being committed \u2014 naming a file in order to keep it out. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-dotenv-boundary",
+      "path": "package.json",
+      "reason": "Manifest reference to .env in packaging configuration, not a secret value. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-dotenv-boundary",
+      "path": "scripts/trust-scan.mjs",
+      "reason": "The scanner's own rule definitions. A rule that detects a phrase necessarily contains that phrase, so this file matches every pattern it defines. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-dotenv-boundary",
+      "path": "tests/trustScan.test.mjs",
+      "reason": "The scanner's own test fixtures. These strings are present on purpose, to prove each rule fires; removing them would delete the tests that defend the rule. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-dotenv-boundary",
+      "path": "worker/src/worker.ts",
+      "reason": "The `env.API_KEY` identifier in the bearer-token auth implementation, and comments about that path. An identifier, not a value. GitGuardian runs in CI as the actual secret scanner. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-private-data-room-boundary",
+      "path": ".npmignore",
+      "reason": "Ignore/packaging metadata. The string is a pattern being excluded, not a value being committed \u2014 naming a file in order to keep it out. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "private-data-room",
+      "path": ".npmignore",
+      "reason": "Ignore/packaging metadata. The string is a pattern being excluded, not a value being committed \u2014 naming a file in order to keep it out. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "private-valuation",
+      "path": "scripts/trust-scan.mjs",
+      "reason": "The scanner's own rule definitions. A rule that detects a phrase necessarily contains that phrase, so this file matches every pattern it defines. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "secret-dotenv-reference",
+      "path": ".env.example",
+      "reason": "Template file. Every key is present with an empty value; verified no value is set. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "secret-dotenv-reference",
+      "path": ".gitignore",
+      "reason": "Ignore/packaging metadata. The string is a pattern being excluded, not a value being committed \u2014 naming a file in order to keep it out. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "secret-dotenv-reference",
+      "path": ".npmignore",
+      "reason": "Ignore/packaging metadata. The string is a pattern being excluded, not a value being committed \u2014 naming a file in order to keep it out. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "secret-dotenv-reference",
+      "path": "package.json",
+      "reason": "Manifest reference to .env in packaging configuration, not a secret value. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "secret-dotenv-reference",
+      "path": "scripts/trust-scan.mjs",
+      "reason": "The scanner's own rule definitions. A rule that detects a phrase necessarily contains that phrase, so this file matches every pattern it defines. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "secret-dotenv-reference",
+      "path": "tests/trustScan.test.mjs",
+      "reason": "The scanner's own test fixtures. These strings are present on purpose, to prove each rule fires; removing them would delete the tests that defend the rule. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "secret-dotenv-reference",
+      "path": "worker/src/worker.ts",
+      "reason": "The `env.API_KEY` identifier in the bearer-token auth implementation, and comments about that path. An identifier, not a value. GitGuardian runs in CI as the actual secret scanner. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "stale-20-tools",
+      "path": "tests/trustScan.test.mjs",
+      "reason": "The scanner's own test fixtures. These strings are present on purpose, to prove each rule fires; removing them would delete the tests that defend the rule. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "stale-yahoo",
+      "path": "scripts/smoke-stdio.mjs",
+      "reason": "A regression assertion, not a claim: the smoke test asserts the finance adapter no longer exposes the retired Yahoo 401 failure path. The word must appear for the guard to work, and no Yahoo adapter exists in the registry. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "stale-yahoo",
+      "path": "scripts/trust-scan.mjs",
+      "reason": "The scanner's own rule definitions. A rule that detects a phrase necessarily contains that phrase, so this file matches every pattern it defines. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "stale-yahoo",
+      "path": "tests/trustScan.test.mjs",
+      "reason": "The scanner's own test fixtures. These strings are present on purpose, to prove each rule fires; removing them would delete the tests that defend the rule. Reviewed 2026-09-13."
+    }
+  ]
 }

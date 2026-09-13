@@ -118,16 +118,24 @@ included.
 a real signature — the cross-implementation check E-2 section 8 calls "the test that
 proves independence; the others only prove self-consistency".
 
-## Deployment gate
+## Deployment gate — satisfied
 
-Do not call E-2 "live" until all of these are true in production:
+This gate defined what "live" was allowed to mean. It is kept here rather than deleted, because
+the definition is the useful part: it says what had to be true before the claim at the top of this
+document could be made, and it is the list to re-run against if the key is ever rotated.
 
-1. production Ed25519 keypair generated and private key stored as a Cloudflare secret;
-2. public key document returns the active key id and expected SPKI bytes;
-3. a real MCP `evaluate_context` response contains a V4 block;
-4. the V4 payload verifies offline from a separate process using only the published public key;
-5. tampering with the payload causes offline verification to fail;
-6. legacy V3 ledger rows still verify through the existing path;
-7. CI, Worker typecheck, and the trust gate are green.
+All seven are met in production:
 
-Until that gate is completed, E-2 is implemented but not deployed.
+| | Criterion | Evidence |
+| --- | --- | --- |
+| 1 | Production Ed25519 keypair generated, private key stored as a Cloudflare secret | Key id `fc-2026-09-ceced1ab`; the private half is a Worker secret and appears nowhere in this repository |
+| 2 | Public key document returns the active key id and expected SPKI bytes | `/.well-known/freshcontext-signing-keys.json`; the public half is a plain var in `worker/wrangler.jsonc`, and `canonical-endpoint-proof` asserts the served document publishes that id |
+| 3 | A real MCP `evaluate_context` response contains a V4 block | `attestation-proof`, "Obtain a live verdict and lay out its bytes" |
+| 4 | The V4 payload verifies offline from a separate process using only the published public key | `attestation-proof` runs `scripts/verify-offline.mjs` and `scripts/verify_offline.py` — the two files that ship in the npm tarball, the same ones a third party would run |
+| 5 | Tampering with the payload causes offline verification to fail | `attestation-proof`, "Negative controls" — a mutated payload and a mutated signature must both be rejected by both verifiers |
+| 6 | Legacy V3 ledger rows still verify through the existing path | `POST /v1/verify` reports `verification_method` per row; legacy rows answer `hmac` and say so rather than being presented as equivalent |
+| 7 | CI, Worker typecheck, and the trust gate are green | `verify.yml` — `npm test`, `npx tsc --noEmit` at root and in `worker/`, `npm run trust:gate` |
+
+Criteria 3-6 are not a one-time record. `attestation-proof` re-runs them daily at 07:00 UTC against
+production, so a mismatched keypair or a vanished key document is caught within a day rather than by
+the first third party who tries to verify something.

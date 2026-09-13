@@ -1,0 +1,148 @@
+# Proves the hostname the public actually uses.
+#
+# Every public surface names api.freshcontext.dev: README ("Production endpoint"), server.json
+# (how MCP registry clients connect), FRESHCONTEXT_SPEC.md, docs/CLIENT_SETUP.md,
+# docs/CODEX_MCP_USAGE.md, demo/README.md. Nothing tested it.
+#
+# Both the deploy smoke test and the attestation proof read vars.WORKER_BASE_URL, which is the
+# workers.dev hostname. So a break in the custom-domain route — a lapsed certificate, a DNS
+# change, an edit to the `routes` block in wrangler.jsonc — would 404 every published URL while
+# CI stayed green. That is the mirror image of a failure this repository has already had: adding
+# `routes` to wrangler.jsonc once disabled the workers.dev host, and the smoke test caught it.
+# Nothing was watching the other direction.
+#
+# The canonical hostname is HARDCODED here rather than read from a repository variable. A
+# variable is what produced the blind spot; a second variable could drift the same way. This
+# workflow's entire purpose is to assert one specific name.
+#
+# It deliberately does NOT roll anything back and is not wired to the deploy job. The deploy
+# smoke test has automatic rollback (verify.yml), and certificate or DNS propagation is exactly
+# the kind of transient that must never revert a good deploy. This observes and reports.
+name: Canonical endpoint proof
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 07:30 UTC daily — half an hour after attestation-proof, so the two are legible as separate
+    # signals in the run history rather than one indistinguishable batch.
+    - cron: "30 7 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: canonical-endpoint-proof
+  cancel-in-progress: false
+
+env:
+  CANONICAL_BASE: https://api.freshcontext.dev
+
+jobs:
+  prove:
+    name: Prove the canonical domain serves the Worker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The key id lives in worker/wrangler.jsonc as a plain var (it is a public key id, not a
+      # secret). Reading it here turns "the domain answers" into "the domain serves THIS Worker",
+      # which is what catches a route pointed at something else.
+      - name: Read the expected signing key id from wrangler.jsonc
+        id: expected
+        run: |
+          set -euo pipefail
+          key_id=$(node -e '
+            const fs = require("node:fs");
+            const raw = fs.readFileSync("worker/wrangler.jsonc", "utf8")
+              .replace(/^\s*\/\/.*$/gm, "");
+            const cfg = JSON.parse(raw);
+            const id = cfg?.vars?.FC_ED25519_KEY_ID;
+            if (!id) { console.error("FC_ED25519_KEY_ID missing from worker/wrangler.jsonc"); process.exit(1); }
+            console.log(id);
+          ')
+          echo "key_id=$key_id" >> "$GITHUB_OUTPUT"
+          echo "expected signing key id: $key_id"
+
+      - name: GET /health
+        id: health
+        run: |
+          set -uo pipefail
+          body=""
+          for attempt in 1 2 3; do
+            if body="$(curl -fsS --max-time 20 "$CANONICAL_BASE/health")"; then break; fi
+            echo "attempt $attempt: $CANONICAL_BASE/health did not answer"
+            body=""
+            sleep 5
+          done
+          [ -n "$body" ] || { echo "::error::$CANONICAL_BASE/health never answered. The canonical domain is not serving."; exit 1; }
+          printf '%s\n' "$body"
+          version=$(node -e '
+            const b = JSON.parse(process.argv[1]);
+            const fail = (m) => { console.error(`::error::/health ${m}`); process.exit(1); };
+            if (b.status !== "ok") fail(`status is ${JSON.stringify(b.status)}, expected "ok"`);
+            if (typeof b.version !== "string" || !b.version) fail("carries no version");
+            if (typeof b.git_sha !== "string" || !b.git_sha) fail("carries no git_sha");
+            console.log(b.version);
+          ' "$body")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "ok  /health — version $version"
+
+      - name: GET /v1/health
+        run: |
+          set -uo pipefail
+          body="$(curl -fsS --max-time 20 "$CANONICAL_BASE/v1/health")" \
+            || { echo "::error::$CANONICAL_BASE/v1/health did not answer. The mounted REST surface has its own route gate, so this can fail while /health passes."; exit 1; }
+          printf '%s\n' "$body"
+          node -e '
+            const b = JSON.parse(process.argv[1]);
+            if (b.ok !== true) { console.error(`::error::/v1/health did not report ok:true (got ${JSON.stringify(b.ok)})`); process.exit(1); }
+            console.log("ok  /v1/health");
+          ' "$body"
+
+      # The URL published in the specification and in verification instructions. A third party
+      # who cannot fetch this cannot verify anything, no matter how well the signing works.
+      - name: GET the published signing key document
+        run: |
+          set -uo pipefail
+          body="$(curl -fsS --max-time 20 "$CANONICAL_BASE/.well-known/freshcontext-signing-keys.json")" \
+            || { echo "::error::the published key document is unreachable at $CANONICAL_BASE. Offline verification is documented against this URL."; exit 1; }
+          printf '%s\n' "$body"
+          node -e '
+            const b = JSON.parse(process.argv[1]);
+            const want = process.argv[2];
+            const fail = (m) => { console.error(`::error::key document ${m}`); process.exit(1); };
+            if (!Array.isArray(b.keys)) fail("has no keys array");
+            const active = b.keys.filter((k) => k && k.key_id && k.public_key);
+            if (active.length === 0) fail("publishes no usable key");
+            if (!active.some((k) => k.key_id === want)) {
+              fail(`does not publish ${want}; it publishes ${JSON.stringify(active.map((k) => k.key_id))}. The canonical domain may be routed to a different Worker.`);
+            }
+            console.log(`ok  key document publishes ${want}`);
+          ' "$body" "${{ steps.expected.outputs.key_id }}"
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "## Canonical endpoint proof"
+            echo
+            echo "Target: \`$CANONICAL_BASE\` — the hostname named by README, server.json, the"
+            echo "specification and the client setup docs."
+            echo
+            echo "| Check | |"
+            echo "| --- | --- |"
+            echo "| \`/health\` | ${{ steps.health.outcome == 'success' && 'ok' || 'FAILED' }} |"
+            echo "| \`/v1/health\` | mounted REST surface |"
+            echo "| \`/.well-known/freshcontext-signing-keys.json\` | publishes \`${{ steps.expected.outputs.key_id }}\` |"
+            echo
+            echo "Worker version reported: \`${{ steps.health.outputs.version }}\`"
+            echo
+            echo "This proves the canonical domain serves this Worker and publishes the expected"
+            echo "signing key. It does not verify a signature — \`attestation-proof\` does that."
+          } >> "$GITHUB_STEP_SUMMARY"
