@@ -123,12 +123,22 @@ jobs:
             const want = process.argv[2];
             const fail = (m) => { console.error(`::error::key document ${m}`); process.exit(1); };
             if (!Array.isArray(b.keys)) fail("has no keys array");
-            const active = b.keys.filter((k) => k && k.key_id && k.public_key);
-            if (active.length === 0) fail("publishes no usable key");
-            if (!active.some((k) => k.key_id === want)) {
-              fail(`does not publish ${want}; it publishes ${JSON.stringify(active.map((k) => k.key_id))}. The canonical domain may be routed to a different Worker.`);
+            // Field names come from PublishedSigningKey in worker/src/ed25519Attestation.ts:
+            // key_id, algorithm, public_key_spki_b64, status. An earlier version of this
+            // check looked for `public_key`, matched nothing, and reported "no usable key"
+            // against a perfectly healthy document.
+            const usable = b.keys.filter((k) => k && k.key_id && k.public_key_spki_b64);
+            if (usable.length === 0) {
+              fail(`publishes no key carrying public_key_spki_b64; keys=${JSON.stringify(b.keys)}`);
             }
-            console.log(`ok  key document publishes ${want}`);
+            const match = usable.find((k) => k.key_id === want);
+            if (!match) {
+              fail(`does not publish ${want}; it publishes ${JSON.stringify(usable.map((k) => k.key_id))}. The canonical domain may be routed to a different Worker.`);
+            }
+            if (match.status !== "active") {
+              fail(`publishes ${want} with status ${JSON.stringify(match.status)}, expected "active". A retired key cannot verify new verdicts.`);
+            }
+            console.log(`ok  key document publishes ${want} (${match.algorithm}, status ${match.status})`);
           ' "$body" "${{ steps.expected.outputs.key_id }}"
 
       # ── characterise a refusal ────────────────────────────────────────────────
