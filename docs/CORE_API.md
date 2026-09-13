@@ -163,6 +163,40 @@ FreshContext decisions judge citation readiness, context usefulness, freshness, 
 
 Demo output will be updated separately so presentation stays separate from Core decision logic.
 
+## Deterministic Evaluation
+
+Core evaluation is reproducible, and this section says exactly how far that reproducibility reaches,
+because "deterministic" is a claim a reader should be able to check rather than take.
+
+**Freshness scoring does not read the wall clock.** `calculateFreshnessScore(content_date,
+retrieved_at, adapter)` computes elapsed time from the signal's own `retrieved_at`, never from
+`Date.now()`. The whole evaluation path follows the same rule. The wall clock enters only as a
+*fallback* when a signal carries no usable `retrieved_at`, and `CoreSignalEvaluationOptions.now`
+overrides even that:
+
+```ts
+const results = evaluateSignals(signals, { now: "2026-06-09T12:00:00.000Z" });
+```
+
+Given signals that carry explicit `retrieved_at` values, the following are byte-stable across runs:
+`freshness_score`, `final_score`, utility values, ranking order, `decision`, decision labels, and
+the reasons attached to them. `computeVerdictId` deliberately excludes time entirely, so a
+`verdict_id` is stable across evaluations at different moments.
+
+**Two fields are decision-time rather than signal-time.** `ContextDecisionOptions.now` controls
+`evaluated_at`, and `revalidate_after` is derived from it:
+
+```ts
+const decisions = interpretEvaluations(results, {
+  sourceProfile,
+  intentProfile,
+  now: "2026-06-09T12:00:00.000Z",
+});
+```
+
+Omit `now` and both fall back to the current time, which is the right default for production and the
+wrong one for a reproducible harness. Pass it in tests, replay runs, and benchmarks.
+
 ## Human-Readable Output
 
 The human-readable output helper adds a small reader-facing layer on top of existing Core evaluations and decisions.
