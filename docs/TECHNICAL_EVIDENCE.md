@@ -75,20 +75,51 @@ actual secret scanner for that case. This caveat is written into the allowlist f
 | Specification is published and MIT-licensed | `FRESHCONTEXT_SPEC.md` |
 | **The canonical hostname serves this Worker** | `canonical-endpoint-proof` workflow — **currently FAILING, see below** |
 
-### Open: `api.freshcontext.dev` returns 403 to programmatic clients
+### Open: Cloudflare Bot Fight Mode challenges `api.freshcontext.dev`
 
-As of 2026-09-13 the canonical-endpoint proof fails. `GET https://api.freshcontext.dev/health`
-returns **403** from GitHub Actions across three attempts. The Worker source contains no 403 path
-at all — unknown routes return 404 and unauthorized requests return 401 — so the refusal happens
-at the Cloudflare edge, before the Worker. The `workers.dev` hostname answers normally from the
-same CI environment, and `*.workers.dev` traffic does not traverse a zone's security rules.
+Established by the `canonical-endpoint-proof` workflow on 2026-09-13, run with `diagnose`:
 
-This matters beyond a red workflow: `server.json` points MCP registry clients at
-`api.freshcontext.dev/mcp`, and the offline-verification instructions point at
-`api.freshcontext.dev/.well-known/freshcontext-signing-keys.json`. Both are programmatic clients.
+| Path | Default client | Browser User-Agent |
+| --- | --- | --- |
+| `/health` | **403** | **403** |
+| `/v1/health` | **403** | not retried |
+| `/mcp` | **403** | not retried |
+| `/` | **403** | not retried |
+| `/.well-known/freshcontext-signing-keys.json` | **200**, `application/json` | **200** |
 
-Cause not yet confirmed — a zone-level bot, WAF or Access rule is the likely candidate, but that
-has not been established and should not be repeated as though it had been.
+Every 403 carries `cf-mitigated: challenge`, `server: cloudflare`, and a
+`<title>Just a moment...</title>` body. That is a Cloudflare **managed challenge**, not a WAF
+block (which returns an Error 1020 body), not Access (a redirect), and not rate limiting (429).
+The Worker is never reached: its source contains no 403 path at all, and unknown routes return
+404.
+
+**A browser User-Agent does not help.** The challenge requires executing JavaScript, so no API
+client can satisfy it regardless of how it identifies itself. This is not a User-Agent filter.
+
+**The offline-verification path is not affected.** `/.well-known/freshcontext-signing-keys.json`
+returns 200 to a default client, so a third party can still fetch the public key and verify a
+verdict offline. The claim in `docs/VERIFYING.md` holds.
+
+**What is affected:** `/mcp` — the endpoint `server.json` publishes to MCP registry clients —
+plus `/health`, `/v1/health` and `/`. An MCP client connecting over the canonical hostname
+receives a challenge it cannot solve.
+
+#### Why the usual fix does not apply
+
+Per Cloudflare's documentation, **Bot Fight Mode cannot be skipped by a WAF custom rule**: it
+does not run on the Ruleset Engine, so `Skip`, `Bypass` and `Allow` actions have no effect on it.
+JavaScript Detections is also force-enabled for Bot Fight Mode and cannot be turned off.
+
+That leaves two real options:
+
+1. Turn Bot Fight Mode **off** for the zone (Security → Settings → Bot traffic), or
+2. Move to **Super Bot Fight Mode**, which does run on the Ruleset Engine, and add a WAF custom
+   rule with the `Skip` action targeting all Super Bot Fight Mode rules, scoped to
+   `http.host eq "api.freshcontext.dev"`.
+
+Option 2 is the one that keeps bot protection on the marketing surface while letting the API
+hostname answer programmatic clients. Until one is applied, this row stays open, and the
+`canonical-endpoint-proof` workflow will keep failing — which is the workflow behaving correctly.
 
 ## What this index does not prove
 
