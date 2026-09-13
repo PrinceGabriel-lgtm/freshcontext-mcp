@@ -3,6 +3,7 @@
 import { promises as fs } from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import process from "node:process";
 
 const TOOL_NAME = "FreshContext Trust Scanner";
@@ -106,6 +107,16 @@ const BINARY_EXTENSIONS = new Set([
   ".zip"
 ]);
 
+// Scan modes. `technical` is everything the scanner has always done: stale
+// claims, package boundary, secrets, version and tool-count consistency.
+// `legal` is the transfer-readiness surface — identity documents, promises of
+// consideration, licence integrity and contributor provenance. They are
+// separate because they answer to different readers and fail for different
+// reasons, and because running one should never be blocked by triage owed on
+// the other.
+const KNOWN_RULE_MODES = new Set(["technical", "legal"]);
+const KNOWN_SCAN_MODES = new Set(["technical", "legal", "all"]);
+
 const SEVERITY_RANK = {
   info: 0,
   warn: 1,
@@ -156,8 +167,16 @@ async function main() {
     loadRules(rulesPath),
     loadAllowlist(allowlistPath)
   ]);
-  const compiledRules = compileRules(rules);
-  validateAllowlistRuleIds(allowlist, compiledRules);
+  const activeRules = args.mode === "all"
+    ? rules
+    : rules.filter((rule) => rule.modes.includes(args.mode));
+  const compiledRules = compileRules(activeRules);
+
+  // Validated against EVERY rule, not just the active ones: an allowlist entry
+  // naming a rule that only exists in the other mode is still a typo, and
+  // silently tolerating it in one mode is how a stale exception survives.
+  validateAllowlistRuleIds(allowlist, compileRules(rules));
+  const ruleEngineFinding = assertRuleEngineIsLive(compiledRules);
   const projectStates = [];
 
   for (const selectedPath of args.paths) {
@@ -176,6 +195,16 @@ async function main() {
     finalizeRepoMap(scanState);
     if (args.claimCheck) {
       await runClaimChecks(scanState);
+    }
+    if (args.mode === "technical" || args.mode === "all") {
+      await runCodeTruthChecks(scanState);
+    }
+    if (args.mode === "legal" || args.mode === "all") {
+      await runLegalStructuralChecks(scanState);
+    }
+    addAllowlistBreadthFinding(scanState, allowlist);
+    if (ruleEngineFinding) {
+      scanState.findings.push({ ...ruleEngineFinding });
     }
     projectStates.push(scanState);
   }
@@ -208,7 +237,8 @@ function parseArgs(argv) {
     outputFile: null,
     packageGate: false,
     repoMap: false,
-    showAllowed: false
+    showAllowed: false,
+    mode: "technical"
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -246,6 +276,16 @@ function parseArgs(argv) {
 
     if (arg === "--show-allowed") {
       result.showAllowed = true;
+      continue;
+    }
+
+    if (arg === "--mode") {
+      const value = argv[index + 1];
+      if (!isNonEmptyString(value) || !KNOWN_SCAN_MODES.has(value)) {
+        throw new Error(`--mode requires one of: ${[...KNOWN_SCAN_MODES].join(", ")}`);
+      }
+      result.mode = value;
+      index += 1;
       continue;
     }
 
@@ -339,6 +379,14 @@ Options:
   --fail-on <level>   Exit nonzero for unallowlisted findings at warn or fail severity.
   --repo-map          Include repo map summary in text/Markdown and full repo map in JSON.
   --show-allowed      Show full allowlisted finding details in text and Markdown output.
+  --mode <mode>       technical (default) | legal | all.
+                        technical  stale claims, package boundary, secrets, version and
+                                   tool-count consistency, plus code-truth checks that read
+                                   the built artifact instead of trusting a constant.
+                        legal      transfer-readiness: identity documents, promises of
+                                   consideration, licence integrity, contributor provenance
+                                   and whether contribution terms are written down.
+                        all        both.
   --package-gate      Run npm pack dry-run package-boundary inspection.
   --claim-check       Run deterministic local public-claim consistency checks.
   --output <file>     Write the selected output mode to a file, overwriting that file.
@@ -346,6 +394,18 @@ Options:
 
 Defaults:
   Local-only scan, no network, no telemetry, no file modification.
+  Mode technical, so behaviour is unchanged for every caller written before modes existed.
+
+Allowlist scoping:
+  An entry may carry an optional 'match' to scope the exception to one exact matched
+  string instead of the whole file. Prefer it: a file-scoped entry also suppresses
+  matches that do not exist yet. Rules that redact their matches cannot be match-scoped,
+  because that would mean writing the redacted text into the config.
+
+Self-test:
+  Named rules are checked against canary strings they must match before any scanning
+  happens. If a canary fails the run aborts with exit 2 rather than reporting clean —
+  a scanner that has silently stopped scanning otherwise reports a perfect score.
   Skips .git, node_modules, dist, build, .wrangler, .next, coverage, and .cache.
 `);
 }
@@ -375,7 +435,16 @@ async function loadRules(filePath) {
       throw new Error(`${location} scopes must be a non-empty array when provided.`);
     }
 
+    // A rule with no declared modes is technical. That default keeps every rule
+    // written before modes existed behaving exactly as it did, so adding legal
+    // mode cannot change what `trust:gate` reports.
+    const modes = rule.modes ?? ["technical"];
+    if (!Array.isArray(modes) || modes.length === 0 || modes.some((mode) => !KNOWN_RULE_MODES.has(mode))) {
+      throw new Error(`${location} modes must be a non-empty array of ${[...KNOWN_RULE_MODES].join(" | ")}.`);
+    }
+
     return {
+      modes,
       id: rule.id,
       category: rule.category,
       severity: rule.severity,
@@ -424,10 +493,20 @@ async function loadAllowlist(filePath) {
       errors.push(`${location}: wildcard paths are not allowed.`);
     }
 
-    if (isNonEmptyString(entry.ruleId) && isNonEmptyString(entry.path) && isNonEmptyString(entry.reason) && !entry.path.includes("*")) {
+    // `match` narrows an exception to one exact matched string instead of the
+    // whole file. Deliberately not a line number: line numbers rot the moment
+    // anything is inserted above them, and a rotted line number silently
+    // suppresses a DIFFERENT finding. Matching on the text fails safe instead —
+    // change the text and the exception simply stops applying.
+    if (entry.match !== undefined && !isNonEmptyString(entry.match)) {
+      errors.push(`${location}: match must be a non-empty string when provided.`);
+    }
+
+    if (isNonEmptyString(entry.ruleId) && isNonEmptyString(entry.path) && isNonEmptyString(entry.reason) && !entry.path.includes("*") && (entry.match === undefined || isNonEmptyString(entry.match))) {
       allowlist.push({
         ruleId: entry.ruleId,
         path: normalizePath(entry.path),
+        match: isNonEmptyString(entry.match) ? entry.match : undefined,
         reason: entry.reason
       });
     }
@@ -450,7 +529,14 @@ async function loadPackageMetadata(rootDir) {
       version: typeof parsed.version === "string" ? parsed.version : null,
       private: parsed.private === true,
       files: Array.isArray(parsed.files) ? parsed.files.filter((entry) => typeof entry === "string") : [],
-      scripts: parsed.scripts && typeof parsed.scripts === "object" && !Array.isArray(parsed.scripts) ? parsed.scripts : {}
+      scripts: parsed.scripts && typeof parsed.scripts === "object" && !Array.isArray(parsed.scripts) ? parsed.scripts : {},
+      license: typeof parsed.license === "string" ? parsed.license : null,
+      // The identities expected to appear in git history. Read from the manifest
+      // rather than a separate config so it sits beside the licence it belongs
+      // with, and so a fork that changes hands has one obvious place to update.
+      trustScanKnownAuthors: Array.isArray(parsed.trustScanKnownAuthors)
+        ? parsed.trustScanKnownAuthors.filter((entry) => typeof entry === "string")
+        : []
     };
   } catch (error) {
     if (error.code === "ENOENT") {
@@ -476,11 +562,23 @@ function formatValidationErrors(title, errors) {
 
 function validateAllowlistRuleIds(allowlist, rules) {
   const ruleIds = new Set(rules.map((rule) => rule.id));
+  const redactingRuleIds = new Set(rules.filter((rule) => rule.redact).map((rule) => rule.id));
   const errors = [];
 
   for (const [index, entry] of allowlist.entries()) {
     if (!ruleIds.has(entry.ruleId)) {
       errors.push(`Allowlist entry at index ${index}: unknown ruleId "${entry.ruleId}".`);
+    }
+
+    // A redacting rule matches things that must not be written down. Scoping
+    // such an exception to an exact match would require copying the matched
+    // text into this config, which is the opposite of redacting it. Those rules
+    // stay file-scoped; the breadth is the price of not transcribing a secret.
+    if (entry.match !== undefined && redactingRuleIds.has(entry.ruleId)) {
+      errors.push(
+        `Allowlist entry at index ${index}: rule "${entry.ruleId}" redacts its matches, ` +
+        "so it cannot be scoped with `match` — that would require storing the redacted text here. Use a file-scoped entry."
+      );
     }
   }
 
@@ -1034,7 +1132,7 @@ function addFinding({ state, rule, relativePath, fileCategory, line, matchText }
     return;
   }
 
-  const allow = findAllowlistEntry(state.allowlist, rule.id, relativePath);
+  const allow = findAllowlistEntry(state.allowlist, rule.id, relativePath, matchText);
   const severityAdjustment = resolveEffectiveSeverity(rule, fileCategory);
 
   state.findings.push({
@@ -1161,9 +1259,19 @@ function severityForClaimLikeRule(rule, fileCategory, label) {
   };
 }
 
-function findAllowlistEntry(allowlist, ruleId, relativePath) {
+function findAllowlistEntry(allowlist, ruleId, relativePath, matchText) {
   const normalizedPath = normalizePath(relativePath);
-  return allowlist.find((entry) => entry.ruleId === ruleId && normalizedPath.endsWith(entry.path));
+  const candidates = allowlist.filter((entry) => entry.ruleId === ruleId && normalizedPath.endsWith(entry.path));
+
+  // A match-scoped entry is tried first and only applies to that exact text, so
+  // a file carrying one reviewed exception does not become a blind spot for
+  // every future hit of the same rule.
+  const precise = candidates.find((entry) => entry.match !== undefined && entry.match === matchText);
+  if (precise) {
+    return precise;
+  }
+
+  return candidates.find((entry) => entry.match === undefined);
 }
 
 function redactMatch(matchText, rule) {
@@ -2979,6 +3087,441 @@ function truncateText(value, maxLength) {
 
 function uniqueSorted(values) {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+
+// ─── negative control ───────────────────────────────────────────────────────
+// A scanner that has silently stopped scanning reports a perfect score. Every
+// other check here trusts the rule engine; nothing checked the engine itself.
+//
+// Each canary is a string that a named rule MUST match. If its rule is active
+// and does not fire, the engine is broken and the run aborts rather than
+// reporting clean. This is the same reasoning as the negative control in the
+// context-integrity benchmark: prove the instrument still detects, before
+// believing it when it detects nothing.
+const RULE_ENGINE_CANARIES = [
+  { ruleId: "stale-version-0-3-16", text: "the published build is v0.3.16 today" },
+  { ruleId: "legal-passport-number", text: "Passport No: A1234567" }
+];
+
+// Returns a finding to record, or null. Distinguishes two different states that
+// look identical in a report: no rules configured at all (a deliberate narrow
+// run, or a misconfiguration — worth saying, not worth aborting), and a rule
+// that exists but has stopped matching what it is defined to match (the engine
+// is broken, and nothing it reports can be believed).
+function assertRuleEngineIsLive(compiledRules) {
+  if (compiledRules.length === 0) {
+    return createSyntheticFinding({
+      ruleId: "rule-engine-empty",
+      severity: "warn",
+      path: "config/trust-scan-rules.json",
+      fileCategory: "config",
+      message: "No content rules are active for this mode.",
+      recommendation: "Content scanning reports nothing in this state. Expected when running only the claim or package checks; a misconfiguration otherwise."
+    });
+  }
+
+  for (const canary of RULE_ENGINE_CANARIES) {
+    const rule = compiledRules.find((candidate) => candidate.id === canary.ruleId);
+    if (!rule) {
+      continue;
+    }
+
+    const pattern = new RegExp(rule.pattern, rule.flags.includes("g") ? rule.flags : `${rule.flags}g`);
+    if (!pattern.test(canary.text)) {
+      throw new Error(
+        `Rule engine self-test failed: rule ${canary.ruleId} did not match its canary. ` +
+        "The scanner cannot be trusted to report a clean scan in this state."
+      );
+    }
+  }
+
+  return null;
+}
+
+// ─── allowlist breadth ──────────────────────────────────────────────────────
+// docs/TECHNICAL_EVIDENCE.md used to carry this as a prose caveat: exceptions
+// are rule+file scoped, so one reviewed exception blinds that rule for the
+// whole file forever. Entries can now carry `match`, which scopes to one exact
+// string. This reports the split so the caveat becomes a number that can be
+// driven down rather than a sentence that gets restated.
+function addAllowlistBreadthFinding(state, allowlist) {
+  if (allowlist.length === 0) {
+    return;
+  }
+
+  const precise = allowlist.filter((entry) => entry.match !== undefined).length;
+  const broad = allowlist.length - precise;
+
+  state.findings.push(createSyntheticFinding({
+    ruleId: "allowlist-scope-breadth",
+    severity: "info",
+    path: "config/trust-scan-allowlist.json",
+    fileCategory: "config",
+    message: `Allowlist: ${allowlist.length} entries — ${precise} scoped to an exact match, ${broad} scoped to a whole file.`,
+    recommendation: broad === 0
+      ? "Every exception is scoped to one exact string. No rule is blinded for a whole file."
+      : `${broad} file-scoped ${broad === 1 ? "entry suppresses" : "entries suppress"} their rule across the whole file, including matches that do not exist yet. Add a "match" field to narrow one when you next touch it.`
+  }));
+}
+
+// ─── code truth ─────────────────────────────────────────────────────────────
+// Everything above compares claims to OTHER CLAIMS: a version string against a
+// version string, a tool count against a hardcoded constant. That constant is
+// itself an unchecked assertion — if the registry gained an adapter and nobody
+// edited the constant, every downstream check would agree with each other and
+// all be wrong together.
+//
+// These checks read the built artifact instead and measure what the code
+// actually does. They import rather than parse, because an imported module is
+// the real object graph and a parsed one is a guess about it.
+async function runCodeTruthChecks(state) {
+  await checkToolCountAgainstRegistry(state);
+  await checkCoreMakesNoNetworkCalls(state);
+}
+
+async function checkToolCountAgainstRegistry(state) {
+  const registryPath = path.join(state.projectRoot, "dist", "adapters", "registry.js");
+
+  if (!(await pathExists(registryPath))) {
+    state.findings.push(createSyntheticFinding({
+      ruleId: "code-truth-tool-count-skipped",
+      severity: "info",
+      path: "dist/adapters/registry.js",
+      fileCategory: "generated",
+      message: "Tool-count code-truth check skipped: the build output is not present.",
+      recommendation: "Run `npm run build` first if you want claims checked against the real registry rather than against a constant."
+    }));
+    return;
+  }
+
+  let registry;
+  try {
+    const module = await import(pathToFileURL(registryPath).href);
+    registry = module.BUILT_IN_ADAPTER_REGISTRY;
+  } catch (error) {
+    state.findings.push(createSyntheticFinding({
+      ruleId: "code-truth-tool-count-unreadable",
+      severity: "warn",
+      path: "dist/adapters/registry.js",
+      fileCategory: "generated",
+      message: `Could not read the built adapter registry: ${error.message}`,
+      recommendation: "Rebuild. A registry that cannot be imported cannot be checked against the published tool count."
+    }));
+    return;
+  }
+
+  if (!Array.isArray(registry)) {
+    state.findings.push(createSyntheticFinding({
+      ruleId: "code-truth-tool-count-unreadable",
+      severity: "warn",
+      path: "dist/adapters/registry.js",
+      fileCategory: "generated",
+      message: "BUILT_IN_ADAPTER_REGISTRY is not an array in the built output.",
+      recommendation: "The registry shape changed. Update this check rather than deleting it."
+    }));
+    return;
+  }
+
+  // evaluate_context is the generic path and is not an adapter, so the tool
+  // surface is the registry plus one. That relationship is the claim.
+  const derived = registry.length + 1;
+
+  if (derived !== FRESHCONTEXT_MCP_EXPECTED_TOOL_COUNT) {
+    state.findings.push(createSyntheticFinding({
+      ruleId: "code-truth-tool-count-mismatch",
+      severity: "fail",
+      path: "dist/adapters/registry.js",
+      fileCategory: "generated",
+      message: `The built registry holds ${registry.length} adapters, so the tool surface is ${derived}. The scanner's expected tool count is ${FRESHCONTEXT_MCP_EXPECTED_TOOL_COUNT}.`,
+      recommendation: "The code moved and the constant did not, or the reverse. Every '22 tools' claim in the documentation is downstream of this number, so fix this before trusting any of them."
+    }));
+    return;
+  }
+
+  state.findings.push(createSyntheticFinding({
+    ruleId: "code-truth-tool-count-current",
+    severity: "info",
+    path: "dist/adapters/registry.js",
+    fileCategory: "generated",
+    message: `Tool count verified against the built registry: ${registry.length} adapters + evaluate_context = ${derived}.`,
+    recommendation: "No action needed. This number came from the code, not from a constant."
+  }));
+}
+
+// The headline behavioural claim is that Core evaluates candidate context
+// without fetching anything. There is a test for it. There was no scan for it,
+// which means a network primitive could be introduced in a file the test does
+// not cover and the public claim would go stale silently.
+const CORE_NETWORK_PRIMITIVES = [
+  { label: "fetch(", pattern: /(?<![A-Za-z0-9_$.])fetch\s*\(/u },
+  { label: "XMLHttpRequest", pattern: /\bXMLHttpRequest\b/u },
+  { label: "node:http import", pattern: /from\s+["']node:https?["']/u },
+  { label: "node:net import", pattern: /from\s+["']node:(?:net|dgram|tls)["']/u },
+  { label: "axios", pattern: /from\s+["']axios["']/u },
+  { label: "undici", pattern: /from\s+["']undici["']/u }
+];
+
+async function checkCoreMakesNoNetworkCalls(state) {
+  const coreDir = path.join(state.projectRoot, "src", "core");
+
+  if (!(await pathExists(coreDir))) {
+    return;
+  }
+
+  const offenders = [];
+
+  const visit = async (directory) => {
+    const entries = await fs.readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(entryPath);
+        continue;
+      }
+      if (!/\.(?:ts|mts|js|mjs)$/u.test(entry.name)) {
+        continue;
+      }
+      const content = await fs.readFile(entryPath, "utf8");
+      const lines = content.split(/\r?\n/u);
+      for (const [index, lineText] of lines.entries()) {
+        // A line that only talks about not fetching is the claim, not a breach.
+        if (/^\s*(?:\/\/|\*|\/\*)/u.test(lineText)) {
+          continue;
+        }
+        for (const primitive of CORE_NETWORK_PRIMITIVES) {
+          if (primitive.pattern.test(lineText)) {
+            offenders.push({
+              path: normalizePath(path.relative(state.projectRoot, entryPath)),
+              line: index + 1,
+              label: primitive.label
+            });
+          }
+        }
+      }
+    }
+  };
+
+  await visit(coreDir);
+
+  if (offenders.length > 0) {
+    for (const offender of offenders) {
+      state.findings.push(createSyntheticFinding({
+        ruleId: "code-truth-core-network-call",
+        severity: "fail",
+        path: `${offender.path}:${offender.line}`,
+        fileCategory: "source",
+        message: `Core contains a network primitive (${offender.label}).`,
+        recommendation: "Core is published as evaluating candidate context without fetching. Either the code moves out of Core, or that claim comes down. Both are fine; disagreeing is not."
+      }));
+    }
+    return;
+  }
+
+  state.findings.push(createSyntheticFinding({
+    ruleId: "code-truth-core-offline-current",
+    severity: "info",
+    path: "src/core",
+    fileCategory: "source",
+    message: "Core contains no network primitives. The offline-evaluation claim holds against the source.",
+    recommendation: "No action needed."
+  }));
+}
+
+// ─── legal structure ────────────────────────────────────────────────────────
+// Pattern rules catch what a document SAYS. These check what the repository IS:
+// who wrote it, under what licence, and on what terms a contribution arrives.
+// Those three are the questions a transfer diligence actually asks, and until
+// now the answer to each was a manual grep that was true on the day it was run.
+async function runLegalStructuralChecks(state) {
+  await checkContributorProvenance(state);
+  await checkLicenceIntegrity(state);
+  await checkContributorTermsPresent(state);
+}
+
+async function checkContributorProvenance(state) {
+  const known = state.packageMetadata?.trustScanKnownAuthors;
+  const result = await runCommand("git", ["log", "--all", "--format=%an <%ae>%n%b"], state.projectRoot);
+
+  if (result.exitCode !== 0) {
+    state.findings.push(createSyntheticFinding({
+      ruleId: "legal-provenance-unavailable",
+      severity: "info",
+      path: ".",
+      fileCategory: "repo_map",
+      message: "Contributor provenance not checked: git history is unavailable here.",
+      recommendation: "Run this where the repository history is present. A shallow or absent clone cannot answer who wrote the code."
+    }));
+    return;
+  }
+
+  const identities = new Set();
+  for (const rawLine of result.stdout.split(/\r?\n/u)) {
+    const line = rawLine.trim();
+    if (line.length === 0) {
+      continue;
+    }
+    const authored = /^(.+?)\s<([^>]*)>$/u.exec(line);
+    if (authored) {
+      identities.add(authored[2].toLowerCase());
+      continue;
+    }
+    const coAuthored = /^co-authored-by:\s*.+?<([^>]+)>/iu.exec(line);
+    if (coAuthored) {
+      identities.add(coAuthored[1].toLowerCase());
+    }
+  }
+
+  const allowed = new Set((Array.isArray(known) ? known : []).map((value) => String(value).toLowerCase()));
+  const unknown = [...identities].filter((identity) => !allowed.has(identity)).sort();
+
+  if (allowed.size === 0) {
+    state.findings.push(createSyntheticFinding({
+      ruleId: "legal-provenance-unconfigured",
+      severity: "warn",
+      path: "package.json",
+      fileCategory: "config",
+      message: `No known-author list is configured, so ${identities.size} committing ${identities.size === 1 ? "identity" : "identities"} cannot be checked.`,
+      recommendation: 'Add "trustScanKnownAuthors": ["you@example.com", ...] to package.json. Anything committing from outside that list then surfaces on the next run instead of during diligence.'
+    }));
+    return;
+  }
+
+  if (unknown.length > 0) {
+    state.findings.push(createSyntheticFinding({
+      ruleId: "legal-provenance-unknown-author",
+      severity: "fail",
+      path: ".",
+      fileCategory: "repo_map",
+      message: `${unknown.length} committing ${unknown.length === 1 ? "identity is" : "identities are"} not on the known-author list: ${unknown.join(", ")}`,
+      recommendation: "Either add the identity to trustScanKnownAuthors because it is yours, or establish on what terms that contribution arrived. Unrecorded authorship is the question every transfer diligence opens with."
+    }));
+    return;
+  }
+
+  state.findings.push(createSyntheticFinding({
+    ruleId: "legal-provenance-current",
+    severity: "info",
+    path: ".",
+    fileCategory: "repo_map",
+    message: `All ${identities.size} committing ${identities.size === 1 ? "identity is" : "identities are"} on the known-author list.`,
+    recommendation: "No action needed."
+  }));
+}
+
+async function checkLicenceIntegrity(state) {
+  const licensePath = path.join(state.projectRoot, "LICENSE");
+  const declared = state.packageMetadata?.license;
+
+  if (!(await pathExists(licensePath))) {
+    state.findings.push(createSyntheticFinding({
+      ruleId: "legal-licence-file-missing",
+      severity: "fail",
+      path: "LICENSE",
+      fileCategory: "public_doc",
+      message: "No LICENSE file.",
+      recommendation: "A public repository with no licence defaults to all rights reserved, which is almost never what was meant and is never what a reader can rely on. State the terms."
+    }));
+    return;
+  }
+
+  if (!isNonEmptyString(declared)) {
+    state.findings.push(createSyntheticFinding({
+      ruleId: "legal-licence-field-missing",
+      severity: "fail",
+      path: "package.json",
+      fileCategory: "config",
+      message: "A LICENSE file exists but package.json declares no license field.",
+      recommendation: "Tooling reads the manifest, humans read the file. When only one of them speaks, automated inventories report UNLICENSED."
+    }));
+    return;
+  }
+
+  const licenseText = await fs.readFile(licensePath, "utf8");
+  const mentionsDeclared = licenseText.toLowerCase().includes(String(declared).toLowerCase().replace(/-.*$/u, "").trim());
+
+  if (!mentionsDeclared) {
+    state.findings.push(createSyntheticFinding({
+      ruleId: "legal-licence-disagreement",
+      severity: "warn",
+      path: "LICENSE",
+      fileCategory: "public_doc",
+      message: `package.json declares "${declared}" but the LICENSE file does not name it.`,
+      recommendation: "Two statements of record that disagree are worse than one. Reconcile them, or say explicitly in LICENSE why the repository is split."
+    }));
+    return;
+  }
+
+  state.findings.push(createSyntheticFinding({
+    ruleId: "legal-licence-current",
+    severity: "info",
+    path: "LICENSE",
+    fileCategory: "public_doc",
+    message: `LICENSE is present and agrees with the declared license "${declared}".`,
+    recommendation: "No action needed."
+  }));
+}
+
+const CONTRIBUTOR_TERM_MARKERS = [
+  /\bno\s+(?:compensation|consideration)\b/iu,
+  /\bequity\b/iu,
+  /\bownership\s+interest\b/iu
+];
+
+async function checkContributorTermsPresent(state) {
+  const candidates = ["CONTRIBUTING.md", ".github/CONTRIBUTING.md", "CONTRIBUTING", "CLA.md"];
+  let found = null;
+
+  for (const candidate of candidates) {
+    const candidatePath = path.join(state.projectRoot, candidate);
+    if (await pathExists(candidatePath)) {
+      found = { relativePath: candidate, content: await fs.readFile(candidatePath, "utf8") };
+      break;
+    }
+  }
+
+  if (!found) {
+    state.findings.push(createSyntheticFinding({
+      ruleId: "legal-contributor-terms-missing",
+      severity: "warn",
+      path: "CONTRIBUTING.md",
+      fileCategory: "public_doc",
+      message: "No CONTRIBUTING or CLA file states the terms a contribution arrives under.",
+      recommendation: "Inbound=outbound is a convention, and a convention is what a reviewer asks you to point at. Write it down, along with whether contributing creates any claim to consideration."
+    }));
+    return;
+  }
+
+  const missing = CONTRIBUTOR_TERM_MARKERS.filter((marker) => !marker.test(found.content));
+
+  if (missing.length === CONTRIBUTOR_TERM_MARKERS.length) {
+    state.findings.push(createSyntheticFinding({
+      ruleId: "legal-contributor-terms-silent",
+      severity: "warn",
+      path: found.relativePath,
+      fileCategory: "public_doc",
+      message: `${found.relativePath} exists but says nothing about consideration, equity or ownership.`,
+      recommendation: "The clause that matters is the one stating that contributing creates no claim to compensation, equity or ownership. Silence on it is what becomes expensive to establish later."
+    }));
+    return;
+  }
+
+  state.findings.push(createSyntheticFinding({
+    ruleId: "legal-contributor-terms-current",
+    severity: "info",
+    path: found.relativePath,
+    fileCategory: "public_doc",
+    message: `${found.relativePath} states the terms a contribution arrives under.`,
+    recommendation: "No action needed."
+  }));
+}
+
+async function pathExists(target) {
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 main().catch((error) => {

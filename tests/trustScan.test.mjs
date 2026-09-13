@@ -744,3 +744,202 @@ function runScanner(cwd, args) {
     encoding: "utf8"
   });
 }
+
+// ─── modes ──────────────────────────────────────────────────────────────────
+
+const modedRules = {
+  rules: [
+    {
+      id: "stale-20-tools",
+      category: "stale_claim",
+      severity: "fail",
+      pattern: "\\b20\\s+tools\\b",
+      flags: "i",
+      message: "Stale tool-count claim found.",
+      recommendation: "Update the tool count."
+    },
+    {
+      id: "legal-relationship-claim",
+      category: "consideration_claim",
+      severity: "warn",
+      pattern: "\\bjoint\\s+venture\\b",
+      flags: "i",
+      modes: ["legal"],
+      message: "Relationship claim found.",
+      recommendation: "Confirm it exists in writing."
+    }
+  ]
+};
+
+test("legal mode runs legal rules and technical mode does not", async () => {
+  const fixture = await createFixture({ rules: modedRules });
+  try {
+    await writeFile(path.join(fixture, "README.md"), `${staleToolCountClaim} under a joint venture\n`, "utf8");
+
+    const technical = runScanner(fixture, ["--path", ".", "--json"]);
+    assert.equal(technical.status, 0, technical.stderr);
+    const technicalReport = JSON.parse(technical.stdout);
+    const technicalRules = technicalReport.findings.map((item) => item.ruleId);
+    assert.equal(technicalRules.includes("stale-20-tools"), true);
+    assert.equal(technicalRules.includes("legal-relationship-claim"), false);
+
+    const legal = runScanner(fixture, ["--path", ".", "--mode", "legal", "--json"]);
+    assert.equal(legal.status, 0, legal.stderr);
+    const legalRules = JSON.parse(legal.stdout).findings.map((item) => item.ruleId);
+    assert.equal(legalRules.includes("legal-relationship-claim"), true);
+    assert.equal(legalRules.includes("stale-20-tools"), false);
+
+    const all = runScanner(fixture, ["--path", ".", "--mode", "all", "--json"]);
+    const allRules = JSON.parse(all.stdout).findings.map((item) => item.ruleId);
+    assert.equal(allRules.includes("stale-20-tools"), true);
+    assert.equal(allRules.includes("legal-relationship-claim"), true);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("an unknown mode is rejected rather than silently scanning nothing", async () => {
+  const fixture = await createFixture();
+  try {
+    const result = runScanner(fixture, ["--path", ".", "--mode", "financial"]);
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /--mode requires one of/u);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+// ─── match-scoped allowlisting ──────────────────────────────────────────────
+
+test("a match-scoped allowlist entry suppresses only that exact match", async () => {
+  const fixture = await createFixture({
+    rules: {
+      rules: [
+        {
+          id: "stale-20-tools",
+          category: "stale_claim",
+          severity: "fail",
+          pattern: "\\b(?:20|11)\\s+tools\\b",
+          flags: "i",
+          message: "Stale tool-count claim found.",
+          recommendation: "Update the tool count."
+        }
+      ]
+    },
+    allowlist: {
+      allow: [
+        {
+          ruleId: "stale-20-tools",
+          path: "README.md",
+          match: staleToolCountClaim,
+          reason: "Historical changelog line, reviewed."
+        }
+      ]
+    }
+  });
+  try {
+    await writeFile(path.join(fixture, "README.md"), `${staleToolCountClaim}\n11 tools\n`, "utf8");
+
+    const result = runScanner(fixture, ["--path", ".", "--json", "--fail-on", "fail"]);
+    const findings = JSON.parse(result.stdout).findings.filter((item) => item.ruleId === "stale-20-tools");
+
+    const allowed = findings.filter((item) => item.allowed);
+    const unallowed = findings.filter((item) => !item.allowed);
+
+    assert.equal(allowed.length, 1, "the reviewed match should be allowed");
+    assert.equal(allowed[0].match, staleToolCountClaim);
+
+    // The point of match scoping: the OTHER hit of the same rule in the same
+    // file is still reported, where a file-scoped entry would have hidden it.
+    assert.equal(unallowed.length, 1, "the unreviewed match in the same file must still report");
+    assert.equal(unallowed[0].match, "11 tools");
+    assert.equal(result.status, 1, "an unallowed fail-severity finding must still fail the run");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("a redacting rule cannot be match-scoped, because that would store the redacted text", async () => {
+  const fixture = await createFixture({
+    allowlist: {
+      allow: [
+        {
+          ruleId: "secret-openai-key-shape",
+          path: "README.md",
+          match: ["sk", "wouldHaveToBeWrittenHere"].join("-"),
+          reason: "Attempting to scope a redacting rule."
+        }
+      ]
+    }
+  });
+  try {
+    const result = runScanner(fixture, ["--path", "."]);
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /redacts its matches/u);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("allowlist breadth is reported so file-scoped exceptions stay visible", async () => {
+  const fixture = await createFixture({
+    allowlist: {
+      allow: [
+        { ruleId: "stale-20-tools", path: "README.md", reason: "File scoped." },
+        { ruleId: "stale-20-tools", path: "CHANGELOG.md", match: staleToolCountClaim, reason: "Match scoped." }
+      ]
+    }
+  });
+  try {
+    const result = runScanner(fixture, ["--path", ".", "--json"]);
+    const finding = JSON.parse(result.stdout).findings.find((item) => item.ruleId === "allowlist-scope-breadth");
+    assert.ok(finding, "breadth finding should be emitted");
+    assert.match(finding.message, /2 entries/u);
+    assert.match(finding.message, /1 scoped to an exact match/u);
+    assert.match(finding.message, /1 scoped to a whole file/u);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+// ─── self-test ──────────────────────────────────────────────────────────────
+
+test("a rule that stops matching its canary aborts the run instead of reporting clean", async () => {
+  const fixture = await createFixture({
+    rules: {
+      rules: [
+        {
+          id: "stale-version-0-3-16",
+          category: "stale_claim",
+          severity: "fail",
+          // Deliberately cannot match the canary: this is the scanner going blind.
+          pattern: "THIS_PATTERN_MATCHES_NOTHING",
+          flags: "i",
+          message: "Stale version claim found.",
+          recommendation: "Update it."
+        }
+      ]
+    }
+  });
+  try {
+    const result = runScanner(fixture, ["--path", "."]);
+    assert.equal(result.status, 2, "a blind scanner must not exit 0");
+    assert.match(result.stderr, /self-test failed/u);
+    assert.match(result.stderr, /cannot be trusted to report a clean scan/u);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("an empty rule set is reported rather than aborting a narrow run", async () => {
+  const fixture = await createFixture({ rules: emptyRules });
+  try {
+    const result = runScanner(fixture, ["--path", ".", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const finding = JSON.parse(result.stdout).findings.find((item) => item.ruleId === "rule-engine-empty");
+    assert.ok(finding, "an empty rule set should surface as a finding");
+    assert.equal(finding.effectiveSeverity, "warn");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});

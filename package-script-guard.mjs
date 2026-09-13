@@ -85,6 +85,16 @@ const commands = {
     command: "node",
     args: ["scripts/trust-scan.mjs", "--path", ".", "--repo-map", "--package-gate", "--claim-check", "--fail-on", "fail"],
   },
+  "trust:legal": {
+    required: ["scripts/trust-scan.mjs"],
+    command: "node",
+    args: ["scripts/trust-scan.mjs", "--path", ".", "--mode", "legal", "--fail-on", "fail"],
+  },
+  "trust:all": {
+    required: ["scripts/trust-scan.mjs"],
+    command: "node",
+    args: ["scripts/trust-scan.mjs", "--path", ".", "--mode", "all", "--repo-map", "--package-gate", "--claim-check", "--fail-on", "fail"],
+  },
   "trust:report": {
     required: ["scripts/trust-scan.mjs"],
     command: "node",
