@@ -2,6 +2,40 @@
 
 This document records dependency and license diligence notes from the Trust L4/L5 cleanup. It is not legal advice and does not replace professional review for external review, distribution, or formal diligence.
 
+## Transfer Inventory — 2026-09-13
+
+`NOTICE.md` says to rerun dependency and licence inventory before any commercial
+transfer or packaged diligence review. This is that rerun.
+
+**Licence inventory, production dependencies only:**
+
+| Tree | Licences found |
+| --- | --- |
+| Root (`freshcontext-mcp`) | MIT 83, ISC 7, BSD-2-Clause 2, BSD-3-Clause 2, Apache-2.0 2 |
+| Worker (`worker/`) | MIT 132, ISC 13, Apache-2.0 11, BSD-2-Clause 6, BSD-3-Clause 5, 0BSD 1 |
+
+**No copyleft anywhere.** No GPL, AGPL, LGPL, SSPL or CPAL in either production
+tree. Checked by running the inventory against an explicit permissive allowlist,
+which passes. Copyleft contamination is the usual licence blocker in a software
+transfer; there is none here to clear.
+
+**One finding, fixed in the same change.** The inventory reported
+`freshcontext-mcp-worker@0.4.0` as UNLICENSED. That was this repository's own
+`worker/package.json`, which carried no `license` field. Every other statement of
+record — the root `LICENSE`, the root package manifest, `NOTICE.md` — says MIT,
+while the component actually deployed to production declared nothing. `private: true`
+governs npm publication, not the licence grant, so the two are not substitutes. The
+field is now `"license": "MIT"`, and the licence story is consistent across the root
+package, the worker, the LICENSE file and the notice.
+
+**Audit, production dependencies:** root reports 0 vulnerabilities. The worker
+reports the same 3 high advisories recorded below — `extract-zip` reached through
+`@cloudflare/puppeteer`, still with no fixed version upstream and still absent from
+the deployed bundle.
+
+This is an inventory, not a legal opinion. A buyer should rerun it against the tree
+they actually receive and have counsel review third-party attribution obligations.
+
 ## Current Audit Status
 
 Root package, as of 2026-09-10:
