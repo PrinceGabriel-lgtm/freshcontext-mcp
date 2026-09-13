@@ -2,6 +2,7 @@
   "name": "freshcontext-mcp-worker",
   "version": "0.4.0",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",

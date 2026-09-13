@@ -1,12 +1,24 @@
 # RISKS — FreshContext DAR engine and ingestion pipeline
 
-Known algorithmic and data-integrity edge cases in `worker/src/intelligence.ts` and the cron ingestion path. Last reviewed: 2026-06-19.
+Known algorithmic and data-integrity edge cases in `worker/src/intelligence.ts` and the cron ingestion path.
+
+Algorithmic items last re-verified: 2026-06-19. Document reviewed 2026-09-13 — that
+review corrected references and scope wording only, and did not re-verify the
+algorithmic items below, which still carry their original date.
+
+> **Scope: this file is about the signal-intelligence path, not verdict attestation.**
+> Two different signing mechanisms exist in this project and they are not
+> interchangeable. `ha_pri_sig` / Ha-Pri v1, discussed below, is a provenance stamp
+> over DAR ingestion rows computed with a published constant salt — it is an audit
+> reference, not authentication. `FRESHCONTEXT_HA_PRI_V4` is the Ed25519 attestation
+> over verdict rows, verifiable offline against a published public key
+> (`docs/VERIFYING.md`). Nothing in this file describes a weakness in V4.
 
 ---
 
 ## Active risks (not yet mitigated)
 
-These are real and unguarded. Tracked in CLAUDE.md "Things Pending".
+These are real and unguarded. Tracked in the maintainer's working notes, which are not part of this repository — this file is the public record.
 
 ### 3. Lazy decay missing
 
