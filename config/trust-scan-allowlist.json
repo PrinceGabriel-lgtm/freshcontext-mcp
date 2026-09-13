@@ -61,6 +61,11 @@
     },
     {
       "ruleId": "package-api-key-boundary",
+      "path": "docs/TECHNICAL_EVIDENCE.md",
+      "reason": "The phrase is the claim \"no account, API key or contact with us\" \u2014 the verification promise itself, not key material, and identical in kind to the README.md and docs/VERIFYING.md entries above. The sibling private-valuation match in this same file was deliberately NOT allowlisted: it was reworded instead, so that rule stays live on the document most likely to be handed to an outside reviewer. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "package-api-key-boundary",
       "path": "docs/VERIFYING.md",
       "reason": "The phrase is the claim \"no API key required\" \u2014 the verification promise itself, not key material. Reviewed 2026-09-13."
     },

@@ -1,0 +1,163 @@
+{
+  "benchmark": "context-integrity-v1",
+  "fixture_version": "1.0.0",
+  "now": "2026-06-09T12:00:00.000Z",
+  "note": "Authored fixtures, not sampled traffic. Expectations were recorded from observed engine behaviour and then pinned, so this measures the evaluation contract against regression. It is not a population-level accuracy estimate.",
+  "families": [
+    {
+      "id": "A",
+      "name": "temporal-inversion",
+      "claim": "Where a staler item carries a stronger semantic score, FreshContext registers the age difference rather than ranking on semantic similarity alone.",
+      "cases": [
+        {
+          "id": "A-1",
+          "description": "Academic: fresher-but-weaker overtakes staler-but-stronger on final score.",
+          "profile": "academic_research",
+          "intent": "citation_check",
+          "signals": [
+            { "id": "stale-strong", "source": "https://example.org/a/stale-strong", "source_type": "arxiv", "title": "Stale but semantically stronger", "content": "Replicated benchmarks for retrieval augmented generation reliability and context quality.", "published_at": "2024-01-10T00:00:00.000Z", "semantic_score": 0.97, "date_confidence": "high" },
+            { "id": "fresh-weak", "source": "https://example.org/a/fresh-weak", "source_type": "arxiv", "title": "Fresh but semantically weaker", "content": "Brief note on retrieval augmented generation reliability.", "published_at": "2026-06-07T00:00:00.000Z", "semantic_score": 0.71, "date_confidence": "high" }
+          ],
+          "assert": {
+            "order": ["fresh-weak", "stale-strong"],
+            "semantic_only_order": ["stale-strong", "fresh-weak"],
+            "corrects_inversion": true
+          }
+        },
+        {
+          "id": "A-2",
+          "description": "Finance: the semantic gap is wide enough that ranking does NOT reorder, but the decision layer still marks the stale item needs_refresh. Recorded because it is the honest result, not the flattering one.",
+          "profile": "market_finance",
+          "intent": "market_watch",
+          "signals": [
+            { "id": "stale-strong", "source": "https://example.com/f/stale-strong", "source_type": "finance", "title": "Stale but semantically stronger", "content": "Detailed quarterly revenue and margin analysis for the company.", "published_at": "2026-05-01T00:00:00.000Z", "semantic_score": 0.97, "date_confidence": "high" },
+            { "id": "fresh-weak", "source": "https://example.com/f/fresh-weak", "source_type": "finance", "title": "Fresh but semantically weaker", "content": "Short update on the company revenue figure released this morning.", "published_at": "2026-06-09T06:00:00.000Z", "semantic_score": 0.70, "date_confidence": "high" }
+          ],
+          "assert": {
+            "order": ["stale-strong", "fresh-weak"],
+            "semantic_only_order": ["stale-strong", "fresh-weak"],
+            "corrects_inversion": false,
+            "decisions": { "stale-strong": "needs_refresh" }
+          }
+        },
+        {
+          "id": "A-3",
+          "description": "Docs: a two-year-old page with a near-perfect semantic score against a week-old page with a moderate one.",
+          "profile": "official_docs",
+          "intent": "developer_adoption",
+          "signals": [
+            { "id": "stale-strong", "source": "https://example.net/d/stale-strong", "source_type": "github", "title": "Stale but semantically stronger", "content": "Configuration reference describing every available flag and its default value.", "published_at": "2024-06-01T00:00:00.000Z", "semantic_score": 0.99, "date_confidence": "high" },
+            { "id": "fresh-weak", "source": "https://example.net/d/fresh-weak", "source_type": "github", "title": "Fresh but semantically weaker", "content": "Release notes describing the new configuration flag and defaults.", "published_at": "2026-06-02T00:00:00.000Z", "semantic_score": 0.68, "date_confidence": "high" }
+          ],
+          "assert": { "semantic_only_order": ["stale-strong", "fresh-weak"] }
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "date-integrity",
+      "claim": "Unusable dates degrade to an explicit low-confidence treatment rather than being scored as if trustworthy.",
+      "cases": [
+        {
+          "id": "B-1",
+          "description": "Five date conditions evaluated together under one profile.",
+          "profile": "official_docs",
+          "intent": "developer_adoption",
+          "signals": [
+            { "id": "valid-recent", "source": "https://example.net/b/valid", "source_type": "github", "title": "Valid recent date", "content": "Release notes describing the new configuration flag and defaults.", "published_at": "2026-06-08T00:00:00.000Z", "semantic_score": 0.8, "date_confidence": "high" },
+            { "id": "missing-date", "source": "https://example.net/b/missing", "source_type": "github", "title": "No date at all", "content": "Release notes describing the new configuration flag and defaults.", "semantic_score": 0.8, "date_confidence": "unknown" },
+            { "id": "future-date", "source": "https://example.net/b/future", "source_type": "github", "title": "Implausible future date", "content": "Release notes describing the new configuration flag and defaults.", "published_at": "2027-01-01T00:00:00.000Z", "semantic_score": 0.8, "date_confidence": "high" },
+            { "id": "old-useful", "source": "https://example.net/b/old", "source_type": "github", "title": "Genuinely old but usable", "content": "Release notes describing the new configuration flag and defaults.", "published_at": "2023-01-01T00:00:00.000Z", "semantic_score": 0.8, "date_confidence": "high" }
+          ],
+          "assert": {
+            "freshness_null": ["missing-date", "future-date"],
+            "decisions": {
+              "valid-recent": "use_first",
+              "missing-date": "needs_verification",
+              "future-date": "needs_verification",
+              "old-useful": "use_as_background"
+            },
+            "date_confidence": { "future-date": "unknown", "missing-date": "unknown" }
+          }
+        },
+        {
+          "id": "B-2",
+          "description": "A calendar-invalid date (2024-02-30). Recorded as a KNOWN GAP: Core does not reject it the way the Worker ingestion path does, so it rolls to 1 March and scores as merely old rather than as untrustworthy.",
+          "profile": "official_docs",
+          "intent": "developer_adoption",
+          "signals": [
+            { "id": "invalid-date", "source": "https://example.net/b/invalid", "source_type": "github", "title": "Calendar-invalid date", "content": "Release notes describing the new configuration flag and defaults.", "published_at": "2024-02-30T00:00:00.000Z", "semantic_score": 0.8, "date_confidence": "high" }
+          ],
+          "assert": {
+            "known_gap": "Core normalizeSignal accepts a calendar-invalid date that JS Date rolls forward. The Worker DAR path rejects it via an ISO round-trip check; Core does not. Pinned so the gap is visible and so closing it shows up as a benchmark change.",
+            "date_confidence": { "invalid-date": "high" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "name": "failure-honesty",
+      "claim": "Content that looks like a failed retrieval is marked failed and excluded, rather than being stamped fresh and high-confidence because its timestamp is recent.",
+      "cases": [
+        {
+          "id": "C-1",
+          "description": "Three failure shapes alongside one healthy signal, all with identical recent dates and semantic scores.",
+          "profile": "official_docs",
+          "intent": "developer_adoption",
+          "signals": [
+            { "id": "healthy", "source": "https://example.net/c/ok", "source_type": "github", "title": "Healthy", "content": "Release notes describing the new configuration flag and defaults.", "published_at": "2026-06-08T00:00:00.000Z", "semantic_score": 0.8, "date_confidence": "high" },
+            { "id": "error-body", "source": "https://example.net/c/err", "source_type": "github", "title": "Error body", "content": "[ERROR] 503 upstream timeout while fetching document", "published_at": "2026-06-08T00:00:00.000Z", "semantic_score": 0.8, "date_confidence": "high" },
+            { "id": "empty-body", "source": "https://example.net/c/empty", "source_type": "github", "title": "Empty body", "content": "", "published_at": "2026-06-08T00:00:00.000Z", "semantic_score": 0.8, "date_confidence": "high" },
+            { "id": "not-found", "source": "https://example.net/c/404", "source_type": "github", "title": "Not found", "content": "404 Not Found", "published_at": "2026-06-08T00:00:00.000Z", "semantic_score": 0.8, "date_confidence": "high" }
+          ],
+          "assert": {
+            "status_failed": ["error-body", "empty-body", "not-found"],
+            "freshness_null": ["error-body", "empty-body", "not-found"],
+            "decisions": { "healthy": "use_first", "error-body": "exclude", "empty-body": "exclude", "not-found": "exclude" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "name": "source-profile-sensitivity",
+      "claim": "Measures WHICH Source Profile fields are load-bearing and which are declarative. It does not assert broad profile-driven differentiation, because most profile metadata does not reach the scoring path.",
+      "cases": [
+        {
+          "id": "D-1",
+          "description": "One identical signal, comfortably fresh, evaluated under five profiles. Expected to be IDENTICAL everywhere: default_decay_lambda and half_life_hours do not reach evaluateSignal, which uses LAMBDA[source_type].",
+          "intent": "developer_adoption",
+          "profiles": ["official_docs", "academic_research", "social_pulse", "market_finance", "jobs_opportunities"],
+          "signals": [
+            { "id": "only", "source": "https://example.net/d/only", "source_type": "github", "title": "Identical across profiles", "content": "Release notes describing the new configuration flag and defaults.", "published_at": "2026-03-01T00:00:00.000Z", "semantic_score": 0.8, "date_confidence": "high" }
+          ],
+          "assert": { "identical_across_profiles": true }
+        },
+        {
+          "id": "D-2",
+          "description": "The same signal below the strict-refresh freshness threshold. market_finance and jobs_opportunities are hardcoded in STRICT_REFRESH_PROFILES (decision.ts) and are expected to diverge; the others are not.",
+          "intent": "developer_adoption",
+          "profiles": ["official_docs", "academic_research", "market_finance", "jobs_opportunities"],
+          "signals": [
+            { "id": "aging", "source": "https://example.com/d/aging", "source_type": "finance", "title": "Below the strict-refresh threshold", "content": "Detailed quarterly revenue and margin analysis for the company.", "published_at": "2026-05-01T00:00:00.000Z", "semantic_score": 0.9, "date_confidence": "high" }
+          ],
+          "assert": {
+            "diverges_across_profiles": true,
+            "decisions_by_profile": { "market_finance": "needs_refresh", "jobs_opportunities": "needs_refresh" }
+          }
+        },
+        {
+          "id": "D-3",
+          "description": "authority_hint high plus a citation intent is the one metadata field that branches (decision.ts, cite_as_primary).",
+          "intent": "citation_check",
+          "profiles": ["academic_research", "social_pulse"],
+          "signals": [
+            { "id": "citable", "source": "https://example.org/d/citable", "source_type": "arxiv", "title": "Citation candidate", "content": "Replicated benchmarks for retrieval augmented generation reliability and context quality.", "published_at": "2026-06-08T00:00:00.000Z", "semantic_score": 0.95, "date_confidence": "high" }
+          ],
+          "assert": { "diverges_across_profiles": true }
+        }
+      ]
+    }
+  ]
+}

@@ -52,6 +52,15 @@ const commands = {
     args: ["examples/validate-signal-batch.ts"],
     passThroughArgs: true,
   },
+  "benchmark:context-integrity": {
+    required: [
+      "benchmarks/context-integrity-v1/run.ts",
+      "benchmarks/context-integrity-v1/fixtures.json",
+    ],
+    command: "tsx",
+    args: ["benchmarks/context-integrity-v1/run.ts"],
+    passThroughArgs: true,
+  },
   "core:fixture": {
     required: ["scripts/pack-core-fixture.mjs", "dist/core/index.js"],
     command: "node",
@@ -151,6 +160,7 @@ const commands = {
       "tests/workerDarGoldenVectors.test.ts",
       "tests/offlineVerification.test.ts",
       "tests/trustScan.test.mjs",
+      "tests/contextIntegrityBenchmark.test.ts",
     ],
   },
 };

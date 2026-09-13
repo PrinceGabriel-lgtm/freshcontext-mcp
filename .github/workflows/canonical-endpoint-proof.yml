@@ -22,6 +22,11 @@ name: Canonical endpoint proof
 
 on:
   workflow_dispatch:
+    inputs:
+      diagnose:
+        description: "Characterise a refusal: probe every public path, capture edge headers, and test a browser User-Agent"
+        type: boolean
+        default: false
   schedule:
     # 07:30 UTC daily — half an hour after attestation-proof, so the two are legible as separate
     # signals in the run history rather than one indistinguishable batch.
@@ -118,13 +123,76 @@ jobs:
             const want = process.argv[2];
             const fail = (m) => { console.error(`::error::key document ${m}`); process.exit(1); };
             if (!Array.isArray(b.keys)) fail("has no keys array");
-            const active = b.keys.filter((k) => k && k.key_id && k.public_key);
-            if (active.length === 0) fail("publishes no usable key");
-            if (!active.some((k) => k.key_id === want)) {
-              fail(`does not publish ${want}; it publishes ${JSON.stringify(active.map((k) => k.key_id))}. The canonical domain may be routed to a different Worker.`);
+            // Field names come from PublishedSigningKey in worker/src/ed25519Attestation.ts:
+            // key_id, algorithm, public_key_spki_b64, status. An earlier version of this
+            // check looked for `public_key`, matched nothing, and reported "no usable key"
+            // against a perfectly healthy document.
+            const usable = b.keys.filter((k) => k && k.key_id && k.public_key_spki_b64);
+            if (usable.length === 0) {
+              fail(`publishes no key carrying public_key_spki_b64; keys=${JSON.stringify(b.keys)}`);
             }
-            console.log(`ok  key document publishes ${want}`);
+            const match = usable.find((k) => k.key_id === want);
+            if (!match) {
+              fail(`does not publish ${want}; it publishes ${JSON.stringify(usable.map((k) => k.key_id))}. The canonical domain may be routed to a different Worker.`);
+            }
+            if (match.status !== "active") {
+              fail(`publishes ${want} with status ${JSON.stringify(match.status)}, expected "active". A retired key cannot verify new verdicts.`);
+            }
+            console.log(`ok  key document publishes ${want} (${match.algorithm}, status ${match.status})`);
           ' "$body" "${{ steps.expected.outputs.key_id }}"
+
+      # ── characterise a refusal ────────────────────────────────────────────────
+      # Runs when anything above failed, or on demand. A 403 from Cloudflare's edge
+      # carries its own fingerprint: `cf-mitigated: challenge` for bot management, an
+      # "Error 1020" body for a WAF custom rule, a redirect to *.cloudflareaccess.com for
+      # Access. Reading those is the difference between "the domain is down" and knowing
+      # which control to change.
+      #
+      # No credentials are sent and every path probed is public, so nothing here can leak.
+      - name: Characterise the refusal
+        if: failure() || inputs.diagnose
+        run: |
+          set -uo pipefail
+          BROWSER_UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36'
+
+          probe () {
+            local path="$1" label="$2" ua="$3"
+            echo "── $label $path"
+            if [ -n "$ua" ]; then
+              code=$(curl -s -o /tmp/body.txt -D /tmp/hdr.txt -w '%{http_code}' --max-time 20 -A "$ua" "$CANONICAL_BASE$path" || echo "000")
+            else
+              code=$(curl -s -o /tmp/body.txt -D /tmp/hdr.txt -w '%{http_code}' --max-time 20 "$CANONICAL_BASE$path" || echo "000")
+            fi
+            echo "   status: $code"
+            grep -iE '^(cf-ray|cf-mitigated|cf-cache-status|server|content-type|location|retry-after):' /tmp/hdr.txt \
+              | sed 's/^/   /' || echo "   (no identifying headers)"
+            if [ "$code" != "200" ]; then
+              echo "   body (first 300 chars):"
+              head -c 300 /tmp/body.txt | tr -d '\r' | sed 's/^/     /'
+              echo ""
+            fi
+          }
+
+          echo "=== default client (what a script or CI runner looks like) ==="
+          for p in /health /v1/health /.well-known/freshcontext-signing-keys.json /mcp /; do
+            probe "$p" "default-UA" ""
+          done
+
+          echo ""
+          echo "=== browser User-Agent, same paths ==="
+          echo "If these succeed where the above failed, the control is User-Agent or"
+          echo "bot-score based rather than a blanket route or origin failure."
+          for p in /health /.well-known/freshcontext-signing-keys.json; do
+            probe "$p" "browser-UA" "$BROWSER_UA"
+          done
+
+          echo ""
+          echo "=== interpreting this ==="
+          echo "cf-mitigated: challenge        -> Bot Fight Mode / managed challenge"
+          echo "body contains 'Error 1020'     -> WAF custom rule (Access Denied)"
+          echo "302 to *.cloudflareaccess.com  -> Cloudflare Access in front of the hostname"
+          echo "429 + retry-after              -> rate limiting, not a block"
+          echo "no cf-ray at all               -> the refusal is not Cloudflare's edge"
 
       - name: Summarise
         if: always()

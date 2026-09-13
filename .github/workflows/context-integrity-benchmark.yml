@@ -1,0 +1,84 @@
+# Publishes a downloadable Context Integrity Benchmark run.
+#
+# Correctness is ALREADY gated elsewhere: tests/contextIntegrityBenchmark.test.ts runs the
+# benchmark and requires it to exit 0, and that test is in `npm test`, which the Verify
+# workflow runs on every push and pull request. So this workflow is not a second gate and
+# deliberately does not duplicate one.
+#
+# What it adds is an artifact. A valuer, lender, or corp-dev reviewer can dispatch this
+# against a named commit and download the run manifest and summary rather than being asked
+# to take a number in a README on trust. That is the whole point of the exercise.
+#
+# It does not deploy, does not publish, and needs no production secret: the benchmark is
+# local, deterministic, and makes no network call.
+name: Context integrity benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      repeat:
+        description: "Determinism repetitions per case"
+        type: string
+        default: "5"
+  push:
+    branches: [main]
+    paths:
+      - "benchmarks/context-integrity-v1/**"
+      - "src/core/**"
+      - ".github/workflows/context-integrity-benchmark.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: context-integrity-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: Run CIB-1 and upload the manifest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the benchmark
+        run: |
+          npm run benchmark:context-integrity -- \
+            --repeat "${{ inputs.repeat || '5' }}" \
+            --perf \
+            --json benchmark-results.json \
+            --markdown benchmark-results.md
+
+      - name: Summarise
+        if: always()
+        run: |
+          if [ -f benchmark-results.md ]; then
+            cat benchmark-results.md >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo ""
+              echo "Reproducibility digest and fixture hash are in the JSON artifact."
+              echo "Performance figures are a local Core microbenchmark on a GitHub runner:"
+              echo "not Worker throughput, not network latency, and not a capacity or SLA claim."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: context-integrity-benchmark
+          path: |
+            benchmark-results.json
+            benchmark-results.md
+          if-no-files-found: warn
+          retention-days: 90
