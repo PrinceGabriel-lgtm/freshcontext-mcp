@@ -89,6 +89,7 @@
     "demo:evaluate": "node package-script-guard.mjs demo:evaluate",
     "demo:evaluate:file": "node package-script-guard.mjs demo:evaluate:file",
     "batch:validate": "node package-script-guard.mjs batch:validate",
+    "benchmark:context-integrity": "node package-script-guard.mjs benchmark:context-integrity",
     "core:fixture": "node package-script-guard.mjs core:fixture",
     "smoke:stdio": "node package-script-guard.mjs smoke:stdio",
     "prove:attestation": "node package-script-guard.mjs prove:attestation",
