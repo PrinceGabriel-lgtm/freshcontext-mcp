@@ -229,11 +229,22 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      # The Worker imports ../../packages/core/src and ../../src/rest from source, so wrangler's
-      # bundler needs the ROOT node_modules to resolve their third-party imports. This
-      # mirrors exactly what the dry run in `verify` did.
+      # The Worker bundles ../../src/rest and ../../src/tools from source, and those
+      # reach Core through the `#core` subpath import, which the root package.json maps
+      # to ./dist/core/index.js. That file is a BUILD OUTPUT. Without the build step the
+      # bundler resolves #core to a path that does not exist on a clean runner and the
+      # deploy dies before upload:
+      #
+      #   ✘ [ERROR] Could not resolve "#core"
+      #     The module "./dist/core/index.js" was not found on the file system
+      #
+      # The `verify` job never caught it because it builds before its dry run. This job
+      # must mirror that order exactly, not just its install steps.
       - name: Install root dependencies
         run: npm ci
+
+      - name: Build root package
+        run: npm run build
 
       - name: Install worker dependencies
         working-directory: worker
