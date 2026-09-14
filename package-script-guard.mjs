@@ -154,6 +154,7 @@ const commands = {
       "tests/coreEnvelopeOptions.test.ts",
       "tests/mathSpine.test.ts",
       "tests/coreApiContract.test.ts",
+      "tests/revalidationAndEnvelopeContract.test.ts",
       "tests/coreSubpathExport.test.mjs",
       "tests/corePipeline.test.ts",
       "tests/decision.test.ts",

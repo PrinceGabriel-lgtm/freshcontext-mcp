@@ -4,7 +4,7 @@ This document keeps future FreshContext work organized without turning roadmap i
 
 FreshContext is live today as an integrated MCP/Core package. Future work should stay in lanes, start with audits, and avoid feature sprawl.
 
-The current package boundary is documented in [Core / MCP Boundary](./CORE_MCP_BOUNDARY.md). Treat MCP as the first live host over FreshContext Core, not as the whole product identity.
+The current layer and package boundaries are documented in [Architecture](./ARCHITECTURE.md). Treat MCP as the first live host over FreshContext Core, not as the whole product identity.
 
 ## Current Live Boundary
 

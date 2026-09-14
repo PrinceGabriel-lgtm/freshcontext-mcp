@@ -87,7 +87,7 @@ MCP is the primary reference/interface implementation over Core. Claude Desktop 
 
 The production Cloudflare Worker now uses Core-backed envelope generation. Worker-specific concerns remain outside Core: MCP transport, runtime guards, KV cache policy, cache metadata injection, JSON parse/replace cache helpers, D1 feeds, cron, rate limiting, and Store/feed scoring/provenance.
 
-See [Core / MCP Boundary](./docs/CORE_MCP_BOUNDARY.md) for the current package boundary and the staged path toward a future standalone Core package.
+See [Architecture](./docs/ARCHITECTURE.md) for the layer boundaries, the package surface, and what is not yet separated.
 
 ### Core import path
 

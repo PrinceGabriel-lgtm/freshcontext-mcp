@@ -4,7 +4,7 @@ FreshContext Core is the reusable engine layer in the current integrated Core/MC
 
 MCP, Worker HTTP, future REST, and future CLI/SDK surfaces should use Core as the contract center instead of redefining freshness or envelope behavior per host.
 
-For the package-level boundary between Core, MCP, adapters, and deployment surfaces, see [Core / MCP Boundary](./CORE_MCP_BOUNDARY.md).
+For the layer boundaries between Core, MCP, adapters, and deployment surfaces — and for the two revalidation clocks and the REST option contract — see [Architecture](./ARCHITECTURE.md).
 
 ## Stable Public Core API
 

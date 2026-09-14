@@ -16,7 +16,7 @@ Pass 11-J adds golden test vectors for the pure Core helpers. Ha-Pri v2 golden v
 
 Plain SHA-256 provides deterministic integrity and audit checks. HMAC or private-key signing would be needed later for stronger origin-authentication guarantees.
 
-Pass 11-K adds a design-only production enforcement plan in `docs/HA_PRI_V2_PRODUCTION_ENFORCEMENT_PLAN.md`. That plan covers the future D1/storage, write-path, read/debug verification, compatibility, backfill, threat model, and rollout path. It does not implement Worker/D1 enforcement.
+A design-only production enforcement plan for the future D1/storage, write-path, read/debug verification, compatibility, backfill, threat model and rollout path was maintained separately during Pass 11-K. It has been retired from the active tree now that the attestation work it anticipated has shipped; it remains in Git history and in the published package versions that carried it. Worker/D1 stored-signal enforcement is still not implemented.
 
 ## Current Ha-Pri v1 Audit
 

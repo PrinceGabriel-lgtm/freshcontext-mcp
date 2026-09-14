@@ -4,7 +4,10 @@ import { looksLikeFailedAdapterContent } from "./guards.js";
 
 export const MAX_ENVELOPE_CONTENT_LENGTH = 20000;
 
-function clampEnvelopeMaxLength(maxLength: number | undefined): number {
+// The single clamp for envelope content length. Exported so every envelope
+// constructor uses one implementation — pipeline.ts previously sliced against the
+// caller's value directly and did not apply MAX_ENVELOPE_CONTENT_LENGTH at all.
+export function clampEnvelopeMaxLength(maxLength: number | undefined): number {
   if (maxLength === 0) return 0;
   if (maxLength === undefined || !Number.isFinite(maxLength)) return 8000;
   return Math.min(MAX_ENVELOPE_CONTENT_LENGTH, Math.max(1, Math.floor(maxLength)));
