@@ -1,5 +1,5 @@
 import { LAMBDA, calculateFreshnessScore, computeRevalidateAfter, stalenessVerdict } from "./decay.js";
-import { formatForLLM, toStructuredJSON } from "./envelope.js";
+import { clampEnvelopeMaxLength, formatForLLM, toStructuredJSON } from "./envelope.js";
 import { calculateHaPriV2 } from "./provenance.js";
 import { prepareProvenanceReadiness } from "./provenanceReadiness.js";
 import { rankSignal } from "./rank.js";
@@ -45,7 +45,7 @@ function createEnvelope(
     : computeRevalidateAfter(signal.published_at, signal.retrieved_at, signal.source_type);
 
   const ctx: FreshContext = {
-    content: signal.content.slice(0, options.envelopeMaxLength ?? 8000),
+    content: signal.content.slice(0, clampEnvelopeMaxLength(options.envelopeMaxLength)),
     source_url: signal.source,
     content_date: signal.published_at,
     retrieved_at: signal.retrieved_at,

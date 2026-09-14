@@ -43,12 +43,19 @@ function computeEvaluatedAt(now: ContextDecisionOptions["now"]): string {
   return date.toISOString();
 }
 
+// The VERDICT clock. Distinct from the content clock in decay.ts, which answers a
+// different question: decay.ts::computeRevalidateAfter is anchored at the content's
+// publication date and says when the CONTENT crosses the staleness line (it can be in
+// the past). This one is anchored at evaluation time and says when THIS VERDICT should
+// be re-checked (always in the future). Both are correct; both are live on different
+// product surfaces; they are not two computations of one quantity. See docs/CORE_API.md.
+//
 // Pass 21: revalidate_after = evaluated_at + 1.0 × source profile half-life.
 // The half-life is the literal inflection where the source has lost half its
 // freshness signal value, the one number on the decay curve the source profile
 // is calibrated to express. Explicit null when no source profile basis exists
 // — never a fabricated timestamp.
-function computeRevalidateAfter(
+export function computeVerdictRevalidateAfter(
   evaluatedAt: string,
   sourceProfile: SourceProfile | undefined
 ): string | null {
@@ -236,7 +243,7 @@ export function interpretEvaluation(
   // factory — never recomputed at read time. revalidate_after is explicit null
   // when no source profile is available (no decay basis = no honest hint).
   const evaluatedAt = computeEvaluatedAt(options.now);
-  const revalidateAfter = computeRevalidateAfter(evaluatedAt, sourceProfile);
+  const revalidateAfter = computeVerdictRevalidateAfter(evaluatedAt, sourceProfile);
   const reasons = unique([
     evaluation.explanation,
     ...evaluation.signal.reasons,

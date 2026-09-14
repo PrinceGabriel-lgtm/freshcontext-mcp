@@ -46,7 +46,7 @@ docs/CLIENT_SETUP.md
 For the Core/MCP boundary, use:
 
 ```txt
-docs/CORE_MCP_BOUNDARY.md
+docs/ARCHITECTURE.md
 ```
 
 ## Reference Adapters

@@ -9,6 +9,17 @@ export interface FreshContext {
   freshness_score: number | null;
   adapter: string;
   staleness: StalenessVerdict;
+  /**
+   * CONTENT clock. The moment this content's freshness_score crosses the staleness
+   * boundary, anchored at content_date + the adapter half-life. May be in the PAST
+   * for old content — that is meaningful, not an error. Produced by
+   * decay.ts::computeRevalidateAfter and emitted on retrieval surfaces
+   * (stampFreshness, and the evaluation envelope).
+   *
+   * Not the same quantity as ContextDecisionResult.revalidate_after below, which is
+   * the VERDICT clock. The two share a field name for historical reasons and are
+   * computed from different inputs. See docs/CORE_API.md.
+   */
   revalidate_after: string | null;
 }
 
@@ -128,10 +139,15 @@ export interface ContextDecisionResult {
    */
   evaluated_at?: string;
   /**
-   * Advisory hint for when this verdict is worth re-checking, derived from
-   * the source profile's half_life_hours (evaluated_at + 1.0 × half-life).
-   * Explicit null when no source profile basis is available — never a
-   * fabricated timestamp. NOT enforcement; consumers decide what to do.
+   * VERDICT clock. Advisory hint for when this verdict is worth re-checking,
+   * derived from the source profile's half_life_hours (evaluated_at + 1.0 ×
+   * half-life). Always forward-looking. Explicit null when no source profile basis
+   * is available — never a fabricated timestamp. NOT enforcement; consumers decide
+   * what to do. Produced by decision.ts::computeVerdictRevalidateAfter and emitted
+   * on decision surfaces; this is the value recorded in the attestation ledger.
+   *
+   * Not the same quantity as FreshContext.revalidate_after above, which is the
+   * CONTENT clock. See docs/CORE_API.md.
    */
   revalidate_after?: string | null;
   label: string;

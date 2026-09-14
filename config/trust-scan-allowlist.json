@@ -223,6 +223,45 @@
       "ruleId": "stale-yahoo",
       "path": "tests/trustScan.test.mjs",
       "reason": "The scanner's own test fixtures. These strings are present on purpose, to prove each rule fires; removing them would delete the tests that defend the rule. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "stale-version-0-3-16",
+      "path": "scripts/trust-scan.mjs",
+      "reason": "The rule-engine self-test fixture. RULE_ENGINE_CANARIES deliberately contains a string this rule must match; if it ever stops matching, the scanner aborts rather than reporting clean. Removing the string would delete the check that the scanner still works. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "legal-passport-number",
+      "path": "scripts/trust-scan.mjs",
+      "reason": "The rule-engine self-test fixture, legal mode. Not a real passport number \u2014 a synthetic canary this rule must match for the run to be trusted. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "legal-relationship-claim",
+      "path": "CONTRIBUTING.md",
+      "match": "revenue share",
+      "reason": "The no-consideration clause itself. The sentence DISCLAIMS the relationship this rule detects, and match-scoping means a genuine relationship claim added to this file later still fires. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "legal-relationship-claim",
+      "path": "CONTRIBUTING.md",
+      "match": "joint venture",
+      "reason": "The no-consideration clause itself, second sentence \u2014 same reasoning, scoped to its own text so the rest of the file stays checked. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "legal-personal-mailbox",
+      "path": "package.json",
+      "reason": "trustScanKnownAuthors declares the identities expected in git history, so the address is the configuration rather than a leak. File-scoped because this rule redacts its matches and match-scoping one would mean transcribing the address into this file. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "stale-11-tools",
+      "path": "tests/trustScan.test.mjs",
+      "match": "11 tools",
+      "reason": "The scanner's own test fixture, proving a match-scoped exception suppresses one string and leaves the other hit in the same file reporting. Scoped to the exact text so the rest of the file stays checked. Reviewed 2026-09-13."
+    },
+    {
+      "ruleId": "legal-relationship-claim",
+      "path": "tests/trustScan.test.mjs",
+      "match": "joint venture",
+      "reason": "The scanner's own test fixture, proving legal-mode rules run in legal mode and not in technical mode. Present on purpose; removing it would delete the test. Reviewed 2026-09-13."
     }
   ]
 }

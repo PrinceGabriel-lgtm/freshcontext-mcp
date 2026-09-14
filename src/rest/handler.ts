@@ -136,9 +136,67 @@ async function readJsonBody(request: Request): Promise<{ ok: true; body: JsonRec
   }
 }
 
+// The REST option contract. Previously this cast the caller's JSON straight to
+// CoreSignalEvaluationOptions, which meant every field Core ever adds to that type
+// silently became a public REST feature. Options are now enumerated here, so adding
+// an option to Core is a deliberate REST decision rather than an automatic one.
+//
+// PUBLIC            — documented, supported, caller-settable.
+// CALLER-ASSERTED   — accepted and echoed back, but never treated as a FreshContext
+//                     attestation. provenance.engineVersion is the only one: the
+//                     provenance builder refuses to produce a record without it, and
+//                     the signed ledger row uses the server's own SERVICE_VERSION
+//                     regardless of what a caller sends.
+// INTERNAL          — accepted for compatibility, not documented as a feature.
+//
+// Unknown keys are dropped rather than rejected: a forward-compatible client that
+// sends a newer option must not start failing against an older deployment.
+const NUMBER_OPTIONS = ["envelopeMaxLength", "semanticWeight", "freshnessWeight"] as const;
+const BOOLEAN_OPTIONS = ["includeEnvelope", "includeProvenance"] as const;
+const STRING_OPTIONS = ["defaultSourceType"] as const;
+const PROVENANCE_STRING_OPTIONS = ["resultId", "engineVersion"] as const;
+
 function optionsFromBody(body: JsonRecord): CoreSignalEvaluationOptions | undefined {
   if (body.options === undefined) return undefined;
-  return isRecord(body.options) ? body.options as CoreSignalEvaluationOptions : {};
+  if (!isRecord(body.options)) return {};
+  const raw = body.options as JsonRecord;
+  const out: Record<string, unknown> = {};
+
+  for (const key of BOOLEAN_OPTIONS) {
+    if (typeof raw[key] === "boolean") out[key] = raw[key];
+  }
+  for (const key of NUMBER_OPTIONS) {
+    if (typeof raw[key] === "number" && Number.isFinite(raw[key])) out[key] = raw[key];
+  }
+  for (const key of STRING_OPTIONS) {
+    if (typeof raw[key] === "string") out[key] = raw[key];
+  }
+
+  // `now` is the deterministic evaluation reference clock. It is a supported public
+  // capability, not a test affordance: the Context Integrity Benchmark pins it so a
+  // run is reproducible, and callers replaying historical evaluations need it. It
+  // controls the returned evaluation only — it reaches no persisted or signed record
+  // through this route, because the evaluate routes are given no ledger binding.
+  if (typeof raw.now === "string" && !Number.isNaN(new Date(raw.now).getTime())) {
+    out.now = raw.now;
+  }
+
+  // envelopeFormat is a nested presentation object; forwarded as a record only.
+  if (isRecord(raw.envelopeFormat)) out.envelopeFormat = raw.envelopeFormat;
+
+  if (isRecord(raw.provenance)) {
+    const rawProv = raw.provenance as JsonRecord;
+    const prov: Record<string, unknown> = {};
+    for (const key of PROVENANCE_STRING_OPTIONS) {
+      if (typeof rawProv[key] === "string") prov[key] = rawProv[key];
+    }
+    if (typeof rawProv.semanticFingerprint === "string" || rawProv.semanticFingerprint === null) {
+      prov.semanticFingerprint = rawProv.semanticFingerprint;
+    }
+    out.provenance = prov;
+  }
+
+  return out as CoreSignalEvaluationOptions;
 }
 
 async function handleEvaluate(request: Request): Promise<Response> {

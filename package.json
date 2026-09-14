@@ -58,12 +58,11 @@
     "docs/API_DESIGN.md",
     "docs/CLIENT_SETUP.md",
     "docs/CODEX_MCP_USAGE.md",
-    "docs/CORE_MCP_BOUNDARY.md",
+    "docs/ARCHITECTURE.md",
     "docs/CORE_API.md",
     "docs/DEPENDENCY_DILIGENCE.md",
     "docs/FUTURE_LANES.md",
     "docs/HA_PRI_V2_DESIGN.md",
-    "docs/HA_PRI_V2_PRODUCTION_ENFORCEMENT_PLAN.md",
     "docs/HUMAN_READABLE_OUTPUT_CONTRACT.md",
     "docs/RELEASE_INTEGRITY.md",
     "docs/RELEASE_NOTES.md",
@@ -94,6 +93,8 @@
     "smoke:stdio": "node package-script-guard.mjs smoke:stdio",
     "prove:attestation": "node package-script-guard.mjs prove:attestation",
     "trust:gate": "node package-script-guard.mjs trust:gate",
+    "trust:legal": "node package-script-guard.mjs trust:legal",
+    "trust:all": "node package-script-guard.mjs trust:all",
     "trust:report": "node package-script-guard.mjs trust:report",
     "trust:report:json": "node package-script-guard.mjs trust:report:json",
     "trust:scan": "node package-script-guard.mjs trust:scan",
@@ -122,5 +123,10 @@
     "qs": "^6.16.0",
     "ws": "8.21.0",
     "fast-uri": "^3.1.6"
-  }
+  },
+  "trustScanKnownAuthors": [
+    "gimmanuel73@gmail.com",
+    "noreply@anthropic.com",
+    "41898282+github-actions[bot]@users.noreply.github.com"
+  ]
 }

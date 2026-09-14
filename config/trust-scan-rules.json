@@ -276,7 +276,10 @@
       "severity": "warn",
       "pattern": "(^|[^A-Za-z0-9_-])\\.env(?![A-Za-z0-9_-])",
       "flags": "i",
-      "scopes": ["content", "path"],
+      "scopes": [
+        "content",
+        "path"
+      ],
       "redact": true,
       "message": "Environment-file reference found.",
       "recommendation": "Confirm the file is only an example or ignored local configuration."
@@ -306,7 +309,11 @@
       "pattern": "\\bvaluation\\b",
       "flags": "i",
       "message": "Private valuation language found.",
-      "recommendation": "Keep valuation language out of public and package surfaces."
+      "recommendation": "Keep valuation language out of public and package surfaces.",
+      "modes": [
+        "technical",
+        "legal"
+      ]
     },
     {
       "id": "private-acquisition-checklist",
@@ -324,7 +331,11 @@
       "pattern": "\\bprivate\\s+data\\s+room\\b",
       "flags": "i",
       "message": "Private data-room language found.",
-      "recommendation": "Keep private data-room references out of public and package surfaces."
+      "recommendation": "Keep private data-room references out of public and package surfaces.",
+      "modes": [
+        "technical",
+        "legal"
+      ]
     },
     {
       "id": "private-pricing-strategy",
@@ -359,7 +370,9 @@
       "severity": "fail",
       "pattern": "\\.tgz\\b",
       "flags": "i",
-      "scopes": ["path"],
+      "scopes": [
+        "path"
+      ],
       "message": "Package artifact reference or file found.",
       "recommendation": "Keep generated package tarballs out of source and npm package output."
     },
@@ -369,7 +382,10 @@
       "severity": "fail",
       "pattern": "\\bbackup\\.sql\\b",
       "flags": "i",
-      "scopes": ["content", "path"],
+      "scopes": [
+        "content",
+        "path"
+      ],
       "message": "Database backup reference or file found.",
       "recommendation": "Keep database backups out of source and npm package output."
     },
@@ -379,7 +395,10 @@
       "severity": "fail",
       "pattern": "(^|[^A-Za-z0-9_-])\\.env(?![A-Za-z0-9_-])",
       "flags": "i",
-      "scopes": ["content", "path"],
+      "scopes": [
+        "content",
+        "path"
+      ],
       "message": "Environment-file package boundary risk found.",
       "recommendation": "Ensure environment files are ignored locally and excluded from package output."
     },
@@ -389,7 +408,10 @@
       "severity": "fail",
       "pattern": "\\bapi[-_ ]key\\b",
       "flags": "i",
-      "scopes": ["content", "path"],
+      "scopes": [
+        "content",
+        "path"
+      ],
       "message": "API-key package boundary risk found.",
       "recommendation": "Keep API key files and wording out of package surfaces unless clearly placeholder-only."
     },
@@ -399,7 +421,10 @@
       "severity": "fail",
       "pattern": "\\bregistry[-_ ]+token\\b",
       "flags": "i",
-      "scopes": ["content", "path"],
+      "scopes": [
+        "content",
+        "path"
+      ],
       "message": "Registry-token package boundary risk found.",
       "recommendation": "Keep registry tokens out of source and package surfaces."
     },
@@ -409,9 +434,16 @@
       "severity": "fail",
       "pattern": "\\bprivate\\s+data\\s+room\\b",
       "flags": "i",
-      "scopes": ["content", "path"],
+      "scopes": [
+        "content",
+        "path"
+      ],
       "message": "Private data-room package boundary risk found.",
-      "recommendation": "Keep private data-room material outside source and npm package output."
+      "recommendation": "Keep private data-room material outside source and npm package output.",
+      "modes": [
+        "technical",
+        "legal"
+      ]
     },
     {
       "id": "package-buyer-docs-boundary",
@@ -419,9 +451,100 @@
       "severity": "warn",
       "pattern": "\\bbuyer\\s+docs\\b",
       "flags": "i",
-      "scopes": ["content", "path"],
+      "scopes": [
+        "content",
+        "path"
+      ],
       "message": "Buyer-docs package boundary risk found.",
       "recommendation": "Keep buyer docs out of public and package surfaces."
+    },
+    {
+      "id": "legal-identity-document-number",
+      "category": "identity_exposure",
+      "severity": "fail",
+      "pattern": "\\b(?:national\\s*id|identity\\s*(?:no\\.?|number)|id\\s*(?:no\\.?|number))\\b\\W{0,12}\\d{6,13}\\b",
+      "flags": "i",
+      "redact": true,
+      "modes": [
+        "legal"
+      ],
+      "message": "An identity-document number appears alongside its label.",
+      "recommendation": "Identity documents belong in a restricted store, never in a repository or a public artifact. Remove it and rotate anything derived from it."
+    },
+    {
+      "id": "legal-passport-number",
+      "category": "identity_exposure",
+      "severity": "fail",
+      "pattern": "\\bpassport\\s*(?:no\\.?|number|#)?\\W{0,8}[A-Z]{0,2}\\d{6,9}\\b",
+      "flags": "i",
+      "redact": true,
+      "modes": [
+        "legal"
+      ],
+      "message": "A passport number appears alongside its label.",
+      "recommendation": "Remove it. A passport number in version control is permanent even after deletion, because history retains it."
+    },
+    {
+      "id": "legal-bank-detail",
+      "category": "identity_exposure",
+      "severity": "fail",
+      "pattern": "\\b(?:IBAN|SWIFT|BIC)\\b\\W{0,6}[A-Z]{2}[A-Z0-9]{6,32}\\b",
+      "flags": "i",
+      "redact": true,
+      "modes": [
+        "legal"
+      ],
+      "message": "Bank routing or account detail found.",
+      "recommendation": "Payment details do not belong in a repository. Remove and confirm the account has not been exposed."
+    },
+    {
+      "id": "legal-consideration-promise",
+      "category": "consideration_claim",
+      "severity": "fail",
+      "pattern": "\\b(?:promised|promises|promising|entitled\\s+to|will\\s+(?:receive|be\\s+paid|be\\s+given)|in\\s+exchange\\s+for|in\\s+consideration\\s+(?:of|for))\\b[^.\\n]{0,60}?\\b(?:equity|a\\s+stake|shares\\s+(?:in|of)|royalt\\w+|commission|compensation|\\d+\\s*(?:%|percent))\\b",
+      "flags": "i",
+      "modes": [
+        "legal"
+      ],
+      "message": "Language that reads as a promise of consideration.",
+      "recommendation": "If consideration was genuinely agreed, it belongs in a signed instrument reviewed by counsel \u2014 not in repository prose. If it was not, reword so it cannot be read that way."
+    },
+    {
+      "id": "legal-relationship-claim",
+      "category": "consideration_claim",
+      "severity": "warn",
+      "pattern": "\\b(?:co-?founder|co-?owner|joint\\s+venture|partnership\\s+agreement|profit\\s+shar\\w+|revenue\\s+shar\\w+|finder'?s\\s+fee|carried\\s+interest)\\b",
+      "flags": "i",
+      "modes": [
+        "legal"
+      ],
+      "message": "Language asserting a commercial relationship or shared interest.",
+      "recommendation": "Confirm the relationship exists in writing, or reword. An unqualified claim of co-ownership is a diligence finding on its own."
+    },
+    {
+      "id": "legal-entity-form-claim",
+      "category": "entity_claim",
+      "severity": "warn",
+      "pattern": "\\b(?:our\\s+company\\b|the\\s+company\\s+(?:owns|holds|employs)\\b|we\\s+are\\s+(?:a|an)\\s+(?:registered\\s+)?(?:company|corporation)\\b|\\w+\\s+(?:Pty|Proprietary)\\s*(?:Ltd|Limited)\\b)",
+      "flags": "i",
+      "modes": [
+        "legal"
+      ],
+      "message": "A claim of registered corporate form.",
+      "recommendation": "Claiming a corporate form that is not registered is a diligence finding. If no entity exists, describe the project rather than a company."
+    },
+    {
+      "id": "legal-personal-mailbox",
+      "category": "personal_data",
+      "severity": "warn",
+      "pattern": "\\b[A-Za-z0-9._%+-]+@(?:gmail|googlemail|hotmail|outlook|live|yahoo|proton|protonmail|icloud)\\.[A-Za-z]{2,}\\b",
+      "flags": "i",
+      "redact": true,
+      "modes": [
+        "legal"
+      ],
+      "message": "A personal mailbox appears in a public surface.",
+      "recommendation": "Route contact through a domain address you control. A personal mailbox published as a contact of record cannot be reassigned in a transfer."
     }
   ]
 }
