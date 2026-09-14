@@ -20,10 +20,10 @@
  */
 
 // Pass 20-C: the LAMBDA table is sourced from the edge-safe Core math boundary
-// (src/core/edge.ts → decay.ts) — one source of truth shared by Core and Worker.
+// (packages/core/src/edge.ts → decay.ts) — one source of truth shared by Core and Worker.
 // Same crypto-free relative-import mechanism the envelope path already uses in
-// the live bundle (see freshcontextEnvelope.ts → ../../src/core/index.js).
-import { LAMBDA } from "../../src/core/edge.js";
+// the live bundle (see freshcontextEnvelope.ts → ../../packages/core/src/index.js).
+import { LAMBDA } from "../../packages/core/src/edge.js";
 // Re-export to preserve intelligence.ts's prior public surface — LAMBDA was an
 // `export const` here before 20-C. applyDecay below uses the imported binding.
 export { LAMBDA };
@@ -41,7 +41,7 @@ export interface ScoringProfile {
 
 // ─── Decay Constants (λ per hour) ────────────────────────────────────────────
 //
-// The LAMBDA table moved to src/core/decay.ts and is imported above via the
+// The LAMBDA table moved to packages/core/src/decay.ts and is imported above via the
 // core/edge boundary, so Core and Worker share one source of truth. Two tests
 // guard it: tests/workerCoreLambdaParity.test.ts (table key-for-key equality)
 // and tests/workerDarGoldenVectors.test.ts (applyDecay output unchanged).

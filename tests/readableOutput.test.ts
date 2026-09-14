@@ -7,7 +7,7 @@ import {
   type CoreSignalEvaluationResult,
   type HumanReadableContextResult,
   type ProvenanceReadinessState,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 
 const SAFE_HANDOFF_REASON = "Decision and complete provenance support agent handoff.";
 const UNSAFE_DECISION_REASON = "Decision does not support agent handoff.";

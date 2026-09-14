@@ -2,12 +2,12 @@ import {
   evaluateSignals,
   getSourceProfile,
   interpretEvaluations,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 import type {
   ContextDecisionResult,
   CoreSignalEvaluationResult,
   FreshContextSignalInput,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 
 const NOW = "2026-05-24T13:00:00.000Z";
 

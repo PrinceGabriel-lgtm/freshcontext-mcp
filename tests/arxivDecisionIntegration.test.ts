@@ -4,9 +4,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { searchArxivSignals } from "../src/adapters/arxiv.js";
-import { evaluateSignals } from "../src/core/pipeline.js";
-import { interpretEvaluations } from "../src/core/decision.js";
-import { getSourceProfile } from "../src/core/sourceProfiles.js";
+import { evaluateSignals } from "../packages/core/src/pipeline.js";
+import { interpretEvaluations } from "../packages/core/src/decision.js";
+import { getSourceProfile } from "../packages/core/src/sourceProfiles.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_PATH = resolve(__dirname, "../examples/fixtures/arxiv-sample.xml");

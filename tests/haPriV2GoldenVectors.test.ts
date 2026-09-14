@@ -7,11 +7,11 @@ import {
   canonicalizeHaPriContent,
   sha256Hex,
   verifyHaPriV2,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 import type {
   HaPriV2Input,
   HaPriVerificationStatus,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 
 interface GoldenExpected {
   canonicalContent: string;

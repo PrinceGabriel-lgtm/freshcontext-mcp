@@ -6,11 +6,11 @@ import {
   evaluateSignals,
   getSourceProfile,
   interpretEvaluations,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 import type {
   ContextDecisionResult,
   CoreSignalEvaluationResult,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_PATH = resolve(__dirname, "fixtures/arxiv-sample.xml");

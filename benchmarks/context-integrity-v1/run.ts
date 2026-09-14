@@ -26,7 +26,7 @@ import {
   evaluateSignals,
   interpretEvaluations,
   getSourceProfile,
-} from "../../src/core/index.js";
+} from "../../packages/core/src/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..", "..");

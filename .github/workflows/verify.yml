@@ -229,7 +229,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      # The Worker imports ../../src/core and ../../src/rest from source, so wrangler's
+      # The Worker imports ../../packages/core/src and ../../src/rest from source, so wrangler's
       # bundler needs the ROOT node_modules to resolve their third-party imports. This
       # mirrors exactly what the dry run in `verify` did.
       - name: Install root dependencies

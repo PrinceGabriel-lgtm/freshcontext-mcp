@@ -4,7 +4,7 @@ import {
   BUILT_IN_SOURCE_PROFILES,
   getSourceProfile,
   listSourceProfiles,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 import type {
   SourceAuthorityHint,
   SourceDatePolicy,
@@ -12,7 +12,7 @@ import type {
   SourceProfile,
   SourceProfileId,
   SourceSurface,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 
 test("built-in source profiles have unique profile ids", () => {
   const profiles = listSourceProfiles();

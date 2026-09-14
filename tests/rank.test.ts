@@ -5,8 +5,8 @@ import {
   explainSignal,
   rankSignal,
   rankSignals,
-} from "../src/core/index.js";
-import type { FreshSignal, RankedSignal, RankOptions } from "../src/core/index.js";
+} from "../packages/core/src/index.js";
+import type { FreshSignal, RankedSignal, RankOptions } from "../packages/core/src/index.js";
 
 const now = "2026-05-13T10:00:00.000Z";
 const options: RankOptions = { now, defaultSourceType: "hackernews" };

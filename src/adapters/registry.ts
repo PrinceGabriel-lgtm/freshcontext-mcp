@@ -1,4 +1,4 @@
-import type { SourceProfileId } from "../core/index.js";
+import type { SourceProfileId } from "#core";
 
 export type AdapterRisk = "low" | "medium" | "high";
 export type AdapterOutputMode = "single" | "batch" | "composite";

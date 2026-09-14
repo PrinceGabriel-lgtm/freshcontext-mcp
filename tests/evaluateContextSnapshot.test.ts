@@ -10,8 +10,8 @@ import {
   buildHaPriPayloadV3,
   sha256Hex,
   canonicalizeHaPriContent,
-} from "../src/core/index.js";
-import type { ContextDecisionResult } from "../src/core/index.js";
+} from "../packages/core/src/index.js";
+import type { ContextDecisionResult } from "../packages/core/src/index.js";
 import workerIntelligence from "../worker/src/intelligence.ts";
 
 const { hmacSha256 } = workerIntelligence;

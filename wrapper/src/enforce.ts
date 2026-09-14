@@ -25,7 +25,7 @@ export type ContextDecision =
   | "watch_only"
   | "exclude";
 
-// The decisions Core treats as safe for agent handoff (see src/core/readable.ts
+// The decisions Core treats as safe for agent handoff (see packages/core/src/readable.ts
 // HANDOFF_SAFE_DECISIONS). An item is only handoff-safe if its decision is in this set
 // AND its provenance is complete — this wrapper reproduces that same rule when the caller
 // does not supply the flag directly.

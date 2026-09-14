@@ -5,11 +5,11 @@ import {
   buildHaPriPayload,
   buildHaPriPayloadV3,
   sha256Hex,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 import type {
   HaPriV2Input,
   HaPriV3Input,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 
 interface V3GoldenExpected {
   canonicalContentSha256: string;

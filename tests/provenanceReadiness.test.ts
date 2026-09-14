@@ -7,8 +7,8 @@ import {
 import {
   evaluateSignal,
   prepareProvenanceReadiness,
-} from "../src/core/index.js";
-import type { FreshContextSignalInput } from "../src/core/index.js";
+} from "../packages/core/src/index.js";
+import type { FreshContextSignalInput } from "../packages/core/src/index.js";
 
 const NOW = "2026-05-24T13:00:00.000Z";
 const JSON_START = "[FRESHCONTEXT_EVALUATION_JSON]";

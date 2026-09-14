@@ -2,7 +2,7 @@ import {
   formatForLLM,
   looksLikeFailedAdapterContent,
   stampFreshness,
-} from "../../src/core/index.js";
+} from "../../packages/core/src/index.js";
 
 export { looksLikeFailedAdapterContent };
 

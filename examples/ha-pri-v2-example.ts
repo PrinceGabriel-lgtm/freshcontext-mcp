@@ -4,7 +4,7 @@
 // change Worker behavior, deploy Ha-Pri v2, or wire v2 into production output.
 // It shows the three verification states: valid, invalid, and unknown.
 
-import { calculateHaPriV2, verifyHaPriV2 } from "../src/core/index.js";
+import { calculateHaPriV2, verifyHaPriV2 } from "../packages/core/src/index.js";
 
 const input = {
   resultId: "result_demo_001",

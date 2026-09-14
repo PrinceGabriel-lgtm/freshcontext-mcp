@@ -9,7 +9,7 @@ import {
   stalenessVerdict,
   stampFreshness,
   toStructuredJSON,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 
 // hackernews: lambda 0.05, half-life ~13.86h — fast enough to reason about by hand.
 const SOURCE_URL = "https://example.com/staleness";

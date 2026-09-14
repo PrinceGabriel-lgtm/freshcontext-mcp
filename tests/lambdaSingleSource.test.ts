@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LAMBDA as CORE_LAMBDA } from "../src/core/decay.js";
+import { LAMBDA as CORE_LAMBDA } from "../packages/core/src/decay.js";
 
 // Pass 20-D single-source guard (repoint of the old 20-B parity test).
 //
@@ -21,6 +21,10 @@ import { LAMBDA as CORE_LAMBDA } from "../src/core/decay.js";
 const ROOTS = [
   fileURLToPath(new URL("../src", import.meta.url)),
   fileURLToPath(new URL("../worker/src", import.meta.url)),
+  // Core moved to its own workspace package; it is still runtime source and is
+  // still scanned. Dropping it here would turn this guard into a no-op exactly
+  // where the one canonical table actually lives.
+  fileURLToPath(new URL("../packages/core/src", import.meta.url)),
 ];
 
 const DEFINITION = /(?:^|\s)(?:export\s+)?const\s+LAMBDA\b\s*[:=]/g;
@@ -65,11 +69,11 @@ test("exactly one LAMBDA definition exists in runtime source (Pass 20-D)", () =>
     hits.length,
     1,
     `expected exactly one \`const LAMBDA\` definition in runtime source, found ${hits.length}: ` +
-      `${hits.join(", ")}. If you added a second table, import it from src/core/decay.ts instead.`
+      `${hits.join(", ")}. If you added a second table, import it from packages/core/src/decay.ts instead.`
   );
   assert.ok(
-    hits[0].endsWith("src/core/decay.ts"),
-    `the single LAMBDA definition must live in src/core/decay.ts, found it in ${hits[0]}`
+    hits[0].endsWith("packages/core/src/decay.ts"),
+    `the single LAMBDA definition must live in packages/core/src/decay.ts, found it in ${hits[0]}`
   );
 });
 

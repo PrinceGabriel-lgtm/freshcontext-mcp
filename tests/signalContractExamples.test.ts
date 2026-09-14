@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {
   SIGNAL_CONTRACT_VERSION,
   normalizeSignal,
-} from "../src/core/index.js";
-import type { FreshContextSignalInput } from "../src/core/index.js";
+} from "../packages/core/src/index.js";
+import type { FreshContextSignalInput } from "../packages/core/src/index.js";
 
 const RETRIEVED_AT = "2026-06-09T12:00:00.000Z";
 

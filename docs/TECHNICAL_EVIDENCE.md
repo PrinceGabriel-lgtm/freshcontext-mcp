@@ -13,11 +13,11 @@ itself a finding.
 
 | Claim | Where to check it |
 | --- | --- |
-| Core evaluates candidate context without fetching, crawling or calling adapters | `src/core/pipeline.ts`, `src/core/index.ts`; `tests/corePipeline.test.ts`, `tests/adapterNetworkBoundary.test.ts` |
+| Core evaluates candidate context without fetching, crawling or calling adapters | `packages/core/src/pipeline.ts`, `packages/core/src/index.ts`; `tests/corePipeline.test.ts`, `tests/adapterNetworkBoundary.test.ts` |
 | `evaluate_context` accepts caller-provided context and is the generic path | `src/tools/evaluateContext.ts`; `tests/evaluateContextTool.test.ts` (17 tests), `tests/evaluateContextSnapshot.test.ts` |
-| Freshness scoring is decay over `retrieved_at`, not a wall-clock read | `src/core/decay.ts:52-69`; `tests/mathSpine.test.ts`, `tests/lambdaSingleSource.test.ts` |
-| Decisions are explanatory, not truth claims | `src/core/decision.ts`; `tests/decision.test.ts` (28 tests) |
-| Source Profiles exist and most of their metadata is declarative rather than load-bearing | `src/core/sourceProfiles.ts`, `docs/SOURCE_PROFILES.md`; `tests/sourceProfiles.test.ts`; benchmark family D |
+| Freshness scoring is decay over `retrieved_at`, not a wall-clock read | `packages/core/src/decay.ts:52-69`; `tests/mathSpine.test.ts`, `tests/lambdaSingleSource.test.ts` |
+| Decisions are explanatory, not truth claims | `packages/core/src/decision.ts`; `tests/decision.test.ts` (28 tests) |
+| Source Profiles exist and most of their metadata is declarative rather than load-bearing | `packages/core/src/sourceProfiles.ts`, `docs/SOURCE_PROFILES.md`; `tests/sourceProfiles.test.ts`; benchmark family D |
 | The public Core import surface is stable | `docs/CORE_API.md`, `docs/ARCHITECTURE.md`; `tests/coreApiContract.test.ts`, `tests/coreSubpathExport.test.mjs` |
 | Evaluation is reproducible at a fixed clock | `docs/CORE_API.md` → "Deterministic Evaluation"; benchmark family E |
 | 22 MCP tools = `evaluate_context` + 21 read-only reference adapters | `src/server.ts`, `src/adapters/registry.ts`; enforced by `scripts/smoke-stdio.mjs` and `scripts/trust-scan.mjs` |
@@ -47,7 +47,7 @@ have required deleting it.
 | Legacy records verify through the HMAC path **and report that they did** | `POST /v1/verify` → `verification_method`; `tests/verifyEndpoint.test.ts` |
 | Ha-Pri v1 over ingestion rows is a provenance stamp, **not** authentication | `RISKS.md` → D-1; `worker/src/intelligence.ts:207` |
 | Ha-Pri v2 stored-signal enforcement is **not live** | `docs/HA_PRI_V2_DESIGN.md`; enforced as a claim rule in `scripts/trust-scan.mjs` |
-| A verdict row stores a content hash, never the content | `canonical_content_sha256` in `worker/migrations/0001_evaluation_snapshots.sql`; `src/core/provenance.ts:92` hashes before signing |
+| A verdict row stores a content hash, never the content | `canonical_content_sha256` in `worker/migrations/0001_evaluation_snapshots.sql`; `packages/core/src/provenance.ts:92` hashes before signing |
 
 ## Release and supply chain
 

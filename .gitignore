@@ -81,3 +81,6 @@ __pycache__/
 # Output of scripts/prove-live-attestation.mjs (live verdict bytes, regenerated per run).
 proof/
 .attestation-proof/
+
+# TypeScript project-reference build state (packages/core -> dist/core)
+.tsbuildinfo/
