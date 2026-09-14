@@ -1,66 +1,47 @@
 # Contributing
 
-This project is MIT licensed and contributions are welcome.
+FreshContext accepts bug reports, feature requests, review comments, and ordinary project feedback through the repository's normal issue and pull-request channels.
 
-## Terms
+Material external code, documentation, specifications, benchmark content, datasets, or other authored contributions are handled on a controlled basis. **Please do not submit a material contribution unless it has been discussed and approved in advance.** Before any material external contribution is accepted, the project may require rights-clearance information and written contribution terms appropriate to that contribution.
 
-By submitting a pull request, issue, patch, suggestion or other contribution to
-this repository, you agree that:
+## Contribution boundary
 
-1. **You wrote it, or you have the right to submit it.** If any part came from
-   somewhere else, say so and name the licence it came under. This repository
-   keeps an explicit permissive-only dependency posture — see
-   `docs/DEPENDENCY_DILIGENCE.md` — and a contribution carrying a copyleft
-   obligation cannot be accepted without that being stated up front.
+By opening an issue, discussion, or pull request, you are not automatically transferring ownership of independently existing technology, third-party confidential information, or other material you do not have authority to submit.
 
-2. **Your contribution is licensed under the MIT License**, the same terms as
-   the rest of the project, as set out in `LICENSE`. This is the inbound=outbound
-   convention MIT projects rely on; it is written down here so it does not have
-   to be inferred.
+For any material contribution considered for acceptance:
 
-3. **No compensation, equity, ownership interest, revenue share or future
-   consideration of any kind arises from contributing.** Contributions are
-   voluntary. Nothing in this repository, and no discussion about it, creates a
-   partnership, joint venture, employment or agency relationship.
+1. **Rights must be clear.** You must have the right to submit the material and must disclose relevant third-party code, content, licences, or restrictions. Material with unclear provenance or incompatible obligations will not be merged.
 
-4. **Feedback is not a contribution of ownership.** Comments, ideas, bug
-   reports, feature requests, benchmark suggestions and review remarks may be
-   used freely, without attribution or payment.
+2. **Acceptance is not automatic.** Submission, review, discussion, or technical usefulness does not require FreshContext to accept, merge, publish, maintain, compensate for, or commercialize the contribution.
 
-Points 3 and 4 are stated because they are usually left implicit, and "usually
-implicit" is what becomes expensive to establish years later. They are not a
-comment on anyone who has contributed: at the time of writing, every commit in
-this repository was authored by the maintainer.
+3. **Contribution terms are confirmed before acceptance.** The repository's existing published material remains subject to its stated licences, including the MIT licence where applicable. A new material external contribution will not be merged merely on an assumed inbound-licence theory; any rights or licence needed for acceptance will be confirmed as part of the contribution review.
 
-Use of the FreshContext name and marks is governed separately by
-`TRADEMARKS.md`. The MIT licence covers the code, not the branding, and
-contributing does not grant a right to imply endorsement.
+4. **No compensation or relationship arises merely from submission.** Unless a separate written agreement says otherwise, submitting or discussing a contribution does not create compensation, equity, ownership interest, revenue share, future consideration, employment, partnership, joint venture, agency, or similar relationship.
 
-## Practically
+## Ordinary feedback
+
+Bug reports, feature requests, interoperability observations, benchmark suggestions, and review comments are welcome. They may inform FreshContext's product and engineering decisions. This does not claim ownership of a submitter's independently existing technology, confidential information, or third-party material, and it does not override any separate written agreement.
+
+Do not include third-party confidential information, personal secrets, credentials, private keys, or material you are not authorized to disclose.
+
+Use of the FreshContext name and marks is governed separately by `TRADEMARKS.md`. Open-source rights granted by the repository's licence do not grant a right to imply endorsement or ownership of the FreshContext marks.
+
+## Engineering expectations
+
+From a source checkout:
 
 ```bash
 npm ci
 npm run build
-npm test          # 417 tests; the runner enumerates files explicitly
+npm test
 npm run trust:gate
 ```
 
-- **A new test file is not run until it is registered.** `npm test` reads a
-  hardcoded path array in `package-script-guard.mjs` rather than a glob, so an
-  unregistered test passes silently by never executing. Add yours to that array
-  in the same commit.
-- **Claims are scanned.** `npm run trust:gate` checks public claims against the
-  code — tool counts, version constants, the Ha-Pri v2 boundary. If it flags
-  something you wrote, the usual fix is the claim, not the allowlist. Exceptions
-  go in `config/trust-scan-allowlist.json` with a written reason.
-- **Do not raise a claim the code does not implement.** `docs/TECHNICAL_EVIDENCE.md`
-  maps each public claim to the artifact that proves it. A pull request that adds
-  a claim should add or point at the thing that checks it.
-- The benchmark under `benchmarks/context-integrity-v1/` is a regression
-  contract. If a rate moves, something in the engine moved — say which in the
-  pull request rather than updating the expected value.
+- New tests must be registered according to the current test-runner configuration; do not rely on an unregistered test file being discovered automatically.
+- Public claims should remain tied to reproducible evidence. `docs/TECHNICAL_EVIDENCE.md` maps material technical claims to the artifact or check used to verify them.
+- Scanner findings should be fixed at the source where possible. Exceptions belong in the reviewed allowlist with a written reason, not as a substitute for correcting a bad claim or overly broad rule.
+- Benchmark changes should explain why measured behavior moved rather than silently rewriting the expected result.
 
 ## Security
 
-Do not open a public issue for a vulnerability. `SECURITY.md` has the process
-and the address.
+Do not open a public issue for a vulnerability or suspected secret exposure. Follow the process in `SECURITY.md`.
