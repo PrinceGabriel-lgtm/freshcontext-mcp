@@ -3,4 +3,4 @@ export {
   stampFreshness,
   toStructuredJSON,
   formatForLLM,
-} from "../core/index.js";
+} from "#core";

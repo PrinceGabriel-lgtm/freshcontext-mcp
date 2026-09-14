@@ -24,7 +24,7 @@ on:
     branches: [main]
     paths:
       - "benchmarks/context-integrity-v1/**"
-      - "src/core/**"
+      - "packages/core/src/**"
       - ".github/workflows/context-integrity-benchmark.yml"
 
 permissions:

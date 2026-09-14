@@ -6,7 +6,7 @@ import {
   formatEvaluateContextResult,
 } from "../src/tools/evaluateContext.js";
 import type { EvaluateContextResult } from "../src/tools/evaluateContext.js";
-import { buildHaPriPayload, buildHaPriPayloadV3 } from "../src/core/index.js";
+import { buildHaPriPayload, buildHaPriPayloadV3 } from "../packages/core/src/index.js";
 import { handleRestRequest } from "../src/rest/handler.js";
 
 const { hmacSha256 } = workerIntelligence;

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 // node:crypto is never reachable. `import type` and `export type` directives
 // are erased at runtime and so are excluded from the walk.
 
-const ENTRY = fileURLToPath(new URL("../src/core/edge.ts", import.meta.url));
+const ENTRY = fileURLToPath(new URL("../packages/core/src/edge.ts", import.meta.url));
 
 function readRuntimeImports(filePath: string): string[] {
   const raw = readFileSync(filePath, "utf8");

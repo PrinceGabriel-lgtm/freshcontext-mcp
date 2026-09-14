@@ -5,14 +5,14 @@ import {
   evaluateSignals,
   interpretEvaluation,
   toReadableContextResult,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 import type {
   ContextDecisionOptions,
   CoreSignalEvaluationOptions,
   CoreSignalEvaluationResult,
   FreshContextSignalInput,
   HumanReadableContextResult,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 
 const NOW = "2026-05-24T13:00:00.000Z";
 

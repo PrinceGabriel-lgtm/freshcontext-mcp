@@ -26,7 +26,7 @@ import {
 } from "freshcontext-mcp/core";
 ```
 
-The `freshcontext-mcp/core` subpath is the direct Core import boundary inside the current MCP package. It does not create a standalone `freshcontext-core` package yet; that remains a future package-split lane.
+The `freshcontext-mcp/core` subpath is the supported Core import boundary, and it is unchanged. Core's source now lives in its own workspace package, `packages/core/` (`@freshcontext/core`), which the root build compiles into `dist/core/`. That package is **private and unpublished**: `freshcontext-mcp` carries no dependency on it, and an installed copy resolves Core from its own files. Publishing `@freshcontext/core` as a separately installable package remains a future decision, not something this boundary has already done. See [Architecture](./ARCHITECTURE.md).
 
 ### Envelope
 

@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { evaluateContextInput } from "../src/tools/evaluateContext.js";
 import type { EvaluateContextResult } from "../src/tools/evaluateContext.js";
-import { buildHaPriPayloadV3 } from "../src/core/index.js";
-import type { ContextDecisionResult } from "../src/core/index.js";
+import { buildHaPriPayloadV3 } from "../packages/core/src/index.js";
+import type { ContextDecisionResult } from "../packages/core/src/index.js";
 import { handleRestRequest } from "../src/rest/handler.js";
 import workerIntelligence from "../worker/src/intelligence.ts";
 

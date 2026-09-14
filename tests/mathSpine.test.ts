@@ -4,7 +4,7 @@ import {
   LAMBDA,
   calculateContextUtility,
   calculateFreshnessScore,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 import workerIntelligence from "../worker/src/intelligence.ts";
 
 const {

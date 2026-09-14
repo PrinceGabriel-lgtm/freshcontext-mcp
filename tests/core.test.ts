@@ -15,7 +15,7 @@ import {
   verifyHaPriV2,
   SIGNAL_CONTRACT_VERSION,
   normalizeSignal,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 import type {
   AdapterResult,
   ContextUtilityResult,
@@ -25,7 +25,7 @@ import type {
   FreshContext,
   HaPriV2Input,
   HaPriV2Result,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 
 function hoursAgo(hours: number): string {
   return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();

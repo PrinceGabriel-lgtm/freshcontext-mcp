@@ -4,8 +4,8 @@ import {
   formatForLLM,
   stampFreshness,
   toStructuredJSON,
-} from "../src/core/index.js";
-import type { EnvelopeFormatOptions } from "../src/core/index.js";
+} from "../packages/core/src/index.js";
+import type { EnvelopeFormatOptions } from "../packages/core/src/index.js";
 
 const SOURCE_URL = "https://example.com/core-options";
 const CONTENT_DATE = "2026-05-13T09:00:00.000Z";

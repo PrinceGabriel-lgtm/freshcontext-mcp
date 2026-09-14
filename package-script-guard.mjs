@@ -11,9 +11,21 @@ const SOURCE_CHECKOUT_MESSAGE = [
 
 const commands = {
   build: {
-    required: ["src", "tsconfig.json"],
+    // -b builds the referenced packages/core project first, emitting it into
+    // dist/core, then the root project. One command, deterministic order.
+    required: ["src", "tsconfig.json", "packages/core/tsconfig.json"],
     command: "tsc",
-    args: [],
+    args: ["-b"],
+  },
+  "verify:tarball": {
+    // Builds, packs, and installs the real tarball into a throwaway directory
+    // OUTSIDE this tree, then imports every declared subpath. npm rewrites a
+    // workspace: specifier into a plain semver range at publish time, so a
+    // manifest inspection reports clean on a tarball that is broken in the wild.
+    // Only the out-of-tree install catches that.
+    required: ["scripts/verify-tarball-selfcontained.mjs", "package.json"],
+    command: "node",
+    args: ["scripts/verify-tarball-selfcontained.mjs"],
   },
   dev: {
     required: ["src/server.ts"],
@@ -60,11 +72,6 @@ const commands = {
     command: "tsx",
     args: ["benchmarks/context-integrity-v1/run.ts"],
     passThroughArgs: true,
-  },
-  "core:fixture": {
-    required: ["scripts/pack-core-fixture.mjs", "dist/core/index.js"],
-    command: "node",
-    args: ["scripts/pack-core-fixture.mjs"],
   },
   "smoke:stdio": {
     required: ["scripts/smoke-stdio.mjs"],
@@ -145,7 +152,7 @@ const commands = {
       "tests/rank.test.ts",
       "tests/workerEnvelope.test.ts",
       "tests/packageScriptGuard.test.mjs",
-      "tests/corePackageFixture.test.mjs",
+      "tests/corePackageBoundary.test.mjs",
       "tests/readableOutput.test.ts",
       "tests/provenanceReadiness.test.ts",
       "tests/adapterNetworkBoundary.test.ts",

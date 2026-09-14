@@ -3,13 +3,13 @@ import {
   evaluateSignals,
   getSourceProfile,
   interpretEvaluations,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 import type {
   ContextDecisionResult,
   CoreSignalEvaluationResult,
   FreshContextSignalInput,
   IntentProfileId,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 
 const SUPPORTED_INTENTS = new Set<IntentProfileId>([
   "citation_check",

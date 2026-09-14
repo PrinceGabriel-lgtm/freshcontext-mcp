@@ -23,7 +23,7 @@ import {
   toReadableContextResult,
   toStructuredJSON,
   verifyHaPriV2,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 import type {
   AdapterResult,
   ContextUtilityInput,
@@ -46,7 +46,7 @@ import type {
   RankOptions,
   SourceProfile,
   SourceProfileId,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 
 test("public Core API imports compile and callable functions remain available", () => {
   const result: AdapterResult = {

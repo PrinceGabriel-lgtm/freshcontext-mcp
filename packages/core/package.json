@@ -1,0 +1,9 @@
+{
+  "name": "@freshcontext/core",
+  "version": "0.5.1",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "FreshContext Core — the protocol-independent context-integrity engine: normalization, freshness and decay, ranking, utility, decisions, provenance primitives, source profiles, envelope and readable output. No MCP registration, no adapters, no network access, no storage.",
+  "comment": "Not published. This package is the physical boundary inside the repository; the root build compiles it into ../../dist/core so the published freshcontext-mcp tarball stays self-contained and needs nothing from this workspace."
+}

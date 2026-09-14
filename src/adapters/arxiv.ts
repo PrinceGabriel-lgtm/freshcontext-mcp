@@ -1,5 +1,5 @@
 import { AdapterResult, ExtractOptions } from "../types.js";
-import type { FreshContextSignalInput } from "../core/types.js";
+import type { FreshContextSignalInput } from "#core/types";
 import { validateUrl } from "../security.js";
 
 export type ArxivSignalSearchInput = {

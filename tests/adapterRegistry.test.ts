@@ -17,7 +17,7 @@ import type {
 import {
   evaluateSignal,
   getSourceProfile,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 
 function registeredToolNames(): string[] {
   const serverSource = readFileSync("src/server.ts", "utf8");

@@ -9,7 +9,7 @@ import {
   getSourceProfile,
   interpretEvaluation,
   normalizeSignal,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 import { handleRestRequest } from "../src/rest/handler.js";
 
 const SIGNAL = {
@@ -106,7 +106,7 @@ test("an extreme envelopeMaxLength cannot exceed the cap on the evaluation path"
 });
 
 test("both envelope constructors agree on the cap", async () => {
-  const { stampFreshness } = await import("../src/core/envelope.js");
+  const { stampFreshness } = await import("../packages/core/src/envelope.js");
   const long = "X".repeat(60000);
   const stamped = stampFreshness(
     { raw: long, content_date: SIGNAL.published_at, freshness_confidence: "high" },

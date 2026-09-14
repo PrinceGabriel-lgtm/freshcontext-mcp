@@ -1,6 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, test, expect, beforeAll } from "vitest";
-import { buildHaPriPayloadV3 } from "../../src/core/index.js";
+import { buildHaPriPayloadV3 } from "../../packages/core/src/index.js";
 import { buildHaPriPayloadV4, signEd25519 } from "../src/ed25519Attestation.js";
 import { hmacSha256 } from "../src/intelligence.js";
 import pkg from "../../package.json" with { type: "json" };

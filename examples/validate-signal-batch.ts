@@ -3,7 +3,7 @@ import {
   evaluateSignals,
   getSourceProfile,
   interpretEvaluations,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 import type {
   ContextDecision,
   ContextDecisionResult,
@@ -14,7 +14,7 @@ import type {
   IntentProfileId,
   SignalDateConfidence,
   SourceProfile,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 
 const SUPPORTED_INTENTS = new Set<IntentProfileId>([
   "citation_check",

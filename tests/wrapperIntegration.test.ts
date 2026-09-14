@@ -1,7 +1,7 @@
 import test, { describe, before } from "node:test";
 import assert from "node:assert/strict";
 import { evaluateContextInput } from "../src/tools/evaluateContext.js";
-import { toReadableContextResult } from "../src/core/index.js";
+import { toReadableContextResult } from "../packages/core/src/index.js";
 import { enforceEvaluateContext } from "../wrapper/src/fromEvaluateContext.ts";
 
 // Proves the Pass 24 enforcement wrapper works on REAL Core output — not hand-built mocks.

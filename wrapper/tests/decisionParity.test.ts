@@ -8,16 +8,16 @@ import { CONTEXT_DECISIONS } from "../src/enforce.ts";
 // The wrapper defines the ContextDecision union locally so it is a standalone artifact with
 // no runtime dependency on the engine. That is a deliberate duplication — and the standards
 // require a duplicated constant to be guarded by an equality test against its source. This
-// reads Core's own ContextDecision union from src/core/types.ts and fails if the wrapper's
+// reads Core's own ContextDecision union from packages/core/src/types.ts and fails if the wrapper's
 // list drifts (a label added, removed, or renamed in Core that the wrapper hasn't tracked).
 
 const here = dirname(fileURLToPath(import.meta.url));
-const coreTypesPath = resolve(here, "../../src/core/types.ts");
+const coreTypesPath = resolve(here, "../../packages/core/src/types.ts");
 
 function coreContextDecisions(): string[] {
   const src = readFileSync(coreTypesPath, "utf8");
   const m = src.match(/export type ContextDecision\s*=\s*([\s\S]*?);/);
-  assert.ok(m, "could not locate `export type ContextDecision = ...;` in src/core/types.ts");
+  assert.ok(m, "could not locate `export type ContextDecision = ...;` in packages/core/src/types.ts");
   return [...m[1].matchAll(/"([a-z_]+)"/g)].map((x) => x[1]);
 }
 

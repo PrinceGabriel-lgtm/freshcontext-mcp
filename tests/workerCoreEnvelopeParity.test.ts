@@ -6,7 +6,7 @@ import {
   looksLikeFailedAdapterContent as coreLooksLikeFailedAdapterContent,
   stampFreshness,
   toStructuredJSON,
-} from "../src/core/index.js";
+} from "../packages/core/src/index.js";
 
 const {
   looksLikeFailedAdapterContent: workerLooksLikeFailedAdapterContent,

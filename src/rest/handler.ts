@@ -1,8 +1,8 @@
-import { evaluateSignal, evaluateSignals } from "../core/index.js";
+import { evaluateSignal, evaluateSignals } from "#core";
 import type {
   CoreSignalEvaluationOptions,
   FreshContextSignalInput,
-} from "../core/index.js";
+} from "#core";
 
 const SERVICE_VERSION = "0.5.1";
 const JSON_CONTENT_TYPE = "application/json";

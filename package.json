@@ -45,6 +45,23 @@
     },
     "./package.json": "./package.json"
   },
+  "imports": {
+    "#core": {
+      "types": "./dist/core/index.d.ts",
+      "default": "./dist/core/index.js"
+    },
+    "#core/edge": {
+      "types": "./dist/core/edge.d.ts",
+      "default": "./dist/core/edge.js"
+    },
+    "#core/types": {
+      "types": "./dist/core/types.d.ts",
+      "default": "./dist/core/types.js"
+    }
+  },
+  "workspaces": [
+    "packages/*"
+  ],
   "bin": {
     "freshcontext-mcp": "dist/server.js"
   },
@@ -89,12 +106,12 @@
     "demo:evaluate:file": "node package-script-guard.mjs demo:evaluate:file",
     "batch:validate": "node package-script-guard.mjs batch:validate",
     "benchmark:context-integrity": "node package-script-guard.mjs benchmark:context-integrity",
-    "core:fixture": "node package-script-guard.mjs core:fixture",
     "smoke:stdio": "node package-script-guard.mjs smoke:stdio",
     "prove:attestation": "node package-script-guard.mjs prove:attestation",
     "trust:gate": "node package-script-guard.mjs trust:gate",
     "trust:legal": "node package-script-guard.mjs trust:legal",
     "trust:all": "node package-script-guard.mjs trust:all",
+    "verify:tarball": "node package-script-guard.mjs verify:tarball",
     "trust:report": "node package-script-guard.mjs trust:report",
     "trust:report:json": "node package-script-guard.mjs trust:report:json",
     "trust:scan": "node package-script-guard.mjs trust:scan",

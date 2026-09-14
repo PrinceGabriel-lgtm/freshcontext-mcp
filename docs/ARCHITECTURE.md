@@ -10,13 +10,18 @@ Where something is planned rather than built, it says so.
                       node:crypto   ← the only external edge in Core
                            │
    ┌───────────────────────▼─────────────────────────────┐
-   │  src/core/  — the evaluation engine                 │
+   │  packages/core/  — @freshcontext/core               │
+   │  the protocol-independent evaluation engine         │
    │  16 modules · 0 npm dependencies · 1 Node builtin   │
    │                                                     │
-   │  index.ts  full surface                             │
-   │  edge.ts   crypto-free subset for edge runtimes     │
+   │  src/index.ts  full surface                         │
+   │  src/edge.ts   crypto-free subset for edge runtimes │
+   │                                                     │
+   │  built into dist/core/ by the root build            │
    └───────▲──────────▲──────────▲──────────▲────────────┘
            │          │          │          │
+        #core      #core      #core     relative
+           │          │          │       import
       src/tools   src/rest   src/adapters  worker/src
       MCP tools   REST       retrieval     Cloudflare
                   handler                  Worker
@@ -25,8 +30,11 @@ Where something is planned rather than built, it says so.
 ```
 
 Core has no imports pointing upward into the hosts. Every arrow points into it. That is
-a property of the dependency graph, not a convention, and `tests/coreApiContract.test.ts`
-and `tests/coreEdgeBoundary.test.ts` hold it in place.
+now a property of the package boundary as well as the dependency graph:
+`tests/corePackageBoundary.test.ts` fails if any module under `packages/core/src` imports
+outside its own package, reaches a host layer, pulls a third-party dependency, or adds a
+Node builtin beyond the declared `node:crypto`. `tests/coreApiContract.test.ts` and
+`tests/coreEdgeBoundary.test.ts` continue to hold the public surface and the edge subset.
 
 **Not yet true of the Worker.** `worker/src/worker.ts` imports `src/tools/evaluateContext.js`
 and `src/rest/handler.js` by relative path as well as Core. The Worker bundles three layers
@@ -41,6 +49,23 @@ to the MCP host, or to a third package — an architecture decision, not a migra
 | `freshcontext-mcp` | the MCP server. **Importing it starts the stdio server** — it is a `bin` entry, not a library entry |
 | `freshcontext-mcp/core` | the full evaluation engine |
 | `freshcontext-mcp/core/edge` | the crypto-free subset for edge runtimes |
+
+### How the published package reaches Core
+
+Core's source lives in `packages/core/`, a **private, unpublished** workspace package named
+`@freshcontext/core`. The root build compiles it into `dist/core/`, and the host layers under
+`src/` reach it through Node subpath imports — `#core`, `#core/edge`, `#core/types` — which
+resolve from `freshcontext-mcp`'s own `package.json`.
+
+This matters for one reason: an installed copy of `freshcontext-mcp` needs nothing from the
+workspace. There is no dependency on `@freshcontext/core`, published or otherwise, and
+`npm run verify:tarball` proves it by installing the real tarball into a directory outside
+this tree and importing every declared subpath. A manifest check alone would not be enough —
+npm rewrites a `workspace:` specifier into a plain semver range at publish time, so a broken
+tarball can look clean in the manifest.
+
+`@freshcontext/core` is **not published**. Publishing it, and whatever licensing decision that
+implies, is deliberately not part of this change.
 
 Both subpaths have been public for several release lines; `docs/RELEASE_NOTES.md` records
 when each was introduced. Core is directly importable through supported package subpaths: a consumer can use

@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { stampFreshness, formatForLLM } from "../src/tools/freshnessStamp.js";
-import { stampFreshness as stampFreshnessFromCore, formatForLLM as formatForLLMFromCore } from "../src/core/index.js";
+import { stampFreshness as stampFreshnessFromCore, formatForLLM as formatForLLMFromCore } from "../packages/core/src/index.js";
 import type { AdapterResult, FreshContext } from "../src/types.js";
-import type { AdapterResult as CoreAdapterResult, FreshContext as CoreFreshContext } from "../src/core/index.js";
+import type { AdapterResult as CoreAdapterResult, FreshContext as CoreFreshContext } from "../packages/core/src/index.js";
 
 function hoursAgo(hours: number): string {
   return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();

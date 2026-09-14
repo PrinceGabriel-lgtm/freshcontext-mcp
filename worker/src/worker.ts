@@ -9,7 +9,7 @@ import {
 } from "../../src/tools/evaluateContext.js";
 import { synthesizeBriefing as generateAIBriefing } from "./synthesize.js";
 import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate, applyDecay, RT_EXPIRY_FLOOR, hmacSha256 } from "./intelligence.js";
-import { buildHaPriPayload, buildHaPriPayloadV3, sha256Hex as coreSha256Hex, canonicalizeHaPriContent } from "../../src/core/index.js";
+import { buildHaPriPayload, buildHaPriPayloadV3, sha256Hex as coreSha256Hex, canonicalizeHaPriContent } from "../../packages/core/src/index.js";
 import { handleRestRequest } from "../../src/rest/handler.js";
 import { checkVerifyRateLimit } from "./rateLimit.js";
 import type { RateLimitBinding } from "./rateLimit.js";

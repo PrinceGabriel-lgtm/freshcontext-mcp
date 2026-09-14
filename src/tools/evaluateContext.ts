@@ -4,7 +4,7 @@ import {
   interpretEvaluations,
   neutralizeEnvelopeDelimiters,
   toReadableContextResult,
-} from "../core/index.js";
+} from "#core";
 import type {
   ContextDecisionResult,
   CoreSignalEvaluationOptions,
@@ -12,7 +12,7 @@ import type {
   FreshContextSignalInput,
   IntentProfileId,
   SourceProfile,
-} from "../core/index.js";
+} from "#core";
 
 const SUPPORTED_INTENTS: readonly IntentProfileId[] = [
   "citation_check",
