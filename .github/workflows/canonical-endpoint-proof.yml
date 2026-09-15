@@ -41,6 +41,11 @@ concurrency:
 
 env:
   CANONICAL_BASE: https://api.freshcontext.dev
+  # The documentation site. It is a different Worker on a different hostname with its own
+  # deploy path, and until now nothing here looked at it: the site was proven only as a
+  # side effect of its own deploy smoke test, so between deploys an outage was invisible.
+  # Both hostnames are published as public inspection points, so both are proven here.
+  SITE_BASE: https://freshcontext.dev
 
 jobs:
   prove:
@@ -141,6 +146,53 @@ jobs:
             console.log(`ok  key document publishes ${want} (${match.algorithm}, status ${match.status})`);
           ' "$body" "${{ steps.expected.outputs.key_id }}"
 
+      # The bare root is the link that actually gets pasted into an email or a document —
+      # people send a hostname, not a path. It went untested for exactly that reason: every
+      # check here named a path, so the one URL most likely to be handed to a human was the
+      # one nothing asserted. It now has to answer, and answer in both representations.
+      - name: GET / — the published inspection link
+        id: root
+        run: |
+          set -uo pipefail
+
+          json="$(curl -fsS --max-time 20 -H 'Accept: application/json' "$CANONICAL_BASE/")" \
+            || { echo "::error::$CANONICAL_BASE/ did not answer. This is the bare hostname published as a public inspection point."; exit 1; }
+          node -e '
+            const b = JSON.parse(process.argv[1]);
+            const fail = (m) => { console.error(`::error::the service document ${m}`); process.exit(1); };
+            if (b.service !== "freshcontext-mcp") fail(`reports service ${JSON.stringify(b.service)}, so this hostname is serving something else`);
+            // A reviewer who lands here needs the verification surface named. It was absent
+            // from this list while /debug/* was advertised in its place.
+            for (const key of ["health", "rest_health", "verify", "signing_keys"]) {
+              if (!b.endpoints || !b.endpoints[key]) fail(`omits endpoints.${key}, which is what makes the deployment checkable`);
+            }
+            console.log(`ok  / — service document, version ${b.version}`);
+          ' "$json"
+
+          # A browser asks for text/html. If that returns JSON the link still "works" and
+          # still fails the only job it had, which is what started this check existing.
+          ctype="$(curl -fsS --max-time 20 -o /tmp/root.html -w '%{content_type}' -H 'Accept: text/html' "$CANONICAL_BASE/")" \
+            || { echo "::error::$CANONICAL_BASE/ did not answer a browser Accept header."; exit 1; }
+          case "$ctype" in
+            text/html*) echo "ok  / — serves HTML to a browser ($ctype)" ;;
+            *) echo "::error::$CANONICAL_BASE/ answered a browser with $ctype, not text/html. Content negotiation has regressed and a reviewer following this link sees raw JSON."; exit 1 ;;
+          esac
+          grep -q 'freshcontext-signing-keys.json' /tmp/root.html \
+            || { echo "::error::the inspection page no longer links the published signing key document."; exit 1; }
+
+      # The documentation site is published alongside the API in the same breath, and a
+      # reviewer sent both judges the project on whichever one they open first.
+      - name: GET the documentation site
+        id: site
+        run: |
+          set -uo pipefail
+          ctype="$(curl -fsS --max-time 20 -o /tmp/site.html -w '%{content_type}' "$SITE_BASE/")" \
+            || { echo "::error::$SITE_BASE did not answer. It is published as a public inspection point and deploys separately from this Worker."; exit 1; }
+          case "$ctype" in
+            text/html*) echo "ok  $SITE_BASE — $ctype" ;;
+            *) echo "::error::$SITE_BASE answered with $ctype, not text/html."; exit 1 ;;
+          esac
+
       # ── characterise a refusal ────────────────────────────────────────────────
       # Runs when anything above failed, or on demand. A 403 from Cloudflare's edge
       # carries its own fingerprint: `cf-mitigated: challenge` for bot management, an
@@ -208,6 +260,8 @@ jobs:
             echo "| \`/health\` | ${{ steps.health.outcome == 'success' && 'ok' || 'FAILED' }} |"
             echo "| \`/v1/health\` | mounted REST surface |"
             echo "| \`/.well-known/freshcontext-signing-keys.json\` | publishes \`${{ steps.expected.outputs.key_id }}\` |"
+            echo "| \`/\` | ${{ steps.root.outcome == 'success' && 'service document, and HTML to a browser' || 'FAILED' }} |"
+            echo "| \`$SITE_BASE\` | ${{ steps.site.outcome == 'success' && 'ok' || 'FAILED' }} |"
             echo
             echo "Worker version reported: \`${{ steps.health.outputs.version }}\`"
             echo

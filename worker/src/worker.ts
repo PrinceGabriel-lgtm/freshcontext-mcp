@@ -2505,6 +2505,98 @@ async function formatBriefing(db: D1Database): Promise<string> {
   return text;
 }
 
+// ─── Root inspection page ─────────────────────────────────────────────────────
+//
+// A person who is sent this hostname as an inspection point is usually not the
+// person who will write a curl command against it. Both need serving, so GET /
+// answers by content type rather than picking one audience.
+
+// True only when the caller explicitly asked for HTML. Browsers do; curl (`*/*`),
+// MCP clients (`application/json, text/event-stream`) and CI do not. Deliberately
+// not a User-Agent check: UA sniffing is exactly the fragile control this repository
+// avoids elsewhere, and a wrong guess would change an API response.
+function wantsHtml(request: Request): boolean {
+  const accept = request.headers.get("Accept");
+  if (!accept) return false;
+  return accept.toLowerCase().includes("text/html");
+}
+
+function rootInspectionHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FreshContext API — inspection path</title>
+<style>
+  :root { color-scheme: light dark; --fg: #16181d; --muted: #5b6270; --bg: #fbfbfc; --line: #e3e5ea; --accent: #1f4ed8; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e8eaf0; --muted: #9aa2b1; --bg: #14161a; --line: #2b2f37; --accent: #8fb0ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 2.5rem 1.25rem 4rem; background: var(--bg); color: var(--fg);
+         font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 46rem; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 2rem; }
+  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+       margin: 2.25rem 0 .75rem; font-weight: 600; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { padding: .7rem 0; border-top: 1px solid var(--line); }
+  li:last-child { border-bottom: 1px solid var(--line); }
+  a { color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
+  a:hover, a:focus { text-decoration: underline; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+  .what { display: block; color: var(--muted); font-size: .9rem; margin-top: .15rem; }
+  footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--line);
+           color: var(--muted); font-size: .88rem; }
+  pre { overflow-x: auto; background: transparent; margin: .5rem 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>FreshContext API</h1>
+  <p class="sub">Context integrity infrastructure for AI agents and retrieval systems.
+     This host is the machine interface. The documentation site is
+     <a href="https://freshcontext.dev">freshcontext.dev</a>.</p>
+
+  <h2>Verify this deployment</h2>
+  <ul>
+    <li><a href="/health"><code>/health</code></a>
+      <span class="what">Which version and which commit is actually serving, right now.</span></li>
+    <li><a href="/v1/health"><code>/v1/health</code></a>
+      <span class="what">REST surface liveness and whether the evaluation core is loaded.</span></li>
+    <li><a href="/.well-known/freshcontext-signing-keys.json"><code>/.well-known/freshcontext-signing-keys.json</code></a>
+      <span class="what">The published Ed25519 public keys. Verdicts are signed; anyone can check one offline against these.</span></li>
+    <li><code>POST /v1/verify</code>
+      <span class="what">Server-side verification endpoint for signed verdicts. Convenient, but the answer still comes from this server.</span></li>
+    <li><a href="https://github.com/PrinceGabriel-lgtm/freshcontext-mcp/blob/main/docs/VERIFYING.md">Offline verification</a>
+      <span class="what">Check a signature yourself against the published Ed25519 key. This is the path that does not require trusting this server.</span></li>
+    <li><code>POST /mcp</code>
+      <span class="what">Model Context Protocol endpoint (JSON-RPC 2.0). Not a web page — it answers MCP clients.</span></li>
+  </ul>
+
+  <h2>Read the evidence</h2>
+  <ul>
+    <li><a href="https://github.com/PrinceGabriel-lgtm/freshcontext-mcp/blob/main/docs/INSPECTION.md">Inspection path</a>
+      <span class="what">Where to start, and what each artifact proves.</span></li>
+    <li><a href="https://github.com/PrinceGabriel-lgtm/freshcontext-mcp/blob/main/docs/VERIFYING.md">Verifying a verdict</a>
+      <span class="what">How to check a signature yourself.</span></li>
+    <li><a href="https://freshcontext.dev/spec.html">Specification</a></li>
+    <li><a href="https://github.com/PrinceGabriel-lgtm/freshcontext-mcp">Source (MIT)</a></li>
+    <li><a href="https://www.npmjs.com/package/freshcontext-mcp">npm package</a></li>
+  </ul>
+
+  <footer>
+    This page is served to browsers. Every other client gets the same document as JSON:
+    <pre><code>curl -H 'Accept: application/json' https://api.freshcontext.dev/</code></pre>
+  </footer>
+</main>
+</body>
+</html>
+`;
+}
+
 // ─── Worker Export ────────────────────────────────────────────────────────────
 
 const BLOCKED_PATH_PATTERNS = [
@@ -2848,26 +2940,60 @@ export default {
       } catch (err: unknown) { return routeError(err); }
     }
 
-    // ── GET / — landing page, stops bots from triggering errors ──────────────────
+    // ── GET / — service document, and the inspection path a person lands on ──────
+    //
+    // Content-negotiated: a browser sends `Accept: text/html` and gets the page in
+    // rootInspectionHtml(); everything else — curl, an MCP client, CI — gets the JSON
+    // below, byte-shape unchanged from when this was JSON-only. The negotiation is on
+    // an explicit `text/html` in Accept, never on User-Agent, so `*/*` stays JSON and
+    // no API caller's behaviour depends on what it looks like.
+    //
+    // Why this exists: this hostname is published in outreach as a public inspection
+    // point, and the root answered every caller with raw JSON. A reviewer sent the bare
+    // hostname reported that some links did not work for him; what his browser actually
+    // did is not something we observed, and nothing here should be read as establishing
+    // it. What is independently established is narrower and enough on its own: a JSON
+    // dump is the wrong answer to a link handed to a person.
     if (url.pathname === "/" || url.pathname === "") {
+      if (wantsHtml(request)) {
+        return new Response(rootInspectionHtml(), {
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            // The response body differs by Accept, so caches must key on it.
+            "Vary": "Accept",
+            "X-Content-Type-Options": "nosniff",
+            // No scripts, no external anything. The page is inline-styled text and links.
+            "Content-Security-Policy":
+              "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+          },
+        });
+      }
       return new Response(JSON.stringify({
         service: "freshcontext-mcp",
         version: SERVICE_VERSION,
         description: "FreshContext - context integrity infrastructure for AI agents and retrieval systems",
+        // The verification surface comes first because it is what an auditor,
+        // a third party checking a verdict, or a monitoring check actually needs.
+        // It was absent from this list entirely while /debug/* was advertised.
         endpoints: {
+          health: "GET /health  (build identity: version and deployed commit)",
+          rest_health: "GET /v1/health",
+          verify: "POST /v1/verify  (server-side verification of a signed verdict, V2/V3/V4)",
+          signing_keys: "GET /.well-known/freshcontext-signing-keys.json",
           mcp: "POST /mcp  (JSON-RPC 2.0)",
+          demo: "GET /demo",
           briefing: "GET /briefing",
           briefing_now: "POST /briefing/now",
           intel_feed: "GET /v1/intel/feed/:profile_id?limit=20&min_rt=0",
           watched_queries: "GET /watched-queries",
-          debug_db: "GET /debug/db",
-          debug_scrape: "GET /debug/scrape?adapter=X&query=Y",
         },
         docs: "https://freshcontext.dev",
         spec: "https://freshcontext.dev/spec.html",
+        verifying: "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp/blob/main/docs/VERIFYING.md",
+        inspection: "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp/blob/main/docs/INSPECTION.md",
         github: "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp",
       }, null, 2), {
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Vary": "Accept" },
       });
     }
 
