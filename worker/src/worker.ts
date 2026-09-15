@@ -2569,7 +2569,9 @@ function rootInspectionHtml(): string {
     <li><a href="/.well-known/freshcontext-signing-keys.json"><code>/.well-known/freshcontext-signing-keys.json</code></a>
       <span class="what">The published Ed25519 public keys. Verdicts are signed; anyone can check one offline against these.</span></li>
     <li><code>POST /v1/verify</code>
-      <span class="what">Verify a signed verdict without trusting this server's answer.</span></li>
+      <span class="what">Server-side verification endpoint for signed verdicts. Convenient, but the answer still comes from this server.</span></li>
+    <li><a href="https://github.com/PrinceGabriel-lgtm/freshcontext-mcp/blob/main/docs/VERIFYING.md">Offline verification</a>
+      <span class="what">Check a signature yourself against the published Ed25519 key. This is the path that does not require trusting this server.</span></li>
     <li><code>POST /mcp</code>
       <span class="what">Model Context Protocol endpoint (JSON-RPC 2.0). Not a web page — it answers MCP clients.</span></li>
   </ul>
@@ -2947,8 +2949,11 @@ export default {
     // no API caller's behaviour depends on what it looks like.
     //
     // Why this exists: this hostname is published in outreach as a public inspection
-    // point, and a reviewer who pasted it got a wall of raw JSON. That is a working
-    // endpoint failing at the only job the link had.
+    // point, and the root answered every caller with raw JSON. A reviewer sent the bare
+    // hostname reported that some links did not work for him; what his browser actually
+    // did is not something we observed, and nothing here should be read as establishing
+    // it. What is independently established is narrower and enough on its own: a JSON
+    // dump is the wrong answer to a link handed to a person.
     if (url.pathname === "/" || url.pathname === "") {
       if (wantsHtml(request)) {
         return new Response(rootInspectionHtml(), {
@@ -2973,7 +2978,7 @@ export default {
         endpoints: {
           health: "GET /health  (build identity: version and deployed commit)",
           rest_health: "GET /v1/health",
-          verify: "POST /v1/verify  (verify a signed verdict, V2/V3/V4)",
+          verify: "POST /v1/verify  (server-side verification of a signed verdict, V2/V3/V4)",
           signing_keys: "GET /.well-known/freshcontext-signing-keys.json",
           mcp: "POST /mcp  (JSON-RPC 2.0)",
           demo: "GET /demo",
