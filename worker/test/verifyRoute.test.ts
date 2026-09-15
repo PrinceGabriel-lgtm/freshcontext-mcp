@@ -129,6 +129,66 @@ describe("mounted /v1 route — real Worker fetch (F3)", () => {
     expect(body.version).toBe(PKG_VERSION);
   });
 
+  // ── GET / — the link that gets pasted into an email ──────────────────────────
+  //
+  // This hostname is published as a public inspection point, so the bare root is the
+  // URL a person is most likely to be handed. It answers by content type: a browser
+  // asks for text/html and gets a page, everything else keeps the JSON it always had.
+  //
+  // Both directions are pinned because both are a way to break it. Serving JSON to a
+  // browser is the failure that started this; serving HTML to an API client would be a
+  // far worse one, silently, to callers who never asked for a page.
+
+  test("GET / with no Accept → the JSON service document", async () => {
+    const r = await SELF.fetch("https://freshcontext.test/");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("Content-Type")).toContain("application/json");
+    const body = await r.json() as { service: string; version: string };
+    expect(body.service).toBe("freshcontext-mcp");
+    expect(body.version).toBe(PKG_VERSION);
+  });
+
+  test("GET / with Accept: */* (curl, CI) stays JSON", async () => {
+    const r = await SELF.fetch("https://freshcontext.test/", { headers: { Accept: "*/*" } });
+    expect(r.status).toBe(200);
+    expect(r.headers.get("Content-Type")).toContain("application/json");
+  });
+
+  test("GET / with the MCP client Accept header stays JSON", async () => {
+    const r = await SELF.fetch("https://freshcontext.test/", {
+      headers: { Accept: "application/json, text/event-stream" },
+    });
+    expect(r.status).toBe(200);
+    expect(r.headers.get("Content-Type")).toContain("application/json");
+  });
+
+  // The verification surface is the reason an auditor opens this at all. It was absent
+  // from the endpoint list while /debug/* was advertised in its place.
+  test("GET / names the endpoints that make the deployment checkable", async () => {
+    const r = await SELF.fetch("https://freshcontext.test/");
+    const body = await r.json() as { endpoints: Record<string, string> };
+    for (const key of ["health", "rest_health", "verify", "signing_keys"]) {
+      expect(body.endpoints[key]).toBeTruthy();
+    }
+    // Debug routes still exist; they are simply no longer advertised to the public.
+    expect(body.endpoints.debug_db).toBeUndefined();
+    expect(body.endpoints.debug_scrape).toBeUndefined();
+  });
+
+  test("GET / with a browser Accept → HTML that links the signing key document", async () => {
+    const r = await SELF.fetch("https://freshcontext.test/", {
+      headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
+    });
+    expect(r.status).toBe(200);
+    expect(r.headers.get("Content-Type")).toContain("text/html");
+    // The body varies by Accept, so a cache that ignores it would serve the wrong one.
+    expect(r.headers.get("Vary")).toContain("Accept");
+    const html = await r.text();
+    expect(html).toContain("/.well-known/freshcontext-signing-keys.json");
+    expect(html).toContain("/health");
+    expect(html).toContain("freshcontext.dev");
+  });
+
   test("Mode 1: valid payload + signature → valid", async () => {
     const r = await SELF.fetch(post({ signing_payload: payload, signature }));
     expect(r.status).toBe(200);
