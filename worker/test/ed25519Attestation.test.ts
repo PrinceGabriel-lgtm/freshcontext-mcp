@@ -26,7 +26,7 @@ const V3_PAYLOAD = [
   "adapter=arxiv",
   "published_at=2026-09-01T00:00:00.000Z",
   "retrieved_at=2026-09-10T00:00:00.000Z",
-  "engine_version=0.5.1",
+  "engine_version=0.5.2",
   "verdict_id=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
   "decision=use_first",
 ].join("\n");
