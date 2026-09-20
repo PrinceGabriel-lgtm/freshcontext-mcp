@@ -31,7 +31,7 @@ import {
 } from "./ed25519Attestation.js";
 import type { Ed25519SigningEnv } from "./ed25519Attestation.js";
 
-const SERVICE_VERSION = "0.5.1";
+const SERVICE_VERSION = "0.5.2";
 const SERVICE_UA = `freshcontext-mcp/${SERVICE_VERSION} (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)`;
 
 const signalInputSchema = z.object({
