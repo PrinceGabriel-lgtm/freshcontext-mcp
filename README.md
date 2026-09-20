@@ -448,7 +448,7 @@ The reference implementation runs on Cloudflare's global edge:
 - **D1 database** — 18 watched queries running on 6-hour cron with relevancy scoring
 - **KV-backed rate limiting** — 60 req/min per IP across all edge nodes
 - **Defensive valves** — clock-skew rejection (5min tolerance), hard floor at R_t<5, lazy decay at read time
-- **Provenance** — Ha-Pri v1 SHA-256 provenance stamps on stored signals; hard tamper enforcement is a future Ha-Pri v2 path
+- **Provenance** — feed signals still carry legacy Ha-Pri v1 SHA-256 provenance references; separately, ledger-backed context verdicts are signed with Ed25519 V4 and independently verifiable
 - **Schema migrations** — promise-gated, idempotent, run on first request after deploy
 
 Production: `https://api.freshcontext.dev`
@@ -491,7 +491,7 @@ Split three ways so that genuine engineering risk is never filed as optionality.
 - [x] Live before/after demo at `/demo`
 - [x] METHODOLOGY.md — methodology and engineering documentation
 - [x] Published on npm and listed for MCP usage; Apify/feed assets separated from the MCP runtime package
-- [x] GitHub Actions release workflow — manual or `v*` tag-triggered npm publish path
+- [ ] Release publication automation — no current GitHub Actions workflow publishes npm or the official MCP Registry; releases remain an explicit publication step
 - [x] **Independently verifiable Ed25519 attestation (E-2).** Every new verdict row in the
   ledger is signed `FRESHCONTEXT_HA_PRI_V4` with Ed25519. A third party can verify a verdict
   with no FreshContext account, no API key and no call to FreshContext — using the key
@@ -559,7 +559,7 @@ MIT
 
 ---
 
-*Built by Prince Gabriel — Grootfontein, Namibia 🇳🇦*
+*Built by Immanuel Gabriel — Namibia 🇳🇦*
 *"The work isn't gone. It's just waiting to be continued."*
 
 ---
