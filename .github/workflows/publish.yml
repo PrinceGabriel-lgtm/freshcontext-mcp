@@ -1,0 +1,159 @@
+name: Publish npm
+
+# Deliberate publication only. Trusted publishing removes the long-lived npm token,
+# but publishing is still irreversible, so this workflow is never a side effect of
+# pushing a tag or merging a PR.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Exact version expected in package.json (for example 0.5.2)"
+        required: true
+        type: string
+      confirm:
+        description: "I intend to publish this version to npm"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish freshcontext-mcp
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm == true }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Show toolchain
+        run: |
+          node --version
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Assert release version alignment
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const expected = process.env.EXPECTED_VERSION;
+          const fail = (message) => {
+            console.error('::error::' + message);
+            process.exit(1);
+          };
+
+          if (!/^\d+\.\d+\.\d+$/.test(expected ?? '')) {
+            fail('The workflow version input must be an exact x.y.z version.');
+          }
+
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          const core = JSON.parse(fs.readFileSync('packages/core/package.json', 'utf8'));
+          const server = JSON.parse(fs.readFileSync('server.json', 'utf8'));
+
+          const values = {
+            'package.json': pkg.version,
+            'package-lock.json root': lock.version,
+            'package-lock.json package root': lock.packages?.['']?.version,
+            'package-lock.json Core workspace': lock.packages?.['packages/core']?.version,
+            'packages/core/package.json': core.version,
+            'server.json': server.version,
+            'server.json npm package': server.packages?.[0]?.version,
+          };
+
+          for (const [surface, version] of Object.entries(values)) {
+            if (version !== expected) {
+              fail(`${surface} is ${version}; expected ${expected}.`);
+            }
+          }
+
+          const sourceChecks = [
+            ['src/server.ts', `version: "${expected}"`],
+            ['src/rest/handler.ts', `SERVICE_VERSION = "${expected}"`],
+            ['worker/src/worker.ts', `SERVICE_VERSION = "${expected}"`],
+          ];
+
+          for (const [path, needle] of sourceChecks) {
+            const text = fs.readFileSync(path, 'utf8');
+            if (!text.includes(needle)) {
+              fail(`${path} does not carry expected release version ${expected}.`);
+            }
+          }
+
+          console.log('Release surfaces aligned at', expected);
+          NODE
+
+      - name: Refuse an already-published version
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          if npm view "freshcontext-mcp@$EXPECTED_VERSION" version --silent >/tmp/existing-version 2>/dev/null; then
+            echo "::error::freshcontext-mcp@$EXPECTED_VERSION already exists on npm."
+            cat /tmp/existing-version
+            exit 1
+          fi
+          echo "freshcontext-mcp@$EXPECTED_VERSION is not currently published."
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Trust gate
+        run: npm run trust:gate
+
+      - name: Inspect publish tarball
+        run: |
+          npm pack --dry-run --json > /tmp/pack.json
+          node <<'NODE'
+          const fs = require('fs');
+          const pack = JSON.parse(fs.readFileSync('/tmp/pack.json', 'utf8'))[0];
+          const files = pack.files.map((entry) => entry.path);
+          const bad = files.filter((path) =>
+            /AUDIT|EVIDENCE|FIXLIST|STATE_MAP|TRUST_ROADMAP|_REVIEW|[.]sql$|^[.]env$|[.]local[.]txt$/i.test(path)
+          );
+          if (bad.length) {
+            console.error('::error::Internal material in npm tarball: ' + bad.join(', '));
+            process.exit(1);
+          }
+          console.log('Tarball clean:', files.length, 'files,', pack.size, 'bytes');
+          NODE
+
+      - name: Publish to npm with provenance
+        run: npm publish --access public --provenance
+
+      - name: Verify npm publication
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            published="$(npm view freshcontext-mcp version --silent 2>/dev/null || true)"
+            if [ "$published" = "$EXPECTED_VERSION" ]; then
+              echo "npm publication verified: freshcontext-mcp@$published"
+              exit 0
+            fi
+            echo "attempt $attempt: npm latest is ${published:-<unavailable>}; waiting for $EXPECTED_VERSION"
+            sleep 10
+          done
+          echo "::error::npm did not report $EXPECTED_VERSION as latest after publication."
+          exit 1
