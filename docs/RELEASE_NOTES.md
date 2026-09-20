@@ -17,9 +17,9 @@ Metadata correction and trusted-publishing release. No product behavior changes.
   `workflow_dispatch` publication path using GitHub OIDC, npm provenance, and no stored
   npm write token. It refuses to publish from a non-main ref or when the requested version
   disagrees with the repository.
-- **Registry publication remains separate.** Publishing 0.5.2 to npm does not itself
-  overwrite the immutable MCP Registry 0.5.1 record; the corrected 0.5.2 `server.json`
-  still needs the explicit MCP Registry publication step.
+- **npm and MCP Registry publication are coordinated.** The manual trusted-publishing
+  workflow publishes 0.5.2 to npm first, verifies npm, then authenticates to the official
+  MCP Registry with GitHub OIDC and publishes the matching 0.5.2 `server.json`.
 
 ## 0.5.1
 

@@ -491,7 +491,7 @@ Split three ways so that genuine engineering risk is never filed as optionality.
 - [x] Live before/after demo at `/demo`
 - [x] METHODOLOGY.md — methodology and engineering documentation
 - [x] Published on npm and listed for MCP usage; Apify/feed assets separated from the MCP runtime package
-- [x] npm trusted publishing workflow — manual `workflow_dispatch` only, OIDC-backed, provenance-enabled, and gated by version/verification checks. Official MCP Registry publication remains a separate explicit step
+- [x] Trusted release publishing workflow — manual `workflow_dispatch` only, OIDC-backed, provenance-enabled, and gated by version/verification checks. One explicit run publishes npm first, verifies it, then publishes the matching manifest to the official MCP Registry with GitHub OIDC
 - [x] **Independently verifiable Ed25519 attestation (E-2).** Every new verdict row in the
   ledger is signed `FRESHCONTEXT_HA_PRI_V4` with Ed25519. A third party can verify a verdict
   with no FreshContext account, no API key and no call to FreshContext — using the key
