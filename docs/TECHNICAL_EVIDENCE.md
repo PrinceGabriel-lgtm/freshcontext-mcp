@@ -121,7 +121,7 @@ API client could satisfy it however it identified itself.
 
 | Path | Before | After |
 | --- | --- | --- |
-| `/health` | 403 challenge | **200**, `status: ok`, version 0.5.1 |
+| `/health` | 403 challenge | **200**, `status: ok`, version 0.5.1 (observed 2026-09-14) |
 | `/v1/health` | 403 challenge | **200**, `ok: true` |
 | `/mcp` | 403 challenge | reachable |
 | `/` | 403 challenge | reachable |
