@@ -1,4 +1,4 @@
-name: Publish npm
+name: Publish release
 
 # Deliberate publication only. Trusted publishing removes the long-lived npm token,
 # but publishing is still irreversible, so this workflow is never a side effect of
@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       confirm:
-        description: "I intend to publish this version to npm"
+        description: "I intend to publish this version to npm and the MCP Registry"
         required: true
         default: false
         type: boolean
@@ -21,7 +21,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: npm-publish
+  group: freshcontext-release-publish
   cancel-in-progress: false
 
 jobs:
@@ -157,3 +157,51 @@ jobs:
           done
           echo "::error::npm did not report $EXPECTED_VERSION as latest after publication."
           exit 1
+
+      - name: Install mcp-publisher
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
+            | tar xz mcp-publisher
+          ./mcp-publisher --help >/dev/null
+
+      - name: Validate MCP Registry manifest
+        run: ./mcp-publisher validate server.json
+
+      - name: Authenticate to MCP Registry with GitHub OIDC
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish server.json
+
+      - name: Verify MCP Registry publication
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+          SERVER_NAME: io.github.PrinceGabriel-lgtm/freshcontext
+        run: |
+          set -euo pipefail
+          ENCODED_NAME="$(node -p "encodeURIComponent(process.argv[1])" "$SERVER_NAME")"
+          URL="https://registry.modelcontextprotocol.io/v0.1/servers/$ENCODED_NAME/versions/$EXPECTED_VERSION"
+
+          body=""
+          for attempt in 1 2 3 4 5 6; do
+            if body="$(curl -fsS --max-time 20 "$URL" 2>/dev/null)"; then
+              if node -e '
+                const body = JSON.parse(process.argv[1]);
+                const expectedVersion = process.argv[2];
+                const expectedName = process.argv[3];
+                const server = body.server ?? body;
+                if (server.version !== expectedVersion) process.exit(2);
+                if (server.name !== expectedName) process.exit(3);
+              ' "$body" "$EXPECTED_VERSION" "$SERVER_NAME"; then
+                echo "MCP Registry publication verified: $SERVER_NAME@$EXPECTED_VERSION"
+                exit 0
+              fi
+            fi
+            echo "attempt $attempt: MCP Registry has not exposed $SERVER_NAME@$EXPECTED_VERSION yet"
+            sleep 10
+          done
+
+          echo "::error::MCP Registry did not expose $SERVER_NAME@$EXPECTED_VERSION after publication."
+          exit 1
+
