@@ -15,6 +15,8 @@ This repository is the integrated FreshContext Core/MCP package.
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-Listed-blue)](https://registry.modelcontextprotocol.io)
 
 > **Live demo:** [api.freshcontext.dev/demo](https://api.freshcontext.dev/demo) — same model, same query, two completely different answers. Only the temporal layer changed.
+>
+> **Integrate it into an existing stack:** [freshcontext.dev/integration](https://freshcontext.dev/integration) — start with one bounded RAG, agent, retrieval, or governance workflow and objective acceptance criteria.
 
 ---
 
