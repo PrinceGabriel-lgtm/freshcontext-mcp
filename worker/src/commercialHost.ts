@@ -1,3 +1,10 @@
+// COMMERCIAL HOST V1 SCAFFOLD — intentionally unmounted.
+//
+// This file defines the minimum project-authenticated host shape for a future paid
+// deployment. It MUST NOT be mounted or treated as a public API commitment until an
+// actual customer scope exists and the schema, issuance flow, tests and migration in
+// docs/COMMERCIAL_HOST_BLUEPRINT.md are completed and reviewed.
+//
 import { handleRestRequest } from "../../src/rest/handler.js";
 import type { RateLimitBinding } from "./rateLimit.js";
 
