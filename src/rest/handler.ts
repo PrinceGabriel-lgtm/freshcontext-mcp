@@ -4,7 +4,7 @@ import type {
   FreshContextSignalInput,
 } from "#core";
 
-const SERVICE_VERSION = "0.5.1";
+const SERVICE_VERSION = "0.5.2";
 const JSON_CONTENT_TYPE = "application/json";
 const MAX_BODY_BYTES = 256 * 1024;
 
