@@ -1,5 +1,26 @@
 # FreshContext Release Notes
 
+## 0.5.2
+
+Metadata correction and trusted-publishing release. No product behavior changes.
+
+- **MCP Registry source manifest modernized.** `server.json` now uses the current
+  registry schema, carries the human-readable `FreshContext` title, the canonical
+  `https://freshcontext.dev` website, the stable GitHub repository id, and the current
+  context-integrity description.
+- **Public positioning drift corrected.** Package metadata now points to the canonical
+  FreshContext site and removes stale wording that framed FreshContext primarily as
+  freshness-aware retrieval or implied guarantees the product does not make.
+- **Version surfaces synchronized.** npm package metadata, Core workspace metadata, MCP
+  server version, REST/Worker health version and verification fixtures all align at 0.5.2.
+- **npm trusted publishing added.** `.github/workflows/publish.yml` is a manual
+  `workflow_dispatch` publication path using GitHub OIDC, npm provenance, and no stored
+  npm write token. It refuses to publish from a non-main ref or when the requested version
+  disagrees with the repository.
+- **Registry publication remains separate.** Publishing 0.5.2 to npm does not itself
+  overwrite the immutable MCP Registry 0.5.1 record; the corrected 0.5.2 `server.json`
+  still needs the explicit MCP Registry publication step.
+
 ## 0.5.1
 
 Documentation corrections. No source behavior changed.
