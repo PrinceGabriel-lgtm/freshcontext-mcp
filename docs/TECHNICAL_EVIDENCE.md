@@ -5,7 +5,7 @@ read to check it. Where a claim is not currently provable, the row says so.
 
 Nothing here is a price, an appraisal, or a performance guarantee.
 
-**Package version at time of writing: 0.5.1.** Check it against `package.json`, `server.json`,
+**Package version at time of writing: 0.5.2.** Check it against `package.json`, `server.json`,
 and the `version` field returned by `GET /health` — those three should agree, and disagreeing is
 itself a finding.
 
@@ -121,7 +121,7 @@ API client could satisfy it however it identified itself.
 
 | Path | Before | After |
 | --- | --- | --- |
-| `/health` | 403 challenge | **200**, `status: ok`, version 0.5.1 |
+| `/health` | 403 challenge | **200**, `status: ok`, version 0.5.1 (observed 2026-09-14) |
 | `/v1/health` | 403 challenge | **200**, `ok: true` |
 | `/mcp` | 403 challenge | reachable |
 | `/` | 403 challenge | reachable |

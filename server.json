@@ -7,12 +7,12 @@
     "source": "github",
     "id": "1170268275"
   },
-  "version": "0.5.1",
+  "version": "0.5.2",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "freshcontext-mcp",
-      "version": "0.5.1",
+      "version": "0.5.2",
       "transport": {
         "type": "stdio"
       }

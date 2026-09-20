@@ -32,7 +32,7 @@ function buildV4Payload(keyId: string): string {
     "adapter=arxiv",
     "published_at=2026-09-01T00:00:00.000Z",
     "retrieved_at=2026-09-10T00:00:00.000Z",
-    "engine_version=0.5.1",
+    "engine_version=0.5.2",
     `verdict_id=${"c".repeat(64)}`,
     "decision=use_first",
     `key_id=${keyId}`,
