@@ -18,7 +18,7 @@
     "context",
     "model-context-protocol"
   ],
-  "homepage": "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp",
+  "homepage": "https://freshcontext.dev",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/PrinceGabriel-lgtm/freshcontext-mcp.git"

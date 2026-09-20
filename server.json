@@ -1,13 +1,13 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.PrinceGabriel-lgtm/freshcontext",
-  "description": "Context integrity infrastructure for AI agents and retrieval systems. Evaluates caller-provided and adapter-sourced context before it reaches the model.",
+  "description": "Context integrity for AI agents: evaluate freshness, confidence, provenance, and decision readiness.",
   "repository": {
     "url": "https://github.com/PrinceGabriel-lgtm/freshcontext-mcp",
-    "source": "github"
+    "source": "github",
+    "id": "1170268275"
   },
   "version": "0.5.1",
-  "website_url": "https://freshcontext.dev",
   "packages": [
     {
       "registryType": "npm",
@@ -23,5 +23,7 @@
       "type": "streamable-http",
       "url": "https://api.freshcontext.dev/mcp"
     }
-  ]
+  ],
+  "title": "FreshContext",
+  "websiteUrl": "https://freshcontext.dev"
 }
