@@ -401,7 +401,7 @@ Fortune. (2025). A customer support AI went rogue—and it's a warning for every
 
 Gade, A., & Jetcheva, J. G. (2024). It's About Time: Incorporating Temporality in Retrieval Augmented Language Models. *arXiv:2401.13222*.
 
-Gabriel, I. (2025–2026). FreshContext: An MCP server for timestamped web intelligence with guaranteed freshness envelopes. https://github.com/PrinceGabriel-lgtm/freshcontext-mcp
+Gabriel, I. (2025–2026). FreshContext: Context integrity infrastructure for AI agents and retrieval systems. https://github.com/PrinceGabriel-lgtm/freshcontext-mcp
 
 Gardiner Roberts LLP. (2024). Is a company liable for its AI chatbot telling a customer to phone a scammer? https://www.grllp.com/blog/
 
