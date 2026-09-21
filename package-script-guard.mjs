@@ -203,6 +203,7 @@ const commands = {
       "tests/offlineVerification.test.ts",
       "tests/trustScan.test.mjs",
       "tests/contextIntegrityBenchmark.test.ts",
+      "tests/serviceKits.test.ts",
     ],
   },
 };
