@@ -281,4 +281,12 @@ jobs:
             --notes-file /tmp/release-notes.md \
             --latest
 
-          gh release view "$TAG" --json tagName,isLatest,name,url
+          gh release view "$TAG" --json tagName,name,url
+
+          latest_tag="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
+          if [ "$latest_tag" != "$TAG" ]; then
+            echo "::error::GitHub latest release is $latest_tag; expected $TAG."
+            exit 1
+          fi
+
+          echo "GitHub Release verified as latest: $TAG"
