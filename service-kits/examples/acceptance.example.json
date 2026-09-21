@@ -1,0 +1,52 @@
+{
+  "application_ref": "FC-APP-20260921-DEMO02",
+  "service_order_ref": "FC-SO-DEMO02",
+  "workflow_id": "support-rag-01",
+  "workflow_name": "Support RAG staging workflow",
+  "profile": "official_docs",
+  "intent": "developer_adoption",
+  "now": "2026-09-21T10:00:00.000Z",
+  "scenarios": [
+    {
+      "id": "A-01",
+      "name": "recent well-provenanced context remains handoff-safe",
+      "signal": {
+        "id": "fresh-doc",
+        "source": "https://docs.example.com/current",
+        "source_type": "official_docs",
+        "title": "Current product documentation",
+        "content": "Current product documentation for the active release.",
+        "published_at": "2026-09-20T00:00:00.000Z",
+        "retrieved_at": "2026-09-21T09:55:00.000Z",
+        "semantic_score": 0.96,
+        "date_confidence": "high",
+        "status": "success"
+      },
+      "expected": {
+        "safe_for_agent_handoff": true
+      }
+    },
+    {
+      "id": "A-02",
+      "name": "failed retrieval cannot silently pass through",
+      "signal": {
+        "id": "failed-doc",
+        "source": "https://docs.example.com/unavailable",
+        "source_type": "official_docs",
+        "title": "Unavailable source",
+        "content": "[ERROR] upstream fetch failed",
+        "published_at": null,
+        "retrieved_at": "2026-09-21T09:55:00.000Z",
+        "semantic_score": 0.2,
+        "date_confidence": "unknown",
+        "status": "failed"
+      },
+      "expected": {
+        "safe_for_agent_handoff": false,
+        "decisions": [
+          "exclude"
+        ]
+      }
+    }
+  ]
+}
