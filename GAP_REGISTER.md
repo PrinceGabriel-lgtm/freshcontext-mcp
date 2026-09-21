@@ -18,13 +18,20 @@ None open. The suite is 446/446 on this commit and the trust gate is clean.
 
 ## DELIVERY_IMPROVEMENT
 
+Closed in this pass:
+
+| # | Gap | How it was closed |
+|---|---|---|
+| ~~D-1~~ | `safe_for_agent_handoff` was misreadable by a buyer | Assessment and multi-workflow evidence now carry `field_meanings`, and the human-readable report has a **How to read these fields** section stating that the field is not a claim the content is current. Asserted by test in both formats. |
+| ~~D-3~~ | Assessment evidence was not proven deterministic | A test runs one fixture twice and compares both outputs, excluding only `generated_at`. Reproducibility is sold; it is now checked. |
+| ~~D-5~~ | Multi-workflow isolation was a property of how the runner happened to be written | A test evaluates one identical signal through two deliberately conflicting profiles and asserts each workflow's items and summary match the same workflow evaluated alone. |
+
+Still open:
+
 | # | Gap | Closure |
 |---|---|---|
-| D-1 | **`safe_for_agent_handoff` is misreadable by a buyer.** It can read `true` beside a 2019 document — correct, because the age is known and labelled, but a client skimming evidence will read it as "current". | Emit a field-meaning note in `assessment-evidence.md` and the multi-workflow summary. Small, and it prevents the single most likely client misunderstanding. |
 | D-2 | **No input schema.** The four runners validate imperatively; a malformed client fixture fails with an ad-hoc message. | Publish a JSON Schema per service and validate against it, so an intake error is a precise statement rather than a stack trace. |
-| D-3 | **Assessment evidence is not proven deterministic.** `now` is supplied, which should make it reproducible, but nothing asserts that two runs over one fixture match. | A test that runs the same fixture twice and compares, excluding `generated_at`. Reproducibility is a selling point and is currently unverified. |
 | D-4 | **No acceptance-suite starter pack.** SOP-006 names five scenario families; each engagement re-derives them. | Ship a template suite covering recent / stale / weak-dating / weak-provenance / failed-source, as a starting point to adapt. |
-| D-5 | **Multi-workflow isolation is asserted by construction, not by test.** Nothing proves one workflow's profile cannot leak into another's evaluation. | A test with two deliberately conflicting profiles asserting each workflow's decisions are unaffected by the other. |
 
 ## ENTERPRISE_FEATURE
 

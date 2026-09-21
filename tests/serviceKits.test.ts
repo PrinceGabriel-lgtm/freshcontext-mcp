@@ -183,3 +183,104 @@ test("service-kit evidence output cannot be committed to this repository", () =>
   const checked = spawnSync("git", ["check-ignore", "-q", probe], { encoding: "utf8" });
   assert.equal(checked.status, 0, "service-output/ must be gitignored");
 });
+
+test("assessment evidence is reproducible from the same fixture", () => {
+  // Reproducibility is sold, not merely hoped for: an engagement records the
+  // commit and the fixture, and a client must be able to get the same evidence
+  // back. `now` is supplied by the input for exactly this reason. Nothing
+  // asserted it until here, so a future non-deterministic ordering or a stray
+  // Date.now() inside the evaluation path would have silently broken the claim.
+  const first = runScript("service-kits/assessment.ts", "service-kits/examples/assessment.example.json");
+  const second = runScript("service-kits/assessment.ts", "service-kits/examples/assessment.example.json");
+  assert.equal(first.result.status, 0, first.result.stderr);
+  assert.equal(second.result.status, 0, second.result.stderr);
+
+  const load = (dir: string) => {
+    const body = JSON.parse(readFileSync(path.join(dir, "assessment-evidence.json"), "utf8"));
+    // generated_at is wall-clock by design — it records when the run happened,
+    // not what it concluded. Everything else must match byte for byte.
+    delete body.generated_at;
+    return body;
+  };
+  assert.deepEqual(load(first.output), load(second.output), "two runs over one fixture must agree");
+
+  const md = (dir: string) =>
+    readFileSync(path.join(dir, "assessment-evidence.md"), "utf8").replace(/^\*\*Generated:.*$/m, "");
+  assert.equal(md(first.output), md(second.output), "the human-readable evidence must agree too");
+});
+
+test("one workflow's configuration cannot reach another's evaluation", () => {
+  // The multi-workflow service is sold as several INDEPENDENTLY configured
+  // workflows, not as one blended evaluation. That isolation was a property of
+  // how the runner happened to be written rather than something asserted, so a
+  // later refactor that hoisted shared state would have produced quietly
+  // cross-contaminated client evidence.
+  //
+  // Two workflows over an identical signal, with profiles and intents chosen to
+  // disagree. Each is then compared against the same workflow evaluated alone.
+  const signal = {
+    id: "shared",
+    source: "https://arxiv.org/abs/2609.00042",
+    source_type: "arxiv",
+    title: "A paper both workflows see",
+    content: "Identical content presented to two differently configured workflows.",
+    published_at: "2026-06-01T00:00:00.000Z",
+    retrieved_at: "2026-09-21T09:50:00.000Z",
+    semantic_score: 0.88,
+    date_confidence: "high",
+    status: "success",
+  };
+  const alpha = { workflow_id: "alpha", profile: "academic_research", intent: "citation_check", now: "2026-09-21T10:00:00.000Z", signals: [signal] };
+  const beta = { workflow_id: "beta", profile: "official_docs", intent: "developer_adoption", now: "2026-09-21T10:00:00.000Z", signals: [signal] };
+
+  const aloneAlpha = evaluateWorkflow(JSON.parse(JSON.stringify(alpha)));
+  const aloneBeta = evaluateWorkflow(JSON.parse(JSON.stringify(beta)));
+
+  const { output, result } = runWithFixture("service-kits/multi-workflow.ts", {
+    engagement_name: "isolation-check",
+    workflows: [JSON.parse(JSON.stringify(alpha)), JSON.parse(JSON.stringify(beta))],
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const body = JSON.parse(readFileSync(path.join(output, "multi-workflow-evidence.json"), "utf8"));
+  assert.equal(body.summary.workflows, 2);
+
+  const together = (id: string) => {
+    const w = body.workflows.find((x: { workflow_id: string }) => x.workflow_id === id);
+    assert.ok(w, `${id} must appear in the aggregate`);
+    return w;
+  };
+
+  // Each workflow keeps its own configuration through the aggregate run.
+  assert.equal(together("alpha").profile, "academic_research");
+  assert.equal(together("alpha").intent, "citation_check");
+  assert.equal(together("beta").profile, "official_docs");
+  assert.equal(together("beta").intent, "developer_adoption");
+
+  // And reaches the same verdict it reaches alone.
+  assert.deepEqual(together("alpha").items, aloneAlpha.items, "alpha must be unaffected by beta");
+  assert.deepEqual(together("beta").items, aloneBeta.items, "beta must be unaffected by alpha");
+  assert.deepEqual(together("alpha").summary, aloneAlpha.summary);
+  assert.deepEqual(together("beta").summary, aloneBeta.summary);
+});
+
+test("evidence discloses what safe_for_agent_handoff does and does not mean", () => {
+  // A client skim-reading handoff_safe: true beside a years-old document will
+  // hear "current". The evidence has to say otherwise in the deliverable
+  // itself, not only in a conversation the client may not remember.
+  const { output, result } = runScript("service-kits/assessment.ts", "service-kits/examples/assessment.example.json");
+  assert.equal(result.status, 0, result.stderr);
+
+  const body = JSON.parse(readFileSync(path.join(output, "assessment-evidence.json"), "utf8"));
+  assert.ok(body.field_meanings?.safe_for_agent_handoff, "machine-readable evidence must define the field");
+  assert.match(body.field_meanings.safe_for_agent_handoff, /NOT a claim that the content is current/);
+
+  const md = readFileSync(path.join(output, "assessment-evidence.md"), "utf8");
+  assert.match(md, /## How to read these fields/);
+  assert.match(md, /does not mean the content is current/);
+  assert.match(md, /\*unknown\*, not \*old\*/);
+
+  const multi = runScript("service-kits/multi-workflow.ts", "service-kits/examples/multi-workflow.example.json");
+  assert.equal(multi.result.status, 0, multi.result.stderr);
+  const multiBody = JSON.parse(readFileSync(path.join(multi.output, "multi-workflow-evidence.json"), "utf8"));
+  assert.ok(multiBody.field_meanings?.safe_for_agent_handoff, "multi-workflow evidence must define it too");
+});

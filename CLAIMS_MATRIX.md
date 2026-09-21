@@ -55,6 +55,27 @@ a sales conversation. If it is not in this table, it has not been checked.
 | Guaranteed improvement in answer quality or accuracy | `UNSUPPORTED` |
 | Plug-and-play middleware requiring no integration work | `UNSUPPORTED` |
 
+## Website audit
+
+`freshcontext-site` audited against this matrix at `35752ed`. Method: strip
+markup from every `*.html` page, then search the prose for each term in the
+"must not be made" list above, and separately for any advertised `/v1/` endpoint.
+
+**Result: no violations.** Every occurrence of a sensitive term is a disclaimer
+rather than a claim —
+
+- `sample-assessment.html` — "Worked sample · not a client case study", and
+  "not included: SLA, SSO, compliance certification, truth verification"
+- `terms.html` — "without warranty of any kind, without a service level
+  commitment, and without a guaranteed response time"
+- `integration.html` — "does not certify truth, guarantee business outcomes, or
+  replace legal/compliance/model-risk governance"
+
+The only endpoint the site advertises is **`/v1/verify`**, which is in
+`isAllowedRoute`. No page claims `/v1/evaluate` or `/v1/evaluate-batch`.
+
+Re-run this audit whenever a page changes or a row above moves class.
+
 ## What FreshContext actually asserts
 
 It evaluates **context integrity** — how fresh a source is, how well its
