@@ -1,0 +1,47 @@
+{
+  "application_ref": "FC-APP-20260921-DEMO01",
+  "client": "Illustrative Example Co.",
+  "workflow_id": "research-rag-01",
+  "workflow_name": "Research RAG citation workflow",
+  "profile": "academic_research",
+  "intent": "citation_check",
+  "now": "2026-09-21T10:00:00.000Z",
+  "signals": [
+    {
+      "id": "recent-strong",
+      "source": "https://arxiv.org/abs/2609.00001",
+      "source_type": "arxiv",
+      "title": "Recent strong source",
+      "content": "A recent highly relevant research result.",
+      "published_at": "2026-09-18T00:00:00.000Z",
+      "retrieved_at": "2026-09-21T09:50:00.000Z",
+      "semantic_score": 0.95,
+      "date_confidence": "high",
+      "status": "success"
+    },
+    {
+      "id": "older-relevant",
+      "source": "https://arxiv.org/abs/2401.00001",
+      "source_type": "arxiv",
+      "title": "Older relevant source",
+      "content": "An older but semantically relevant research result.",
+      "published_at": "2024-01-10T00:00:00.000Z",
+      "retrieved_at": "2026-09-21T09:50:00.000Z",
+      "semantic_score": 0.82,
+      "date_confidence": "high",
+      "status": "success"
+    },
+    {
+      "id": "unknown-date",
+      "source": "internal:note-17",
+      "source_type": "user_provided",
+      "title": "Undated note",
+      "content": "A relevant internal note with no reliable publication date.",
+      "published_at": null,
+      "retrieved_at": "2026-09-21T09:50:00.000Z",
+      "semantic_score": 0.88,
+      "date_confidence": "unknown",
+      "status": "success"
+    }
+  ]
+}

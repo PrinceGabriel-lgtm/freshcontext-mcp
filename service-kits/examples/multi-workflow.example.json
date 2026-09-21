@@ -1,0 +1,73 @@
+{
+  "application_ref": "FC-APP-20260921-DEMO03",
+  "client": "Illustrative Example Co.",
+  "engagement_name": "Two-workflow context-integrity proof",
+  "workflows": [
+    {
+      "workflow_id": "docs-rag",
+      "workflow_name": "Documentation RAG",
+      "profile": "official_docs",
+      "intent": "developer_adoption",
+      "now": "2026-09-21T10:00:00.000Z",
+      "signals": [
+        {
+          "id": "docs-current",
+          "source": "https://docs.example.com/v2",
+          "source_type": "official_docs",
+          "title": "Current docs",
+          "content": "Current documentation.",
+          "published_at": "2026-09-20T00:00:00.000Z",
+          "retrieved_at": "2026-09-21T09:50:00.000Z",
+          "semantic_score": 0.93,
+          "date_confidence": "high",
+          "status": "success"
+        },
+        {
+          "id": "docs-old",
+          "source": "https://docs.example.com/v1",
+          "source_type": "official_docs",
+          "title": "Legacy docs",
+          "content": "Legacy documentation.",
+          "published_at": "2023-01-01T00:00:00.000Z",
+          "retrieved_at": "2026-09-21T09:50:00.000Z",
+          "semantic_score": 0.88,
+          "date_confidence": "high",
+          "status": "stale"
+        }
+      ]
+    },
+    {
+      "workflow_id": "research-agent",
+      "workflow_name": "Research Agent",
+      "profile": "academic_research",
+      "intent": "citation_check",
+      "now": "2026-09-21T10:00:00.000Z",
+      "signals": [
+        {
+          "id": "paper-current",
+          "source": "https://arxiv.org/abs/2609.00002",
+          "source_type": "arxiv",
+          "title": "Current paper",
+          "content": "Recent research.",
+          "published_at": "2026-09-15T00:00:00.000Z",
+          "retrieved_at": "2026-09-21T09:50:00.000Z",
+          "semantic_score": 0.94,
+          "date_confidence": "high",
+          "status": "success"
+        },
+        {
+          "id": "paper-undated",
+          "source": "internal:paper-note",
+          "source_type": "user_provided",
+          "title": "Undated research note",
+          "content": "Relevant note without a date.",
+          "published_at": null,
+          "retrieved_at": "2026-09-21T09:50:00.000Z",
+          "semantic_score": 0.83,
+          "date_confidence": "unknown",
+          "status": "success"
+        }
+      ]
+    }
+  ]
+}
