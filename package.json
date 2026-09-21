@@ -117,7 +117,11 @@
     "trust:scan": "node package-script-guard.mjs trust:scan",
     "trust:scan:json": "node package-script-guard.mjs trust:scan:json",
     "trust:scan:markdown": "node package-script-guard.mjs trust:scan:markdown",
-    "test": "node package-script-guard.mjs test"
+    "test": "node package-script-guard.mjs test",
+    "service:assessment": "node package-script-guard.mjs service:assessment",
+    "service:acceptance": "node package-script-guard.mjs service:acceptance",
+    "service:multi": "node package-script-guard.mjs service:multi",
+    "service:spec": "node package-script-guard.mjs service:spec"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
