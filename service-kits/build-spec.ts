@@ -27,7 +27,29 @@ interface BuildSpecInput {
   milestones: Milestone[];
 }
 
-const SUBJECTIVE = /\b(better|robust|enterprise[- ]ready|safe|accurate|high quality|works well|seamless|trusted)\b/i;
+// Wording that asserts a quality without saying how anyone would check it. Two
+// shapes: bare vague adjectives, and unbounded comparatives ("more accurate"
+// than what, measured how).
+//
+// Bare `safe`, `accurate` and `trusted` are deliberately NOT here. They are
+// FreshContext's own verdict vocabulary, so "reported as not safe for agent
+// handoff" is a binary, observable criterion — and the earlier version of this
+// pattern flagged it, telling a buyer their correctly drafted acceptance test
+// was subjective. A checker that penalises the product's own terms undermines
+// the specification it is meant to tighten.
+const SUBJECTIVE =
+  /\b(better|robust|enterprise[- ]ready|production[- ]ready|high[- ]quality|works well|seamless|scalable|performant|user[- ]friendly|industry[- ]standard|best[- ]in[- ]class)\b|\bmore\s+(accurate|trustworthy|reliable|robust|secure|performant|efficient)\b|\bimprove[sd]?\s+(accuracy|trust|quality|reliability|performance|safety)\b|\b(safer|faster|cleaner|smarter)\b/i;
+
+// An escape hatch the specification asks for in as many words: vague wording is
+// acceptable when accompanied by something observable. A number, a boolean, a
+// snake_case or dotted field, a comparison operator, an exit code or a quoted
+// literal all make a statement checkable, whatever adjectives surround it.
+const OBSERVABLE =
+  /\d|\b(true|false|null)\b|\b[a-z][a-z0-9]*(_[a-z0-9]+)+\b|[<>]=?|={2,}|\bexit code\b|\bHTTP\b|[`"'\u2018\u2019\u201c\u201d]/i;
+
+function isSubjective(text: string): boolean {
+  return SUBJECTIVE.test(text) && !OBSERVABLE.test(text);
+}
 
 function nonEmpty(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(field + " must be a non-empty string.");
@@ -56,7 +78,7 @@ function validate(input: BuildSpecInput): string[] {
       nonEmpty(test.expected_observable_result, "acceptance_test.expected_observable_result");
       if (testIds.has(test.id)) throw new Error("duplicate acceptance test id: " + test.id);
       testIds.add(test.id);
-      if (SUBJECTIVE.test(test.expected_observable_result)) warnings.push(test.id + " contains subjective acceptance wording; replace it with a binary or measurable result.");
+      if (isSubjective(test.expected_observable_result)) warnings.push(test.id + " contains subjective acceptance wording; replace it with a binary or measurable result.");
     }
   }
   if (!input.background_ip_notes || input.background_ip_notes.length === 0) warnings.push("No background_ip_notes supplied; explicitly identify pre-existing FreshContext technology before issue.");
