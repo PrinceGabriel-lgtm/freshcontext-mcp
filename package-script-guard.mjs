@@ -64,6 +64,30 @@ const commands = {
     args: ["examples/validate-signal-batch.ts"],
     passThroughArgs: true,
   },
+  "service:assessment": {
+    required: ["service-kits/assessment.ts", "service-kits/common.ts"],
+    command: "tsx",
+    args: ["service-kits/assessment.ts"],
+    passThroughArgs: true,
+  },
+  "service:acceptance": {
+    required: ["service-kits/acceptance.ts", "service-kits/common.ts"],
+    command: "tsx",
+    args: ["service-kits/acceptance.ts"],
+    passThroughArgs: true,
+  },
+  "service:multi": {
+    required: ["service-kits/multi-workflow.ts", "service-kits/common.ts"],
+    command: "tsx",
+    args: ["service-kits/multi-workflow.ts"],
+    passThroughArgs: true,
+  },
+  "service:spec": {
+    required: ["service-kits/build-spec.ts", "service-kits/common.ts"],
+    command: "tsx",
+    args: ["service-kits/build-spec.ts"],
+    passThroughArgs: true,
+  },
   "benchmark:context-integrity": {
     required: [
       "benchmarks/context-integrity-v1/run.ts",
