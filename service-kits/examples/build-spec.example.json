@@ -1,0 +1,61 @@
+{
+  "application_ref": "FC-APP-20260921-DEMO04",
+  "client": "Illustrative Example Co.",
+  "capability": "Repository-specific evidence adapter",
+  "problem_statement": "The buyer needs one defined repository evidence source converted into FreshContext-compatible candidate context with deterministic acceptance.",
+  "environment": "Customer staging environment",
+  "dependencies": [
+    "Read-only access to the agreed repository/API",
+    "Representative fixtures",
+    "Named technical owner"
+  ],
+  "background_ip_notes": [
+    "FreshContext Core, decision logic, source profiles, verification methods and reusable integration utilities remain Background IP.",
+    "Historical MIT releases remain under their historical MIT rights."
+  ],
+  "client_deliverables": [
+    "Buyer-specific adapter configuration",
+    "Acceptance fixtures",
+    "Deployment and handover documentation"
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "name": "Specification and fixtures",
+      "deliverables": [
+        "Signed input/output contract",
+        "Representative fixture set"
+      ],
+      "acceptance_tests": [
+        {
+          "id": "M1-A1",
+          "description": "Fixture contract is machine-readable",
+          "input_or_fixture": "fixtures/schema.json",
+          "expected_observable_result": "The schema validates each agreed fixture with zero validation errors."
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "name": "Implementation",
+      "deliverables": [
+        "Adapter implementation",
+        "Automated test suite"
+      ],
+      "acceptance_tests": [
+        {
+          "id": "M2-A1",
+          "description": "Known fixture converts to candidate context",
+          "input_or_fixture": "fixtures/known-good.json",
+          "expected_observable_result": "The adapter emits one signal containing the agreed source, content, published_at, retrieved_at and date_confidence fields."
+        },
+        {
+          "id": "M2-A2",
+          "description": "Malformed input fails honestly",
+          "input_or_fixture": "fixtures/malformed.json",
+          "expected_observable_result": "The adapter returns a documented failure result and does not emit a success signal."
+        }
+      ]
+    }
+  ]
+}
