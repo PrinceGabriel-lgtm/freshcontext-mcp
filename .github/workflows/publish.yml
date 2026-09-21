@@ -24,7 +24,7 @@ on:
         type: boolean
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 concurrency:
@@ -248,3 +248,37 @@ jobs:
 
           echo "::error::MCP Registry did not expose $SERVER_NAME@$EXPECTED_VERSION within 5 minutes."
           exit 1
+
+
+      - name: Create or verify GitHub Release
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v$EXPECTED_VERSION"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub Release already exists: $TAG"
+            exit 0
+          fi
+
+          awk -v version="$EXPECTED_VERSION" '
+            BEGIN { capture=0 }
+            $0 == "## " version { capture=1; next }
+            capture && /^## / { exit }
+            capture { print }
+          ' docs/RELEASE_NOTES.md > /tmp/release-notes.md
+
+          if [ ! -s /tmp/release-notes.md ]; then
+            echo "::error::No release notes found for $EXPECTED_VERSION in docs/RELEASE_NOTES.md"
+            exit 1
+          fi
+
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "FreshContext $EXPECTED_VERSION" \
+            --notes-file /tmp/release-notes.md \
+            --latest
+
+          gh release view "$TAG" --json tagName,isLatest,name,url
