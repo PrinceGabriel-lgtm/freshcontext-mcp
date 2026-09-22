@@ -57,6 +57,14 @@ function toMarkdown(input: AssessmentInput, report: ReturnType<typeof evaluateWo
     "- Incomplete provenance readiness: " + report.summary.provenance_incomplete,
     "- Low-confidence items: " + report.summary.low_confidence,
     "",
+    "## How to read these fields",
+    "",
+    "`safe_for_agent_handoff` means the item can be passed to an agent **together with the decision recorded beside it**. It does not mean the content is current, and it does not mean the content is true.",
+    "",
+    "A document published years ago can be handoff-safe. If its age is known and it is labelled `use_as_background`, an agent receiving it has been told what it is, which is the condition that makes it safe to pass on. The state this evaluation blocks is *unknown*, not *old*: an item whose publication date could not be established is reported handoff-blocked even when its content looks strong, while an openly dated older item may not be.",
+    "",
+    "So read the two counts above as: how many items carry a decision an agent can act on, and how many are withheld because something about them could not be established.",
+    "",
     "## Findings",
     "",
     ...assessmentFindings.map((finding) => "- **" + finding.severity.toUpperCase() + " / " + finding.category + ":** " + finding.message),
@@ -96,6 +104,12 @@ async function main(): Promise<void> {
     client: input.client ?? null,
     workflow: report,
     findings: assessmentFindings,
+    field_meanings: {
+      safe_for_agent_handoff:
+        "The item may be passed to an agent together with the decision recorded beside it. NOT a claim that the content is current, and NOT a claim that it is true. Known-old content that is labelled as such can be handoff-safe; an item whose date could not be established is blocked even when its content looks strong. The blocked state is unknown, not old.",
+      decision:
+        "How the item may be used, not how good it is. cite_as_primary, cite_as_supporting, use_as_background, needs_verification and exclude are usage instructions for the consuming agent.",
+    },
     limitations: [
       "FreshContext does not certify truth.",
       "This evidence describes only the supplied candidate context and configured evaluation policy.",

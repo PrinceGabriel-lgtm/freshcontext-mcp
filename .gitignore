@@ -84,3 +84,11 @@ proof/
 
 # TypeScript project-reference build state (packages/core -> dist/core)
 .tsbuildinfo/
+
+# Service-kit evidence output. The four service:* runners write client evaluation
+# evidence here — the client's own fixtures, source URLs and document content.
+# It is engagement material, not repository material, and git history makes a
+# mistaken `git add -A` during delivery effectively permanent. SOP-009 requires
+# client data stay out of this repository; this is the mechanical half of that.
+# The default output root, plus any operator-chosen private path under it.
+service-output/

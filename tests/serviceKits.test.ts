@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -67,4 +67,220 @@ test("build-to-spec validator emits milestone acceptance evidence", () => {
   assert.equal(body.schema, "freshcontext.service.build-spec.v1");
   assert.equal(body.milestones.length, 2);
   assert.deepEqual(body.validation_warnings, []);
+});
+
+// ---------------------------------------------------------------------------
+// The commercial guarantees. Every test above asserts status === 0, so nothing
+// pinned the behaviour a Service Order actually sells: that a failed acceptance
+// scenario is loud. These do.
+// ---------------------------------------------------------------------------
+
+function runWithFixture(script: string, fixture: unknown) {
+  const dir = mkdtempSync(path.join(tmpdir(), "freshcontext-service-kit-fixture-"));
+  const file = path.join(dir, "fixture.json");
+  writeFileSync(file, JSON.stringify(fixture, null, 2));
+  return runScript(script, file);
+}
+
+test("acceptance runner exits non-zero when a contracted scenario fails", () => {
+  // Same suite the passing test uses, with one expectation inverted: assert that
+  // recent, well-provenanced context is NOT handoff-safe. The engine disagrees,
+  // so the scenario must fail and the runner must say so in its exit code —
+  // that is what makes an acceptance schedule enforceable rather than a demo.
+  const suite = JSON.parse(readFileSync("service-kits/examples/acceptance.example.json", "utf8"));
+  const inverted = suite.scenarios.find((s: { id: string }) => s.id === "A-01");
+  assert.ok(inverted, "example suite must still contain scenario A-01");
+  inverted.expected.safe_for_agent_handoff = false;
+
+  const { output, result } = runWithFixture("service-kits/acceptance.ts", suite);
+  assert.notEqual(result.status, 0, "a failed acceptance scenario must not exit 0");
+
+  const body = JSON.parse(readFileSync(path.join(output, "acceptance-evidence.json"), "utf8"));
+  assert.equal(body.pass, false);
+  assert.ok(body.passed < body.total, "the failing scenario must be counted as failed");
+  const failed = body.scenarios.find((s: { id: string }) => s.id === "A-01");
+  assert.equal(failed.pass, false);
+});
+
+test("degraded context is never promoted to a primary citation", () => {
+  // The invariant the product actually rests on, over the three degraded shapes
+  // a client fixture arrives in.
+  //
+  // Note what is NOT asserted: that stale content is handoff-unsafe. A 2019
+  // document with high date confidence comes back use_as_background and
+  // safe_for_agent_handoff = true, and that is correct. Its age is known and
+  // labelled, so an agent receiving it WITH that decision has been told what it
+  // is. The failure this engine exists to prevent is staleness that is
+  // invisible, not staleness that is disclosed. Unknown, not old, is the
+  // dangerous state — which is why the undated signal IS blocked while the
+  // older one is not.
+  const report = evaluateWorkflow({
+    workflow_id: "degraded-inputs",
+    profile: "official_docs",
+    intent: "developer_adoption",
+    now: "2026-09-21T10:00:00.000Z",
+    signals: [
+      { id: "failed", source: "https://docs.example.com/gone", source_type: "official_docs", title: "Unavailable", content: "[ERROR] upstream fetch failed", published_at: null, retrieved_at: "2026-09-21T09:50:00.000Z", semantic_score: 0.2, date_confidence: "unknown", status: "failed" },
+      { id: "undated", source: "https://docs.example.com/undated", source_type: "official_docs", title: "No publication date", content: "Documentation with no discoverable date.", published_at: null, retrieved_at: "2026-09-21T09:50:00.000Z", semantic_score: 0.9, date_confidence: "unknown", status: "success" },
+      { id: "stale", source: "https://docs.example.com/2019", source_type: "official_docs", title: "Superseded release notes", content: "Release notes for a long-superseded version.", published_at: "2019-01-01T00:00:00.000Z", retrieved_at: "2026-09-21T09:50:00.000Z", semantic_score: 0.9, date_confidence: "high", status: "success" },
+    ],
+  });
+
+  const byId = (id: string) => {
+    const item = report.items.find((i) => i.id === id);
+    assert.ok(item, `${id} must appear in the report`);
+    return item;
+  };
+
+  // 1. Nothing degraded is ever offered as a primary citation.
+  for (const id of ["failed", "undated", "stale"]) {
+    assert.notEqual(byId(id).decision, "cite_as_primary", `${id} must never be cite_as_primary`);
+  }
+
+  // 2. Unknown state is blocked from handoff. This is the load-bearing one.
+  assert.equal(byId("failed").decision, "exclude");
+  assert.equal(byId("failed").safe_for_agent_handoff, false);
+  assert.equal(byId("undated").safe_for_agent_handoff, false, "an undateable source must not be handoff-safe");
+
+  // 3. Known-old content is demoted and disclosed rather than blocked.
+  assert.equal(byId("stale").decision, "use_as_background");
+
+  // 4. The weaknesses stay visible in the summary rather than being averaged away.
+  assert.equal(report.summary.freshness_unknown, 2);
+  assert.equal(report.summary.provenance_incomplete, 2);
+  assert.equal(report.summary.handoff_blocked, 2);
+});
+
+test("build-to-spec warns on unfalsifiable wording but not on FreshContext's own verdicts", () => {
+  const base = JSON.parse(readFileSync("service-kits/examples/build-spec.example.json", "utf8"));
+
+  const vague = JSON.parse(JSON.stringify(base));
+  vague.milestones[0].acceptance_tests[0].expected_observable_result = "It works well and is enterprise ready.";
+  const flagged = runWithFixture("service-kits/build-spec.ts", vague);
+  assert.equal(flagged.result.status, 0, flagged.result.stderr);
+  const flaggedBody = JSON.parse(readFileSync(path.join(flagged.output, "build-spec.json"), "utf8"));
+  assert.equal(flaggedBody.validation_warnings.length, 1, "unfalsifiable wording must warn");
+  assert.match(flaggedBody.validation_warnings[0], /subjective acceptance wording/);
+
+  // A binary criterion phrased in the product's own vocabulary. The previous
+  // pattern flagged this, which told a buyer their correct acceptance test was
+  // subjective.
+  const sound = JSON.parse(JSON.stringify(base));
+  sound.milestones[0].acceptance_tests[0].expected_observable_result =
+    "The stale fixture is reported as not safe for agent handoff.";
+  const clean = runWithFixture("service-kits/build-spec.ts", sound);
+  assert.equal(clean.result.status, 0, clean.result.stderr);
+  const cleanBody = JSON.parse(readFileSync(path.join(clean.output, "build-spec.json"), "utf8"));
+  assert.deepEqual(cleanBody.validation_warnings, [], "product vocabulary must not be called subjective");
+});
+
+test("service-kit evidence output cannot be committed to this repository", () => {
+  // The runners write client fixtures, source URLs and document content into
+  // service-output/. One `git add -A` mid-engagement would put a client's
+  // material into git history permanently. SOP-009 forbids it; this asserts the
+  // repository mechanically enforces it.
+  const probe = "service-output/__gitignore_probe__/client-evidence.json";
+  const checked = spawnSync("git", ["check-ignore", "-q", probe], { encoding: "utf8" });
+  assert.equal(checked.status, 0, "service-output/ must be gitignored");
+});
+
+test("assessment evidence is reproducible from the same fixture", () => {
+  // Reproducibility is sold, not merely hoped for: an engagement records the
+  // commit and the fixture, and a client must be able to get the same evidence
+  // back. `now` is supplied by the input for exactly this reason. Nothing
+  // asserted it until here, so a future non-deterministic ordering or a stray
+  // Date.now() inside the evaluation path would have silently broken the claim.
+  const first = runScript("service-kits/assessment.ts", "service-kits/examples/assessment.example.json");
+  const second = runScript("service-kits/assessment.ts", "service-kits/examples/assessment.example.json");
+  assert.equal(first.result.status, 0, first.result.stderr);
+  assert.equal(second.result.status, 0, second.result.stderr);
+
+  const load = (dir: string) => {
+    const body = JSON.parse(readFileSync(path.join(dir, "assessment-evidence.json"), "utf8"));
+    // generated_at is wall-clock by design — it records when the run happened,
+    // not what it concluded. Everything else must match byte for byte.
+    delete body.generated_at;
+    return body;
+  };
+  assert.deepEqual(load(first.output), load(second.output), "two runs over one fixture must agree");
+
+  const md = (dir: string) =>
+    readFileSync(path.join(dir, "assessment-evidence.md"), "utf8").replace(/^\*\*Generated:.*$/m, "");
+  assert.equal(md(first.output), md(second.output), "the human-readable evidence must agree too");
+});
+
+test("one workflow's configuration cannot reach another's evaluation", () => {
+  // The multi-workflow service is sold as several INDEPENDENTLY configured
+  // workflows, not as one blended evaluation. That isolation was a property of
+  // how the runner happened to be written rather than something asserted, so a
+  // later refactor that hoisted shared state would have produced quietly
+  // cross-contaminated client evidence.
+  //
+  // Two workflows over an identical signal, with profiles and intents chosen to
+  // disagree. Each is then compared against the same workflow evaluated alone.
+  const signal = {
+    id: "shared",
+    source: "https://arxiv.org/abs/2609.00042",
+    source_type: "arxiv",
+    title: "A paper both workflows see",
+    content: "Identical content presented to two differently configured workflows.",
+    published_at: "2026-06-01T00:00:00.000Z",
+    retrieved_at: "2026-09-21T09:50:00.000Z",
+    semantic_score: 0.88,
+    date_confidence: "high",
+    status: "success",
+  };
+  const alpha = { workflow_id: "alpha", profile: "academic_research", intent: "citation_check", now: "2026-09-21T10:00:00.000Z", signals: [signal] };
+  const beta = { workflow_id: "beta", profile: "official_docs", intent: "developer_adoption", now: "2026-09-21T10:00:00.000Z", signals: [signal] };
+
+  const aloneAlpha = evaluateWorkflow(JSON.parse(JSON.stringify(alpha)));
+  const aloneBeta = evaluateWorkflow(JSON.parse(JSON.stringify(beta)));
+
+  const { output, result } = runWithFixture("service-kits/multi-workflow.ts", {
+    engagement_name: "isolation-check",
+    workflows: [JSON.parse(JSON.stringify(alpha)), JSON.parse(JSON.stringify(beta))],
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const body = JSON.parse(readFileSync(path.join(output, "multi-workflow-evidence.json"), "utf8"));
+  assert.equal(body.summary.workflows, 2);
+
+  const together = (id: string) => {
+    const w = body.workflows.find((x: { workflow_id: string }) => x.workflow_id === id);
+    assert.ok(w, `${id} must appear in the aggregate`);
+    return w;
+  };
+
+  // Each workflow keeps its own configuration through the aggregate run.
+  assert.equal(together("alpha").profile, "academic_research");
+  assert.equal(together("alpha").intent, "citation_check");
+  assert.equal(together("beta").profile, "official_docs");
+  assert.equal(together("beta").intent, "developer_adoption");
+
+  // And reaches the same verdict it reaches alone.
+  assert.deepEqual(together("alpha").items, aloneAlpha.items, "alpha must be unaffected by beta");
+  assert.deepEqual(together("beta").items, aloneBeta.items, "beta must be unaffected by alpha");
+  assert.deepEqual(together("alpha").summary, aloneAlpha.summary);
+  assert.deepEqual(together("beta").summary, aloneBeta.summary);
+});
+
+test("evidence discloses what safe_for_agent_handoff does and does not mean", () => {
+  // A client skim-reading handoff_safe: true beside a years-old document will
+  // hear "current". The evidence has to say otherwise in the deliverable
+  // itself, not only in a conversation the client may not remember.
+  const { output, result } = runScript("service-kits/assessment.ts", "service-kits/examples/assessment.example.json");
+  assert.equal(result.status, 0, result.stderr);
+
+  const body = JSON.parse(readFileSync(path.join(output, "assessment-evidence.json"), "utf8"));
+  assert.ok(body.field_meanings?.safe_for_agent_handoff, "machine-readable evidence must define the field");
+  assert.match(body.field_meanings.safe_for_agent_handoff, /NOT a claim that the content is current/);
+
+  const md = readFileSync(path.join(output, "assessment-evidence.md"), "utf8");
+  assert.match(md, /## How to read these fields/);
+  assert.match(md, /does not mean the content is current/);
+  assert.match(md, /\*unknown\*, not \*old\*/);
+
+  const multi = runScript("service-kits/multi-workflow.ts", "service-kits/examples/multi-workflow.example.json");
+  assert.equal(multi.result.status, 0, multi.result.stderr);
+  const multiBody = JSON.parse(readFileSync(path.join(multi.output, "multi-workflow-evidence.json"), "utf8"));
+  assert.ok(multiBody.field_meanings?.safe_for_agent_handoff, "multi-workflow evidence must define it too");
 });
