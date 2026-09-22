@@ -175,6 +175,20 @@ export default defineWorkersConfig({
             ]),
             // Test scaffolding only — production has no retired PRIVATE key anywhere.
             TEST_RETIRED_PRIVATE_KEY_B64,
+            // The REAL migration artifact, read from disk at config time and handed to
+            // the pool as a binding.
+            //
+            // The intake tests used to carry a hand-copied CREATE TABLE with a comment
+            // claiming a mismatch would "fail loudly". That was not true and should not
+            // have been written: a copy that gains no column when the migration does
+            // stays green, because nothing compares them. The only honest fix is to stop
+            // copying. These tests now execute the same SQL D1 will execute, so schema
+            // drift between test and production is not possible by construction rather
+            // than by assertion.
+            MIGRATION_0002_SQL: readFileSync(
+              new URL("./migrations/0002_commercial_applications.sql", import.meta.url),
+              "utf8",
+            ),
           },
         },
       },
