@@ -12,6 +12,7 @@ import { scoreSignal, parseStoredProfile, semanticFingerprint, isDuplicate, appl
 import { buildHaPriPayload, buildHaPriPayloadV3, sha256Hex as coreSha256Hex, canonicalizeHaPriContent } from "../../packages/core/src/index.js";
 import { handleRestRequest } from "../../src/rest/handler.js";
 import { checkVerifyRateLimit } from "./rateLimit.js";
+import { purgeExpiredApplications } from "./applicationIntake.js";
 import type { RateLimitBinding } from "./rateLimit.js";
 import {
   analyzeCompositeContent,
@@ -74,9 +75,12 @@ interface Env extends Ed25519SigningEnv {
   GIT_SHA?: string;
 }
 
-type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error" | "cache_error" | "snapshot_write_error" | "cron_adapter_empty" | "cron_adapter_failing" | "briefing_synthesis_error";
+type LogEventName = "adapter_error" | "route_error" | "cron_error" | "source_fetch_error" | "mcp_transport_lifecycle_error" | "cache_error" | "snapshot_write_error" | "cron_adapter_empty" | "cron_adapter_failing" | "briefing_synthesis_error" | "application_purge" | "application_purge_error";
 
 type LogFields = {
+  // Aggregate only. The retention sweep must never log an application reference,
+  // a contact detail or any field value - see purgeExpiredApplications.
+  deleted_count?: number;
   request_id?: string;
   cron_id?: string;
   route?: string;
@@ -135,10 +139,10 @@ function sourceHost(input: string | URL | Request): string | undefined {
   }
 }
 
-function logEvent(event: LogEventName, fields: LogFields = {}, err?: unknown): void {
+function logEvent(event: LogEventName, fields: LogFields = {}, err?: unknown, level: "error" | "info" = "error"): void {
   const payload: Record<string, unknown> = {
     event,
-    level: "error",
+    level,
     service: "freshcontext-mcp",
     version: SERVICE_VERSION,
     timestamp: new Date().toISOString(),
@@ -152,7 +156,7 @@ function logEvent(event: LogEventName, fields: LogFields = {}, err?: unknown): v
     }
   }
 
-  console.error(payload);
+  if (level === "error") { console.error(payload); } else { console.log(payload); }
 }
 
 async function sourceFetch(
@@ -3133,6 +3137,29 @@ export default {
         }
       } catch (err: unknown) {
         logEvent("cron_error", { ...cronLog, phase: "scheduled_handler" }, err);
+      }
+
+      // Retention sweep for commercial applications, in its OWN try/catch.
+      //
+      // Deliberately outside the block above rather than inside it. Sharing that
+      // try would couple two unrelated jobs: a scrape failure would skip the
+      // retention sweep, and a sweep failure would abort the briefing. A retention
+      // control that silently stops running because an adapter had a bad day is not
+      // a control.
+      //
+      // Until migration 0002 is applied, this throws (no such table) and is logged
+      // as an error every six hours without affecting anything else. That is the
+      // intended failure mode and the reason the migration ships before this code.
+      try {
+        const deleted = await purgeExpiredApplications(env);
+        logEvent(
+          "application_purge",
+          { ...cronLog, phase: "application_purge", deleted_count: deleted },
+          undefined,
+          "info",
+        );
+      } catch (err: unknown) {
+        logEvent("application_purge_error", { ...cronLog, phase: "application_purge" }, err);
       }
     })());
   },
