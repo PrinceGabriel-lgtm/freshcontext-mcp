@@ -1,0 +1,118 @@
+{
+  "workflow_id": "starter-single-workflow",
+  "workflow_name": "Single-Workflow Integration acceptance starter",
+  "profile": "official_docs",
+  "intent": "developer_adoption",
+  "now": "2026-09-22T12:00:00.000Z",
+  "scenarios": [
+    {
+      "id": "SW-01",
+      "name": "recent, well-provenanced context is usable first",
+      "note": "The baseline. Everything known, nothing missing. If this family fails for a client, the integration point is wrong before any policy question arises.",
+      "signal": {
+        "id": "sw-01-current",
+        "source": "https://docs.example.com/current-release",
+        "source_type": "official_docs",
+        "title": "Current release documentation",
+        "content": "Documentation for the release currently in production.",
+        "published_at": "2026-09-19T00:00:00.000Z",
+        "retrieved_at": "2026-09-22T11:55:00.000Z",
+        "semantic_score": 0.95,
+        "date_confidence": "high",
+        "status": "success"
+      },
+      "expected": {
+        "decisions": ["use_first"],
+        "confidence": ["high"],
+        "provenance_states": ["complete"],
+        "safe_for_agent_handoff": true,
+        "min_freshness": 80
+      }
+    },
+    {
+      "id": "SW-02",
+      "name": "known-stale context is demoted and disclosed, not blocked",
+      "note": "READ THIS ONE CAREFULLY BEFORE ADAPTING IT. safe_for_agent_handoff is true for a 2019 document, and that is correct. Its age is known and it is labelled use_as_background, so an agent receiving it has been told what it is. The state this engine blocks is UNKNOWN, not OLD - compare SW-03, which is newer in every respect except that its date could not be established, and is blocked. A client who reads handoff-safe as 'current' will misread their own evidence.",
+      "signal": {
+        "id": "sw-02-superseded",
+        "source": "https://docs.example.com/release-notes-2019",
+        "source_type": "official_docs",
+        "title": "Release notes for a superseded version",
+        "content": "Release notes describing a version that has since been superseded.",
+        "published_at": "2019-03-01T00:00:00.000Z",
+        "retrieved_at": "2026-09-22T11:55:00.000Z",
+        "semantic_score": 0.91,
+        "date_confidence": "high",
+        "status": "success"
+      },
+      "expected": {
+        "decisions": ["use_as_background"],
+        "confidence": ["high"],
+        "safe_for_agent_handoff": true,
+        "max_freshness": 10
+      }
+    },
+    {
+      "id": "SW-03",
+      "name": "context whose date cannot be established is held for verification",
+      "note": "Strong content, complete retrieval, unknown publication date. This is the family most often missing from a client's own test set, and the one that most often explains a production incident.",
+      "signal": {
+        "id": "sw-03-undated",
+        "source": "https://docs.example.com/undated-guide",
+        "source_type": "official_docs",
+        "title": "Integration guide with no publication date",
+        "content": "An integration guide whose publication date could not be established.",
+        "published_at": null,
+        "retrieved_at": "2026-09-22T11:55:00.000Z",
+        "semantic_score": 0.9,
+        "date_confidence": "unknown",
+        "status": "success"
+      },
+      "expected": {
+        "decisions": ["needs_verification"],
+        "provenance_states": ["partial"],
+        "safe_for_agent_handoff": false
+      }
+    },
+    {
+      "id": "SW-04",
+      "name": "weak provenance lowers confidence and withholds handoff",
+      "note": "No source type, no retrieval timestamp. Retrieval succeeded and the content reads fine, which is exactly why this family is worth encoding: nothing about the text signals the weakness.",
+      "signal": {
+        "id": "sw-04-bare",
+        "source": "https://docs.example.com/bare-page",
+        "title": "Page with minimal provenance metadata",
+        "content": "A page retrieved without source type or retrieval timestamp."
+      },
+      "expected": {
+        "decisions": ["needs_verification"],
+        "confidence": ["low"],
+        "provenance_states": ["partial"],
+        "safe_for_agent_handoff": false
+      }
+    },
+    {
+      "id": "SW-05",
+      "name": "failed retrieval is excluded and can never pass through",
+      "note": "The contractual floor. A failed fetch must never be treated as usable context, whatever its content looks like. If only one family survives adaptation for a given client, keep this one.",
+      "signal": {
+        "id": "sw-05-unavailable",
+        "source": "https://docs.example.com/unavailable",
+        "source_type": "official_docs",
+        "title": "Unavailable document",
+        "content": "[ERROR] upstream fetch failed",
+        "published_at": null,
+        "retrieved_at": "2026-09-22T11:55:00.000Z",
+        "semantic_score": 0.15,
+        "date_confidence": "unknown",
+        "status": "failed"
+      },
+      "expected": {
+        "decisions": ["exclude"],
+        "confidence": ["low"],
+        "provenance_states": ["unknown"],
+        "safe_for_agent_handoff": false
+      }
+    }
+  ]
+}

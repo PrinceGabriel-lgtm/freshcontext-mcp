@@ -71,6 +71,49 @@ Outputs:
 
 The validator requires milestones and observable acceptance tests. It warns about subjective acceptance wording and missing Background-IP/client-deliverable schedules.
 
+## Acceptance starter suite
+
+`templates/acceptance.single-workflow.v1.json` is the starting point for a
+Single-Workflow Integration engagement. It carries the five baseline scenario
+families SOP-006 names:
+
+| id | Family |
+|---|---|
+| `SW-01` | recent, well-provenanced context |
+| `SW-02` | known-stale context |
+| `SW-03` | unknown or weak dating |
+| `SW-04` | weak provenance |
+| `SW-05` | failed or unknown source state |
+
+```bash
+npm run service:acceptance -- service-kits/templates/acceptance.single-workflow.v1.json
+# 5 passed, 5 total
+```
+
+It passes exactly as shipped, against the real engine, which makes it a working
+starting point rather than an illustration — and a regression fixture. Its
+expected values are pinned to observed engine behaviour and `now` is pinned in
+the file, so if either drifts the suite fails. That failure is the signal that
+the starter needs revisiting before it goes to a client, not a fault.
+
+**It is a starter, not a contractual verdict.** Client-specific acceptance is
+adapted from it and agreed before signing. Every fixture is synthetic; nothing
+in it is derived from a client.
+
+Read `SW-02` before adapting anything. It expects `safe_for_agent_handoff: true`
+for a document published in 2019, and that is correct: the age is known and the
+item is labelled `use_as_background`, so an agent receiving it has been told what
+it is. The state this engine blocks is **unknown**, not **old** — `SW-03` is
+newer in every respect except that its date could not be established, and it is
+blocked. A client who reads handoff-safe as "current" will misread their own
+evidence.
+
+An `expected` block accepts only the six recognised checks — `decisions`,
+`provenance_states`, `confidence`, `safe_for_agent_handoff`, `min_freshness`,
+`max_freshness`. Anything else, or a recognised check of the wrong type, is a
+hard failure naming the scenario and the key. A scenario that produces no
+comparisons is refused rather than reported as passing.
+
 ## Evidence boundary
 
 Every service output is derived from the same evaluation primitives as the product. That makes the service repeatable and testable.

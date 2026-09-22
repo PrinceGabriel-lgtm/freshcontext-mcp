@@ -284,3 +284,123 @@ test("evidence discloses what safe_for_agent_handoff does and does not mean", ()
   const multiBody = JSON.parse(readFileSync(path.join(multi.output, "multi-workflow-evidence.json"), "utf8"));
   assert.ok(multiBody.field_meanings?.safe_for_agent_handoff, "multi-workflow evidence must define it too");
 });
+
+// ---------------------------------------------------------------------------
+// The acceptance starter suite, and the guard that makes it safe to adapt.
+//
+// A starter is the artefact a client edits. Before this, an edit that mistyped
+// an `expected` key produced a scenario with zero checks, and
+// `checks.every(...)` over an empty array returned true — PASS, having verified
+// nothing. Shipping a template to be edited while that path was open would have
+// multiplied the exposure, so the guard lands with the template rather than
+// after it.
+// ---------------------------------------------------------------------------
+
+const STARTER = "service-kits/templates/acceptance.single-workflow.v1.json";
+const BASELINE_FAMILIES = ["SW-01", "SW-02", "SW-03", "SW-04", "SW-05"];
+
+function starterSuite(): Record<string, any> {
+  return JSON.parse(readFileSync(STARTER, "utf8"));
+}
+
+test("the starter suite ships all five baseline families", () => {
+  const suite = starterSuite();
+  assert.deepEqual(
+    suite.scenarios.map((s: { id: string }) => s.id),
+    BASELINE_FAMILIES,
+    "SOP-006 names five families; the starter must carry all of them",
+  );
+  // `now` pinned, or the relative-freshness families drift daily and the
+  // template rots into a fixture that once passed.
+  assert.equal(typeof suite.now, "string");
+  assert.match(suite.now, /^\d{4}-\d{2}-\d{2}T/);
+  for (const scenario of suite.scenarios) {
+    assert.ok(scenario.note, `${scenario.id} must carry a note for whoever adapts it`);
+  }
+});
+
+test("the starter suite passes 5/5 exactly as shipped", () => {
+  // It is a working starting point, not a decorative example — and doubles as a
+  // regression fixture. If engine behaviour changes, this fails, which is the
+  // correct signal that the starter needs revisiting before it goes to a client.
+  const { output, result } = runScript("service-kits/acceptance.ts", STARTER);
+  assert.equal(result.status, 0, result.stderr + "\n" + result.stdout);
+
+  const body = JSON.parse(readFileSync(path.join(output, "acceptance-evidence.json"), "utf8"));
+  assert.equal(body.pass, true);
+  assert.equal(body.passed, 5);
+  assert.equal(body.total, 5);
+  for (const scenario of body.scenarios) {
+    assert.ok(scenario.checks.length > 0, `${scenario.id} must make at least one real comparison`);
+  }
+});
+
+test("a mistyped expected key is rejected by name", () => {
+  // The silent-PASS defect. `decision` for `decisions` used to survive the
+  // non-empty check, match no comparison, and pass.
+  const suite = starterSuite();
+  const scenario = suite.scenarios.find((s: { id: string }) => s.id === "SW-01");
+  delete scenario.expected.decisions;
+  scenario.expected.decision = ["use_first"];
+
+  const { result } = runWithFixture("service-kits/acceptance.ts", suite);
+  assert.notEqual(result.status, 0, "an unrecognised expected key must not pass");
+  assert.match(result.stderr, /SW-01/);
+  assert.match(result.stderr, /unrecognised expected check: decision\b/);
+});
+
+test("a wrong-typed expected value is rejected rather than skipped", () => {
+  // `min_freshness: "80"` used to be dropped by a typeof guard, silently
+  // removing a check the author believed they had written.
+  const suite = starterSuite();
+  suite.scenarios.find((s: { id: string }) => s.id === "SW-01").expected.min_freshness = "80";
+
+  const { result } = runWithFixture("service-kits/acceptance.ts", suite);
+  assert.notEqual(result.status, 0, "a wrong-typed expected value must not pass");
+  assert.match(result.stderr, /expected\.min_freshness must be a finite number/);
+});
+
+test("the failed-source family is excluded and never handoff-safe", () => {
+  // The contractual floor: a failed fetch is never usable context, whatever its
+  // content looks like.
+  const { output, result } = runScript("service-kits/acceptance.ts", STARTER);
+  assert.equal(result.status, 0, result.stderr);
+  const body = JSON.parse(readFileSync(path.join(output, "acceptance-evidence.json"), "utf8"));
+  const failed = body.scenarios.find((s: { id: string }) => s.id === "SW-05");
+  assert.ok(failed);
+  assert.equal(failed.actual.decision, "exclude");
+  assert.equal(failed.actual.safe_for_agent_handoff, false);
+
+  // And nothing degraded is ever offered as the profile's primary citation.
+  for (const id of ["SW-03", "SW-04", "SW-05"]) {
+    const s = body.scenarios.find((x: { id: string }) => x.id === id);
+    assert.notEqual(s.actual.decision, "use_first", `${id} must never be the primary decision`);
+  }
+});
+
+test("the starter suite contains no client data", () => {
+  // It ships in a public repository and is copied into engagements. Every host
+  // must be a reserved example domain.
+  const suite = starterSuite();
+  for (const scenario of suite.scenarios) {
+    const source = String(scenario.signal.source);
+    assert.match(source, /^https:\/\/[a-z0-9.-]*example\.(com|org|net)\//, `${scenario.id} source must be synthetic: ${source}`);
+  }
+  assert.doesNotMatch(readFileSync(STARTER, "utf8"), /freshcontext\.dev|@gmail|api-key|secret/i);
+});
+
+test("the starter can be adapted, and a wrong expectation then fails loudly", () => {
+  // What a client actually does with it: copy, change one expectation to match
+  // their own policy, re-run. A wrong one must fail rather than quietly pass.
+  const suite = starterSuite();
+  suite.scenarios.find((s: { id: string }) => s.id === "SW-02").expected.safe_for_agent_handoff = false;
+
+  const { output, result } = runWithFixture("service-kits/acceptance.ts", suite);
+  assert.notEqual(result.status, 0, "a failed adapted scenario must exit non-zero");
+
+  const body = JSON.parse(readFileSync(path.join(output, "acceptance-evidence.json"), "utf8"));
+  assert.equal(body.pass, false);
+  assert.equal(body.passed, 4);
+  assert.equal(body.total, 5);
+  assert.equal(body.scenarios.find((s: { id: string }) => s.id === "SW-02").pass, false);
+});
