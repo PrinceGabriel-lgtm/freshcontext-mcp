@@ -2,6 +2,88 @@
 
 This document records dependency and license diligence notes from the Trust L4/L5 cleanup. It is not legal advice and does not replace professional review for external review, distribution, or formal diligence.
 
+## Dependency Risk Snapshot — 2026-09-22
+
+A read-only dependency-risk triage of both trees at root `aed32ae` (`freshcontext-mcp@0.5.2`,
+`freshcontext-mcp-worker@0.4.0`). No remediation was attempted; see "Outcome" below.
+
+**Finding.** No currently identified advisory package was found to be reachable in the
+deployed Worker bundle or shipped npm runtime as of 2026-09-22.
+
+**Production posture is unchanged from the 2026-09-10 and 2026-09-13 records.**
+
+| Tree | `npm audit --omit=dev` | `npm audit` (incl. dev) |
+| --- | --- | --- |
+| Root (`freshcontext-mcp`) | 0 | 7 — 3 high, 4 moderate |
+| Worker (`worker/`) | 3 high (known, accepted) | 13 — 10 high, 3 moderate |
+
+The root tree carries 535 dependencies (99 production, 436 dev). The higher `npm audit`
+counts are dev-surface only and do not represent a change in shipped exposure. Note that
+`worker/` is not covered by the root audit: root `workspaces` is `packages/*`, so the
+Worker tree must be audited separately or its findings go unseen.
+
+**Classification method.** Each finding was traced to its dependency-chain root with
+`npm ls <pkg> --all`, then classified by whether that root is a runtime or development
+dependency, and finally checked against the artifact that actually ships — the published
+tarball for the root package, and the built bundle for the Worker. Severity counts alone
+were not treated as evidence of exposure.
+
+**Root tree.** All 7 root findings resolve to exactly two devDependencies, `apify@3.7.0`
+and `jest@29.7.0`. The four runtime dependencies — `@modelcontextprotocol/sdk`, `dotenv`,
+`playwright`, `zod` — were not flagged. Consumers installing the published package do not
+install this package's devDependencies. Confirmed against the artifact with
+`npm pack --dry-run`: 106 files, 482 KB, no `node_modules`, and no Apify entrypoint
+(excluded by the `!dist/apify.js` files rule).
+
+**Worker tree.** 12 of 13 Worker findings resolve to `wrangler`, `vitest` or
+`@cloudflare/vitest-pool-workers` — local development and test tooling, not deployed. The
+`undici` advisories reach the tree only through miniflare's local dev HTTP stack.
+
+**Worker bundle inspection.** The one chain rooted in a runtime dependency remains
+`@cloudflare/puppeteer -> @puppeteer/browsers -> extract-zip`, already recorded under
+"Accepted, Unfixable, Not In The Artifact". This snapshot re-verified that acceptance
+rather than restating it: `wrangler deploy --dry-run --outdir` produced `worker-e2.js`
+(~1.8 MB, from `src/worker-e2.ts`). `@cloudflare/puppeteer` is present in the bundle;
+`extract-zip`, `@puppeteer/browsers`, `undici`, `sharp`, `miniflare`, `postcss` and
+`devalue` are all absent. The browser-download path that `extract-zip` serves does not
+ship, consistent with the Worker obtaining its browser from the `BROWSER` binding.
+`@cloudflare/puppeteer` carries no advisory of its own; it is flagged solely via that
+dependency.
+
+CI enforces this independently of this record: the `verify` job builds the bundle and
+greps every emitted `.js`, globbing rather than naming a file so it covers either
+entrypoint (`src/worker.ts` -> `worker.js`, `src/worker-e2.ts` -> `worker-e2.js`), and
+fails the build if `extract-zip`, `@puppeteer/browsers` or `yauzl` appears. Sourcemaps
+are excluded deliberately, since they embed original source text.
+
+**Two reported findings did not survive verification.** Recorded so they are not
+re-investigated: (1) `nanoid` appears to match in the bundle, but every occurrence is
+zod's `.nanoid()` string-format validator regex — the package itself is not bundled, and
+its generator markers are absent. (2) The `wrangler` high severity is not the
+`wrangler pages deploy` OS command injection; that advisory covers `>=4.0.0 <4.59.1` and
+the installed version is 4.99.0, past the range. Wrangler is flagged only transitively
+through miniflare.
+
+**Remediation cost, if later justified.** In-range for `js-yaml`, `browserslist`,
+`adm-zip`, `baseline-browser-mapping`, `nanoid`, `postcss`, `devalue`. For the `apify` and
+`@cloudflare/puppeteer` chains, npm's only proposal is a version *downgrade*
+(`apify@2.3.2`, `@cloudflare/puppeteer@0.0.11`), which is not a remediation.
+`vitest@4` and `@cloudflare/vitest-pool-workers@0.22` are genuine majors.
+
+**Outcome.** No remediation was judged justified at this time, on the basis that no
+advisory package was demonstrated to reach a shipped artifact. **No dependency,
+lockfile, `package.json` or source change was made.** `npm audit fix` was not run.
+
+**Tooling examined.** Node v25.6.1, npm 11.9.0, wrangler 4.99.0, `@cloudflare/puppeteer`
+1.1.0, on Windows 11.
+
+**Scope limit.** This assessment reflects the dependency graph and published advisories
+available on 2026-09-22. Re-run dependency diligence before a release, customer security
+review, or transaction diligence process. As noted under the `hono` entry below, `npm
+audit` queries a live advisory database, so a result is a statement about a moment rather
+than about a tree; the root tree moved from 0 to 7 reported vulnerabilities between
+2026-09-10 and 2026-09-22 with no change to the lockfile.
+
 ## Transfer Inventory — 2026-09-13
 
 `NOTICE.md` says to rerun dependency and licence inventory before any commercial
