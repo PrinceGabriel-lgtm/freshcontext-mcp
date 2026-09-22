@@ -92,3 +92,20 @@ proof/
 # client data stay out of this repository; this is the mechanical half of that.
 # The default output root, plus any operator-chosen private path under it.
 service-output/
+
+# Commercial registers. CLAIMS_MATRIX.md and GAP_REGISTER.md were removed from
+# this public repository in be4808e and 31838b4 because they state, in permanent
+# history, where the commercial offering is weak: no customer proof, no SLA, no
+# compliance certification, and an open list of legal questions.
+#
+# Deleting them did not stop them coming back. Nothing prevented the next
+# `git add -A` — by a person or by an agent — from silently re-publishing a file
+# recreated in the private workspace and copied here by habit. That is the same
+# shape as the service-output/ leak above: a decision the repository did not
+# enforce.
+#
+# They belong in the private commercial workspace. SERVICE_READINESS.md stays
+# public deliberately: it is technical truth about what is built, and publishing
+# it is the point.
+CLAIMS_MATRIX.md
+GAP_REGISTER.md
