@@ -20,21 +20,22 @@ deployed Worker bundle or shipped npm runtime as of 2026-09-22.
 The root tree carries 535 dependencies (99 production, 436 dev). The higher `npm audit`
 counts are dev-surface only and do not represent a change in shipped exposure. Note that
 `worker/` is not covered by the root audit: root `workspaces` is `packages/*`, so the
-Worker tree must be audited separately or its advisories go unseen.
+Worker tree must be audited separately or its findings go unseen.
 
-**Classification method.** Each advisory was traced to its dependency-chain root with
+**Classification method.** Each finding was traced to its dependency-chain root with
 `npm ls <pkg> --all`, then classified by whether that root is a runtime or development
 dependency, and finally checked against the artifact that actually ships — the published
 tarball for the root package, and the built bundle for the Worker. Severity counts alone
 were not treated as evidence of exposure.
 
-**Root tree.** All 7 advisories resolve to exactly two devDependencies, `apify@3.7.0` and
-`jest@29.7.0`. The four runtime dependencies — `@modelcontextprotocol/sdk`, `dotenv`,
-`playwright`, `zod` — were not flagged. Consumers install runtime dependencies only.
-Confirmed against the artifact with `npm pack --dry-run`: 106 files, 482 KB, no
-`node_modules`, and no Apify entrypoint (excluded by the `!dist/apify.js` files rule).
+**Root tree.** All 7 root findings resolve to exactly two devDependencies, `apify@3.7.0`
+and `jest@29.7.0`. The four runtime dependencies — `@modelcontextprotocol/sdk`, `dotenv`,
+`playwright`, `zod` — were not flagged. Consumers installing the published package do not
+install this package's devDependencies. Confirmed against the artifact with
+`npm pack --dry-run`: 106 files, 482 KB, no `node_modules`, and no Apify entrypoint
+(excluded by the `!dist/apify.js` files rule).
 
-**Worker tree.** 12 of 13 advisories resolve to `wrangler`, `vitest` or
+**Worker tree.** 12 of 13 Worker findings resolve to `wrangler`, `vitest` or
 `@cloudflare/vitest-pool-workers` — local development and test tooling, not deployed. The
 `undici` advisories reach the tree only through miniflare's local dev HTTP stack.
 
@@ -80,8 +81,8 @@ lockfile, `package.json` or source change was made.** `npm audit fix` was not ru
 available on 2026-09-22. Re-run dependency diligence before a release, customer security
 review, or transaction diligence process. As noted under the `hono` entry below, `npm
 audit` queries a live advisory database, so a result is a statement about a moment rather
-than about a tree; the root tree moved from 0 to 7 reported advisories between 2026-09-10
-and 2026-09-22 with no change to the lockfile.
+than about a tree; the root tree moved from 0 to 7 reported vulnerabilities between
+2026-09-10 and 2026-09-22 with no change to the lockfile.
 
 ## Transfer Inventory — 2026-09-13
 
