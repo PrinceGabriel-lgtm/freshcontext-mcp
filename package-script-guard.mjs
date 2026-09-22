@@ -177,6 +177,7 @@ const commands = {
       "tests/workerEnvelope.test.ts",
       "tests/packageScriptGuard.test.mjs",
       "tests/corePackageBoundary.test.mjs",
+      "tests/privateMaterialBoundary.test.mjs",
       "tests/readableOutput.test.ts",
       "tests/provenanceReadiness.test.ts",
       "tests/adapterNetworkBoundary.test.ts",

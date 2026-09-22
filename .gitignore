@@ -92,3 +92,11 @@ proof/
 # client data stay out of this repository; this is the mechanical half of that.
 # The default output root, plus any operator-chosen private path under it.
 service-output/
+
+# Private commercial registers are maintained outside this public repository.
+# Ignore them here so normal Git add flows do not accidentally stage a copied or
+# regenerated private register. This is a guardrail, not a security boundary:
+# an explicit force-add can still override .gitignore.
+# SERVICE_READINESS.md remains deliberately public.
+CLAIMS_MATRIX.md
+GAP_REGISTER.md
