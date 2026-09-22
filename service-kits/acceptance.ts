@@ -15,6 +15,8 @@ interface ExpectedResult {
 interface Scenario {
   id: string;
   name?: string;
+  /** Free text carried with the fixture for whoever adapts it. Never evaluated. */
+  note?: string;
   signal: Record<string, unknown>;
   expected: ExpectedResult;
 }
@@ -37,6 +39,52 @@ interface CheckResult {
   pass: boolean;
 }
 
+// The six comparisons evaluateScenario knows how to make, and the type each one
+// requires. Anything outside this set in an `expected` block is a mistake, and
+// it used to be a silent one: a mistyped `decision:` for `decisions:` survived
+// the non-empty check below, matched no comparison, produced zero checks, and
+// `checks.every(...)` over an empty array returned true. The scenario reported
+// PASS having verified nothing.
+//
+// That is the contractual mechanism Single-Workflow Integration is sold on, so
+// the failure was not cosmetic: a client could accept work against a suite that
+// tested none of it. The same every()-over-an-empty-set defect was fixed in
+// isHealthyReport([]) elsewhere in this codebase; this is its second home.
+const EXPECTED_CHECKS: Record<string, (value: unknown) => boolean> = {
+  decisions: (v) => Array.isArray(v) && v.length > 0 && v.every((entry) => typeof entry === "string"),
+  provenance_states: (v) => Array.isArray(v) && v.length > 0 && v.every((entry) => typeof entry === "string"),
+  confidence: (v) => Array.isArray(v) && v.length > 0 && v.every((entry) => typeof entry === "string"),
+  safe_for_agent_handoff: (v) => typeof v === "boolean",
+  min_freshness: (v) => typeof v === "number" && Number.isFinite(v),
+  max_freshness: (v) => typeof v === "number" && Number.isFinite(v),
+};
+
+const EXPECTED_TYPES: Record<string, string> = {
+  decisions: "a non-empty array of strings",
+  provenance_states: "a non-empty array of strings",
+  confidence: "a non-empty array of strings",
+  safe_for_agent_handoff: "a boolean",
+  min_freshness: "a finite number",
+  max_freshness: "a finite number",
+};
+
+function assertExpectedShape(scenarioId: string, expected: Record<string, unknown>): void {
+  const recognised = Object.keys(EXPECTED_CHECKS);
+  for (const [key, value] of Object.entries(expected)) {
+    if (!(key in EXPECTED_CHECKS)) {
+      throw new Error(
+        "scenario " + scenarioId + " has an unrecognised expected check: " + key +
+        ". Recognised checks are " + recognised.join(", ") + ".",
+      );
+    }
+    if (!EXPECTED_CHECKS[key](value)) {
+      throw new Error(
+        "scenario " + scenarioId + " expected." + key + " must be " + EXPECTED_TYPES[key] + ".",
+      );
+    }
+  }
+}
+
 function assertScenarioShape(input: AcceptanceInput): void {
   if (!Array.isArray(input.scenarios) || input.scenarios.length === 0) throw new Error("scenarios must contain at least one acceptance case.");
   const ids = new Set<string>();
@@ -48,6 +96,7 @@ function assertScenarioShape(input: AcceptanceInput): void {
     if (!scenario.signal || typeof scenario.signal !== "object" || Array.isArray(scenario.signal)) throw new Error("scenario " + scenario.id + " must include one signal object.");
     if (!scenario.expected || typeof scenario.expected !== "object" || Array.isArray(scenario.expected)) throw new Error("scenario " + scenario.id + " must include expected checks.");
     if (Object.keys(scenario.expected).length === 0) throw new Error("scenario " + scenario.id + " must define at least one expected check.");
+    assertExpectedShape(scenario.id, scenario.expected as Record<string, unknown>);
   }
 }
 
@@ -79,6 +128,10 @@ function evaluateScenario(input: AcceptanceInput, scenario: Scenario) {
   if (typeof scenario.expected.safe_for_agent_handoff === "boolean") checks.push({ check: "safe_for_agent_handoff", expected: scenario.expected.safe_for_agent_handoff, actual: actual.safe_for_agent_handoff, pass: actual.safe_for_agent_handoff === scenario.expected.safe_for_agent_handoff });
   if (typeof scenario.expected.min_freshness === "number") checks.push({ check: "min_freshness", expected: scenario.expected.min_freshness, actual: actual.freshness_score, pass: typeof actual.freshness_score === "number" && actual.freshness_score >= scenario.expected.min_freshness });
   if (typeof scenario.expected.max_freshness === "number") checks.push({ check: "max_freshness", expected: scenario.expected.max_freshness, actual: actual.freshness_score, pass: typeof actual.freshness_score === "number" && actual.freshness_score <= scenario.expected.max_freshness });
+  // Unreachable while assertExpectedShape runs first, and kept anyway: an empty
+  // checks array is exactly the shape that used to report PASS. A guarantee this
+  // load-bearing should be impossible to reach by two independent routes.
+  if (checks.length === 0) throw new Error("scenario " + scenario.id + " produced no checks to evaluate.");
   return { id: scenario.id, name: scenario.name ?? scenario.id, pass: checks.every((check) => check.pass), checks, actual };
 }
 
