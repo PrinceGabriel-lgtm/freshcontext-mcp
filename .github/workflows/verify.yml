@@ -196,8 +196,11 @@ jobs:
   #   variable WORKER_BASE_URL          — production origin, for the smoke test
   #
   # This job does NOT set Worker secrets (FC_HMAC_SECRET and any signing key stay
-  # dashboard-managed) and does NOT apply D1 migrations. `wrangler deploy` touches
-  # neither.
+  # dashboard-managed). Release A is the one explicit exception to the historical
+  # "deploy does not touch D1" rule: before deploying, it applies ONLY the idempotent
+  # 0002_commercial_applications.sql file and verifies that table's shape. We deliberately
+  # do not run `wrangler d1 migrations apply` because 0000_baseline.sql documents an
+  # already-live historical schema and is explicitly not safe to replay as migration history.
   deploy:
     name: Deploy Worker to production
     needs: verify
@@ -259,6 +262,48 @@ jobs:
           [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Variable CLOUDFLARE_ACCOUNT_ID is not set."; missing=1; }
           [ -n "$BASE" ] || { echo "::error::Variable WORKER_BASE_URL is not set; the smoke test cannot run."; missing=1; }
           exit $missing
+
+      # Release A schema gate. Apply the one reviewed additive schema file directly.
+      # Do NOT replace this with "wrangler d1 migrations apply": 0000_baseline.sql is a
+      # historical snapshot, not a migration that should be replayed against production.
+      # The SQL is idempotent (CREATE TABLE/INDEX IF NOT EXISTS), so a retry after a
+      # transient deploy failure is safe.
+      - name: Apply commercial application schema
+        working-directory: worker
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute freshcontext-db --remote --yes \
+            --file=migrations/0002_commercial_applications.sql
+
+      - name: Verify commercial application schema
+        working-directory: worker
+        run: |
+          set -euo pipefail
+          schema="$(npx wrangler d1 execute freshcontext-db --remote --json \
+            --command "PRAGMA table_info(commercial_applications)")"
+          node - "$schema" <<'NODE'
+          const raw = process.argv[2];
+          const parsed = JSON.parse(raw);
+          const envelopes = Array.isArray(parsed) ? parsed : [parsed];
+          const rows = envelopes.flatMap((x) => Array.isArray(x?.results) ? x.results : []);
+          const names = new Set(rows.map((r) => String(r.name ?? "")));
+          const required = [
+            "reference", "client_reference", "service", "company", "contact_name",
+            "contact_email", "contact_role", "workflow", "stack", "failure_mode",
+            "acceptance", "timeline", "environment", "sensitivity", "authority",
+            "acknowledged", "status", "received_at", "purge_after", "created_at"
+          ];
+          const missing = required.filter((name) => !names.has(name));
+          const forbidden = ["ip", "ip_address", "user_agent", "useragent", "remote_addr"]
+            .filter((name) => names.has(name));
+          if (missing.length || forbidden.length) {
+            console.error("::error::commercial_applications schema verification failed");
+            if (missing.length) console.error("missing:", missing.join(", "));
+            if (forbidden.length) console.error("forbidden:", forbidden.join(", "));
+            process.exit(1);
+          }
+          console.log("commercial_applications schema verified:", rows.length, "columns");
+          NODE
 
       # Deployed with the wrangler pinned in worker/package-lock.json (4.99.0) — the
       # same binary whose dry run just passed in `verify`, rather than whatever a
