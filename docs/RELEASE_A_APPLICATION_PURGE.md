@@ -17,8 +17,13 @@ The Worker queries `commercial_applications` on every scheduled run. Deploy the 
 the table exists and every cron logs `application_purge_error` — harmless, isolated, and
 noisy. **Migration first, then deploy.**
 
-The reverse ordering is the one that matters: applying the migration first is always safe,
-because nothing writes to the table until Release C.
+For this release that ordering is enforced by CI: the production deploy job applies exactly
+`migrations/0002_commercial_applications.sql`, verifies the 20-column table shape, and only
+then runs `wrangler deploy`. It deliberately does **not** run `wrangler d1 migrations apply`
+because `0000_baseline.sql` is a historical snapshot explicitly marked not to be replayed.
+
+The SQL in 0002 is additive and idempotent (`CREATE ... IF NOT EXISTS`), so retrying the
+deploy job cannot duplicate the table or indexes. Nothing writes to the table until Release C.
 
 ## Sequence
 
@@ -41,13 +46,21 @@ grep -c "handleApplicationIntake\|INTAKE_ENABLED\|commercial/applications" /tmp/
 Expect `0`. `purgeExpiredApplications` and `commercial_applications` **should** appear —
 that is the difference between this release and PR #99.
 
-### 2. Apply the migration
+### 2. Merge Release A and let CI apply the schema gate
+
+On the push to `main`, the production deploy job runs the equivalent of:
 
 ```bash
 cd worker
-npx wrangler d1 execute freshcontext-db --remote \
+npx wrangler d1 execute freshcontext-db --remote --yes \
   --file=migrations/0002_commercial_applications.sql
 ```
+
+It then runs `PRAGMA table_info(commercial_applications)` and refuses to deploy the Worker
+unless all 20 expected columns exist and no network-metadata columns are present.
+
+The commands below remain useful as independent operator verification after the workflow
+completes.
 
 ### 3. Verify the schema
 
@@ -68,13 +81,11 @@ npx wrangler d1 execute freshcontext-db --remote \
 
 Expect `0`. A non-zero count here means something is writing that should not be.
 
-### 4. Deploy the Worker
+### 4. Confirm the Worker deployment
 
-```bash
-cd worker && npx wrangler deploy
-```
-
-Record the deployment output and the commit SHA.
+The same CI job deploys the Worker only after step 2 succeeds, then runs the existing
+production smoke test proving the merged commit SHA is serving traffic. Record the workflow
+run, deployed commit SHA and deployment status.
 
 ### 5. Insert a synthetic expired row
 
