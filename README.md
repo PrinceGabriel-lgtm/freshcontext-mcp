@@ -56,7 +56,7 @@ R_t = R_0 · e^(−λt)
 
 That's the core correction. No model swap. No re-embedding. No re-indexing. The layer drops onto whatever retrieval pipeline you already have.
 
-**The layer is the product.** The named adapters shipped with this repo demonstrate compatibility across different source classes. The DAR engine, the freshness envelope, Source Profiles, and the FreshContext Specification are the moat.
+**This repository is the public implementation and compatibility foundation.** The named adapters shipped here demonstrate interoperability across different source classes. Commercial differentiation can also live in separately licensed operated services, future engines, retained state, verification infrastructure, integrations, benchmarks and vertical products that are not part of this MIT repository.
 
 ---
 
@@ -90,6 +90,12 @@ MCP is the primary reference/interface implementation over Core. Claude Desktop 
 The production Cloudflare Worker now uses Core-backed envelope generation. Worker-specific concerns remain outside Core: MCP transport, runtime guards, KV cache policy, cache metadata injection, JSON parse/replace cache helpers, D1 feeds, cron, rate limiting, and Store/feed scoring/provenance.
 
 See [Architecture](./docs/ARCHITECTURE.md) for the layer boundaries, the package surface, and what is not yet separated.
+
+### Licensing boundary
+
+This repository is the MIT-licensed public/community line. Rights already granted under MIT remain unchanged. FreshContext may also develop separately licensed commercial services, future engines, enterprise components, retained-state systems, integrations, benchmarks and vertical products outside this repository. See [Licensing Boundary](./docs/LICENSING_BOUNDARY.md).
+
+A public interface or compatibility schema does not imply that every implementation behind it is open source.
 
 ### Core import path
 
@@ -535,7 +541,9 @@ Future work is organized in [FreshContext Future Lanes](./docs/FUTURE_LANES.md).
 
 ## Contributing
 
-PRs welcome. The highest-value contributions improve the caller-provided context path, decision output, host integrations, and FreshContext-compatible signal quality. New reference adapters are useful when they preserve source boundaries and emit timestamped, failure-honest context — see `src/adapters/` for examples and [`FRESHCONTEXT_SPEC.md`](./FRESHCONTEXT_SPEC.md) for the compatibility contract.
+PRs welcome for the public/community line. Contributions accepted into this repository are intended to remain under the repository's MIT license. Do not submit confidential material, customer data, trade secrets or separately licensed FreshContext commercial code here.
+
+The highest-value public contributions improve the caller-provided context path, decision output, host integrations, and FreshContext-compatible signal quality. New reference adapters are useful when they preserve source boundaries and emit timestamped, failure-honest context — see `src/adapters/` for examples and [`FRESHCONTEXT_SPEC.md`](./FRESHCONTEXT_SPEC.md) for the compatibility contract.
 
 If you're building something FreshContext-compatible, open an issue and we'll add you to the ecosystem list.
 
@@ -550,12 +558,15 @@ If you're building something FreshContext-compatible, open an issue and we'll ad
 - [Dependency diligence notes](./docs/DEPENDENCY_DILIGENCE.md)
 - [Release integrity notes](./docs/RELEASE_INTEGRITY.md)
 - [Release notes](./docs/RELEASE_NOTES.md)
+- [Licensing boundary](./docs/LICENSING_BOUNDARY.md)
 
 ---
 
 ## License
 
-MIT
+This repository is licensed under the MIT License. See [LICENSE](./LICENSE) and [Licensing Boundary](./docs/LICENSING_BOUNDARY.md).
+
+The repository license does not by itself license the FreshContext brand, hosted services, or separately licensed future commercial components.
 
 ---
 
