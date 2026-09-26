@@ -32,7 +32,7 @@ import {
 } from "./ed25519Attestation.js";
 import type { Ed25519SigningEnv } from "./ed25519Attestation.js";
 
-const SERVICE_VERSION = "0.5.2";
+const SERVICE_VERSION = "0.5.3";
 const SERVICE_UA = `freshcontext-mcp/${SERVICE_VERSION} (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)`;
 
 const signalInputSchema = z.object({
@@ -1111,28 +1111,12 @@ async function fetchFinance(tickers: string, maxLength: number, log: LogFields =
   return { raw, date, conf: failures.length ? "medium" : "high" };
 }
 
-// ── YC companies (yc-oss feed) — composite helper ────────────────────────────
-async function fetchYC(query: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
-  const res = await sourceFetch("https://yc-oss.github.io/api/companies/all.json", { headers: { "User-Agent": UA } }, { ...log, adapter: "yc" });
-  if (!res.ok) throw new Error(`YC ${res.status}`);
-  const all = await res.json() as Array<{ name: string; one_liner?: string; tags?: string[]; batch?: string; status?: string; website?: string }>;
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const hits = all.filter(c => {
-    const text = `${c.name ?? ""} ${c.one_liner ?? ""} ${(c.tags ?? []).join(" ")}`.toLowerCase();
-    return terms.some(t => text.includes(t));
-  }).slice(0, 15);
-  if (!hits.length) return { raw: `No YC companies for "${query}".`, date: null, conf: "low" };
-  const raw = hits.map((h, i) => [
-    `[${i + 1}] ${h.name} [${h.batch ?? "?"}] ${h.status ?? ""}`,
-    `Tags: ${(h.tags ?? []).join(", ") || "none"}`,
-    `${h.one_liner ?? "N/A"}`,
-    h.website ? `Website: ${h.website}` : null,
-  ].filter(Boolean).join("\n")).join("\n\n").slice(0, maxLength);
-  // Date is null, not today. The yc-oss feed carries no reliable per-company freshness
-  // date (batch is a founding-era marker, not last-updated). Stamping "today" scored
-  // every YC result as perpetually fresh — same bug fixed in extract_yc and
-  // src/adapters/yc.ts on 2026-07-08; this helper was the path that fix missed.
-  return { raw, date: null, conf: "low" };
+// ── YC companies — composite helper (withdrawn in 0.5.3) ─────────────────────
+// This helper used to read a third-party mirror of YC's company index. YC's terms forbid
+// scraping and circumventing access blocks, so the mirror is no longer used and no YC data
+// is fetched. The section stays in the composite output so readers see why it is empty.
+async function fetchYC(_query: string, _maxLength: number, _log: LogFields = {}): Promise<AdapterHit> {
+  return { raw: "YC section withdrawn: FreshContext no longer uses third-party mirrors of YC data.", date: null, conf: "low" };
 }
 
 // ── Jobs (Remotive) — composite helper ───────────────────────────────────────
@@ -2263,19 +2247,10 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
         `${p.data.title} | score:${p.data.score} | ${new Date(p.data.created_utc * 1000).toISOString()}`
       ).join("\n"));
     }
-    case "yc": {
-      const res = await sourceFetch("https://yc-oss.github.io/api/companies/all.json", { headers: { "User-Agent": "freshcontext-mcp/cron" } }, { ...log, adapter: "yc" });
-      if (!res.ok) return `YC error ${res.status}`;
-      const all = await res.json() as any[];
-      const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-      const hits = all.filter((c: any) => {
-        const text = `${c.name ?? ""} ${c.one_liner ?? ""} ${(c.tags ?? []).join(" ")}`.toLowerCase();
-        return terms.some(t => text.includes(t));
-      }).slice(0, 10);
-      return hits.length
-        ? sanitize(hits.map((h: any) => `${h.name} [${h.batch ?? "?"}] ${h.status ?? ""} -- ${h.one_liner ?? ""}`).join("\n"))
-        : `No YC companies found for "${query}"`;
-    }
+    case "yc":
+      // Withdrawn in 0.5.3: the cron no longer reads a third-party mirror of YC's index
+      // (YC's terms forbid circumventing access blocks). "[adapter" output stores no row.
+      return "[adapter yc withdrawn: no permitted source]";
     case "packagetrends": {
       const pkg = encodeURIComponent(query.trim());
       const [infoRes, dlRes] = await Promise.all([

@@ -1,5 +1,5 @@
 import { AdapterResult, ExtractOptions } from "../types.js";
-import { validateUrl } from "../security.js";
+import { assertPublicDestination, assertPublicRedirectChain, SecurityError, validateUrl } from "../security.js";
 
 /**
  * Changelog adapter — extracts update history from any product or repo.
@@ -15,6 +15,10 @@ import { validateUrl } from "../security.js";
  *   - Version numbers when available
  *   - Content of each entry (truncated)
  *   - freshness_confidence based on how the date was sourced
+ *
+ * Arbitrary-site discovery drives a headless browser on the user's machine, so it
+ * is OFF by default. Set FRESHCONTEXT_CHANGELOG_BROWSER=1 to opt in. npm package
+ * names and GitHub repository URLs never use the browser.
  *
  * Why this matters for AI agents:
  *   Agents checking "is this tool still maintained?" or "did they ship X feature?"
@@ -146,13 +150,33 @@ async function discoverChangelog(baseUrl: string, maxLength: number): Promise<Ad
     ? [baseUrl]
     : [baseUrl, ...CHANGELOG_PATHS.map((p) => `${urlObj.origin}${p}`)];
 
+  // Refuse a private destination (including by DNS) before a browser is started.
+  await assertPublicDestination(baseUrl);
+
   const browser = await chromium.launch({ headless: true });
 
   for (const url of targetUrls) {
-    const page = await browser.newPage();
+    // Service workers could answer requests without passing through page.route.
+    const page = await browser.newPage({ serviceWorkers: "block" });
     try {
+      // Every request the page makes (navigation, redirect hops, subresources) must
+      // go to a public address; anything else is aborted before it is sent.
+      await page.route("**/*", async (route) => {
+        try {
+          await assertPublicDestination(route.request().url());
+          await route.continue();
+        } catch {
+          await route.abort("blockedbyclient");
+        }
+      });
+      await assertPublicDestination(url);
       const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
       if (!res || !res.ok()) { await page.close(); continue; }
+
+      // Re-check the whole redirect chain and the final URL before reading the page.
+      const chain: string[] = [];
+      for (let r: ReturnType<typeof res.request> | null = res.request(); r; r = r.redirectedFrom()) chain.unshift(r.url());
+      await assertPublicRedirectChain([...chain, page.url()]);
 
       // Check if we landed on a real page with content
       const content = await page.evaluate(`(function() {
@@ -266,6 +290,12 @@ export async function changelogAdapter(options: ExtractOptions): Promise<Adapter
     return fetchGitHubReleases(ghMatch[1], ghMatch[2].replace(/\.git$/, ""), maxLength);
   }
 
-  // Any other URL → discover changelog
+  // Any other URL → discover changelog in a headless browser, only when explicitly enabled
+  if (!/^(1|true|yes)$/i.test(process.env.FRESHCONTEXT_CHANGELOG_BROWSER ?? "")) {
+    throw new SecurityError(
+      "Changelog browser mode is disabled by default. Pass an npm package name or a GitHub repository URL, " +
+        "or set FRESHCONTEXT_CHANGELOG_BROWSER=1 to allow headless-browser discovery on arbitrary sites."
+    );
+  }
   return discoverChangelog(safeInput, maxLength);
 }

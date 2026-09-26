@@ -181,6 +181,7 @@ const commands = {
       "tests/readableOutput.test.ts",
       "tests/provenanceReadiness.test.ts",
       "tests/adapterNetworkBoundary.test.ts",
+      "tests/urlGuard.test.ts",
       "tests/workerRouteSecurity.test.ts",
       "tests/workerCoreEnvelopeParity.test.ts",
       "tests/coreEnvelopeOptions.test.ts",
