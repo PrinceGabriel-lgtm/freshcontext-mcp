@@ -4,7 +4,6 @@
  */
 
 import { BlockList, isIP } from "node:net";
-import { lookup as dnsLookup } from "node:dns/promises";
 
 // ─── Allowed domains per adapter ────────────────────────────────────────────
 
@@ -26,8 +25,8 @@ export const ALLOWED_DOMAINS: Record<string, string[]> = {
 //
 // Checks are made on parsed addresses, not on hostname strings, so bracketed IPv6
 // ("[::1]"), IPv4-mapped IPv6 ("::ffff:127.0.0.1") and trailing-dot hosts
-// ("localhost.") cannot slip past a pattern. Hostnames are also resolved and every
-// resolved address is checked (see assertPublicDestination).
+// ("localhost.") cannot slip past a pattern. Only the literal URL is checked: no adapter
+// that accepts arbitrary hosts fetches them since 0.5.3.
 
 const BLOCKED_V4 = new BlockList();
 for (const [net, prefix] of [
@@ -39,6 +38,7 @@ for (const [net, prefix] of [
   ["172.16.0.0", 12],    // RFC 1918
   ["192.0.0.0", 24],     // IETF protocol assignments
   ["192.0.2.0", 24],     // documentation
+  ["192.88.99.0", 24],   // deprecated 6to4 relay anycast
   ["192.168.0.0", 16],   // RFC 1918
   ["198.18.0.0", 15],    // benchmarking
   ["198.51.100.0", 24],  // documentation
@@ -50,7 +50,9 @@ for (const [net, prefix] of [
 const BLOCKED_V6 = new BlockList();
 for (const [net, prefix] of [
   ["::", 96],            // unspecified, loopback and IPv4-compatible
+  ["64:ff9b:1::", 48],   // local-use NAT64
   ["100::", 64],         // discard
+  ["2001::", 32],        // Teredo tunnelling
   ["2001:db8::", 32],    // documentation
   ["fc00::", 7],         // unique local
   ["fe80::", 10],        // link-local
@@ -89,6 +91,7 @@ export function isBlockedAddress(ip: string): boolean {
   if (!g) return true;
   // Forms that embed an IPv4 address are judged by that address.
   if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) return isBlockedAddress(v4FromGroups(g[6], g[7])); // ::ffff:a.b.c.d
+  if (g.slice(0, 4).every((x) => x === 0) && g[4] === 0xffff && g[5] === 0) return isBlockedAddress(v4FromGroups(g[6], g[7])); // ::ffff:0:a.b.c.d (SIIT)
   if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) return isBlockedAddress(v4FromGroups(g[6], g[7])); // NAT64
   if (g[0] === 0x2002) return isBlockedAddress(v4FromGroups(g[1], g[2])); // 6to4
   return BLOCKED_V6.check(g.map((x) => x.toString(16)).join(":"), "ipv6");
@@ -176,43 +179,6 @@ export function validateUrl(
   }
 
   return parsed.toString();
-}
-
-// ─── Resolved-address checks ────────────────────────────────────────────────
-
-export type AddressLookup = (hostname: string) => Promise<{ address: string; family: number }[]>;
-const systemLookup: AddressLookup = (hostname) => dnsLookup(hostname, { all: true, verbatim: true });
-
-/**
- * validateUrl, then resolves the hostname and refuses the URL if ANY resolved address
- * is private, loopback, link-local or otherwise non-public. Returns the validated URL.
- *
- * Residual risk: the browser resolves the name again when it connects, so a DNS answer
- * that changes between the two lookups (rebinding) is not fully excluded. Callers re-check
- * every request and redirect hop to narrow that window.
- */
-export async function assertPublicDestination(rawUrl: string, lookup: AddressLookup = systemLookup): Promise<string> {
-  const safe = validateUrl(rawUrl, "changelog");
-  const host = normalizeHost(new URL(safe).hostname);
-  if (isIP(host)) return safe;
-  let addresses: { address: string }[];
-  try {
-    addresses = await lookup(host);
-  } catch {
-    throw new SecurityError(`Could not resolve ${host}; refusing to fetch it`);
-  }
-  if (addresses.length === 0) throw new SecurityError(`Could not resolve ${host}; refusing to fetch it`);
-  for (const { address } of addresses) {
-    if (isBlockedAddress(address)) {
-      throw new SecurityError(`Access to internal/private addresses is not permitted: ${host} resolves to ${address}`);
-    }
-  }
-  return safe;
-}
-
-/** Checks every URL in a redirect chain (first request to final response). */
-export async function assertPublicRedirectChain(urls: string[], lookup: AddressLookup = systemLookup): Promise<void> {
-  for (const url of urls) await assertPublicDestination(url, lookup);
 }
 
 // ─── Query string sanitizer ──────────────────────────────────────────────────

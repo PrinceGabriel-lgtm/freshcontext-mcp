@@ -30,13 +30,14 @@ describe("adapter freshness-anchor regression guard (F-1/F-2)", () => {
   });
 
   test("YC must not stamp the deployed tool's date as 'today' — worker copy", () => {
-    // The fixed deployed call is `stamp(raw, safeUrl, null, "low", "yc")`. A regression would
-    // pass `new Date()...` as the date argument again. Pin the fixed null-date shape.
-    assert.match(
-      worker,
-      /null,\s*"low",\s*"yc"/,
-      "worker extract_yc must stamp a null date (freshness unknown), not today"
+    // The fixed deployed call was `stamp(raw, safeUrl, null, "low", "yc")`. Since 0.5.3 the tool
+    // is withdrawn and stamps nothing. Either way it must never date YC listings as today.
+    const ycTool = worker.slice(worker.indexOf('server.registerTool("extract_yc"'), worker.indexOf('server.registerTool("search_repos"'));
+    assert.ok(
+      /null,\s*"low",\s*"yc"/.test(ycTool) || /withdrawn in 0\.5\.3/i.test(ycTool),
+      "worker extract_yc must stamp a null date (freshness unknown) or be withdrawn"
     );
+    assert.doesNotMatch(ycTool, /new Date\(\)/, "worker extract_yc must not date YC listings as today");
   });
 
   test("Scholar must not anchor at Jan 1 (${year}-01-01) — npm + deployed", () => {

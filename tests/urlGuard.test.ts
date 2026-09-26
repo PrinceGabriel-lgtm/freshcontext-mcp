@@ -61,55 +61,18 @@ test("isBlockedAddress covers IPv4, IPv6 and IPv4-mapped forms", () => {
   assert.equal(isBlocked("not-an-ip"), true, "anything that is not an IP address is refused");
 });
 
-type Lookup = (host: string) => Promise<{ address: string; family: number }[]>;
-const fakeDns = (table: Record<string, string[]>): Lookup => async (host) => {
-  const found = table[host];
-  if (!found) throw new Error(`ENOTFOUND ${host}`);
-  return found.map((address) => ({ address, family: address.includes(":") ? 6 : 4 }));
-};
-
-test("a public hostname that resolves to loopback or a private address is refused", async () => {
-  const assertPublic = (security as Record<string, unknown>).assertPublicDestination as (url: string, lookup?: Lookup) => Promise<string>;
-  assert.equal(typeof assertPublic, "function");
-  const dns = fakeDns({
-    "localtest.me": ["127.0.0.1"],
-    "v6.example": ["::1"],
-    "mixed.example": ["93.184.216.34", "10.0.0.5"],
-    "mapped.example": ["::ffff:192.168.0.1"],
-    "public.example": ["93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946"],
-  });
-  for (const host of ["localtest.me", "v6.example", "mixed.example", "mapped.example"]) {
-    await assert.rejects(assertPublic(`https://${host}/changelog`, dns), security.SecurityError, host);
-  }
-  await assert.rejects(assertPublic("https://missing.example/", dns), security.SecurityError, "unresolvable hosts are refused");
-  assert.equal(await assertPublic("https://public.example/changelog", dns), "https://public.example/changelog");
-  await assert.rejects(assertPublic("http://[::1]/", dns), security.SecurityError, "literals are checked without DNS");
+test("the added ranges are refused: SIIT, local NAT64, Teredo, 6to4 relay", () => {
+  const isBlocked = (security as Record<string, unknown>).isBlockedAddress as (ip: string) => boolean;
+  for (const ip of ["::ffff:0:127.0.0.1", "::ffff:0:7f00:1", "64:ff9b:1::1", "2001:0:4136:e378::1", "192.88.99.1"]) assert.equal(isBlocked(ip), true, ip);
 });
 
-test("every hop of a redirect chain is checked, not only the first URL", async () => {
-  const assertChain = (security as Record<string, unknown>).assertPublicRedirectChain as (urls: string[], lookup?: Lookup) => Promise<void>;
-  assert.equal(typeof assertChain, "function");
-  const dns = fakeDns({ "public.example": ["93.184.216.34"], "rebind.example": ["127.0.0.1"] });
-  await assertChain(["https://public.example/a", "https://public.example/b"], dns);
-  await assert.rejects(assertChain(["https://public.example/a", "http://[::1]:8080/admin"], dns), security.SecurityError);
-  await assert.rejects(assertChain(["https://public.example/a", "https://rebind.example/"], dns), security.SecurityError);
-  await assert.rejects(assertChain(["https://public.example/a", "file:///etc/passwd"], dns), security.SecurityError);
-});
-
-test("changelog arbitrary-site browser mode is off unless explicitly enabled", async () => {
-  const previous = process.env.FRESHCONTEXT_CHANGELOG_BROWSER;
-  delete process.env.FRESHCONTEXT_CHANGELOG_BROWSER;
-  try {
-    await assert.rejects(changelogAdapter({ url: "https://example.com/" }), /browser mode is disabled/);
-  } finally {
-    if (previous !== undefined) process.env.FRESHCONTEXT_CHANGELOG_BROWSER = previous;
-  }
-});
-
-test("changelog refuses private literals before any browser or fetch, even when browser mode is enabled", async () => {
+test("changelog never drives a browser to an arbitrary website, whatever the environment says", async () => {
   const previous = process.env.FRESHCONTEXT_CHANGELOG_BROWSER;
   process.env.FRESHCONTEXT_CHANGELOG_BROWSER = "1";
   try {
+    for (const url of ["https://example.com/", "https://example.com/changelog", "https://evil.example/github.com/a/b"]) {
+      await assert.rejects(changelogAdapter({ url }), /removed in 0\.5\.3/, url);
+    }
     for (const url of ["http://[::1]/", "http://localhost./", "http://[fd00::1]/", "http://100.64.0.1/", "http://metadata.google.internal/"]) {
       await assert.rejects(changelogAdapter({ url }), security.SecurityError, url);
     }
@@ -119,21 +82,30 @@ test("changelog refuses private literals before any browser or fetch, even when 
   }
 });
 
-test("the worker no longer reads a third-party mirror of YC's index (cron or composite)", async () => {
+test("the changelog adapter has no browser code left", async () => {
   const { readFileSync } = await import("node:fs");
-  const worker = readFileSync(new URL("../worker/src/worker.ts", import.meta.url), "utf8");
-  assert.doesNotMatch(worker, /yc-oss\.github\.io/);
-  assert.match(worker, /case "yc":\s*\/\/[^\n]*\n[^\n]*\n\s*return "\[adapter yc withdrawn/);
+  const src = readFileSync(new URL("../src/adapters/changelog.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /playwright|chromium|page\.goto/);
 });
 
-test("changelog browser mode refuses a hostname that resolves privately before starting a browser", async () => {
-  const previous = process.env.FRESHCONTEXT_CHANGELOG_BROWSER;
-  process.env.FRESHCONTEXT_CHANGELOG_BROWSER = "1";
-  try {
-    // A name with no DNS answer is refused as unresolvable, never handed to the browser.
-    await assert.rejects(changelogAdapter({ url: "https://does-not-exist.invalid/" }), security.SecurityError);
-  } finally {
-    if (previous === undefined) delete process.env.FRESHCONTEXT_CHANGELOG_BROWSER;
-    else process.env.FRESHCONTEXT_CHANGELOG_BROWSER = previous;
-  }
+test("YC is withdrawn on every path: local adapter, worker tool, composite helper and cron", async () => {
+  const { ycAdapter } = await import("../src/adapters/yc.js");
+  await assert.rejects(ycAdapter({ url: "https://www.ycombinator.com/companies?query=mcp" }), /withdrawn in 0\.5\.3 pending review of source terms/);
+  const { readFileSync } = await import("node:fs");
+  const local = readFileSync(new URL("../src/adapters/yc.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(local, /playwright|chromium|goto/);
+  const worker = readFileSync(new URL("../worker/src/worker.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(worker, /yc-oss\.github\.io/);
+  assert.doesNotMatch(worker, /ycombinator\.com\/companies\?query=\$\{/, "no YC fetch built from user input");
+  const ycTool = worker.slice(worker.indexOf('server.registerTool("extract_yc"'), worker.indexOf('server.registerTool("search_repos"'));
+  assert.doesNotMatch(ycTool, /puppeteer|goto|fetch\(/);
+  assert.match(worker, /case "yc":[^\n]*\n[^\n]*\n\s*return "\[adapter yc withdrawn\]";/);
+  assert.doesNotMatch(worker + local, /terms forbid/i, "no statement about the source's terms in code comments");
+});
+
+test("the hosted HN tool fetches an Algolia API URL only when its host is exactly hn.algolia.com", async () => {
+  const { readFileSync } = await import("node:fs");
+  const worker = readFileSync(new URL("../worker/src/worker.ts", import.meta.url), "utf8");
+  assert.match(worker, /parsedInput\.hostname === "hn\.algolia\.com" && parsedInput\.protocol === "https:"/);
+  assert.doesNotMatch(worker, /if \(parsedInput && url\.includes\("\/api\/"\)\) \{\s*apiUrl = url;/);
 });

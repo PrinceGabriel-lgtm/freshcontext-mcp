@@ -2,21 +2,24 @@
 
 ## 0.5.3
 
-Security-maintenance release, and the final release of the MIT `freshcontext-mcp` line.
-Upgrading is recommended for anyone running the local MCP server. No Core behavior changes.
+Security-maintenance release. This is the final planned release of `freshcontext-mcp`; it
+remains MIT-licensed as before and is provided as is. Upgrading is recommended for anyone
+running the local MCP server. No Core behavior changes.
 
 - **URL guard hardened.** The local server's URL check could be bypassed with some IPv6,
-  trailing-dot and DNS-based forms, letting the changelog tool's headless browser load pages
-  on the user's own machine or local network. Addresses are now parsed and checked as
-  addresses (IPv4, IPv6 and IPv4-embedded forms, including CGNAT, link-local, multicast and
-  reserved ranges). Local-only names (`localhost`, `.local`, `.internal`, single-label
-  hosts) are refused, and hostnames are resolved and refused if any address is non-public.
-- **Changelog browser mode is now opt-in.** Discovering changelogs on arbitrary websites
-  with a headless browser is disabled by default; set `FRESHCONTEXT_CHANGELOG_BROWSER=1`
-  to enable it. npm package names and GitHub repository URLs work as before. When enabled,
-  every request and redirect hop is checked before the page is read.
-- **YC mirror removed.** The hosted cron and the idea-landscape composite no longer read a
-  third-party mirror of YC's company index. The YC section now reports that it is withdrawn.
+  trailing-dot and DNS-based host forms, which let the changelog tool's headless browser
+  load pages on the user's own machine or local network. Addresses are now parsed and
+  checked as addresses (IPv4, IPv6 and IPv4-embedded forms, including shared-carrier,
+  link-local, multicast and reserved ranges), and local-only names (`localhost`, `.local`,
+  `.internal`, single-label hosts) are refused.
+- **Changelog discovery on arbitrary websites removed.** `extract_changelog` now accepts
+  only npm package names and GitHub repository URLs, which it reads through the npm
+  registry and the GitHub Releases API. It no longer starts a browser.
+- **YC tools withdrawn** pending review of source terms. `extract_yc` returns an error, the
+  YC sections of the landscape tools say they are withdrawn, and the hosted scheduled job
+  no longer collects YC data.
+- **Hosted `extract_hackernews`** fetches a caller-supplied Algolia API URL only when its
+  host is exactly `hn.algolia.com`.
 
 ## 0.5.2
 

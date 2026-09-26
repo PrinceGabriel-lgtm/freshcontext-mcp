@@ -148,7 +148,7 @@ server.registerTool(
   "extract_yc",
   {
     description:
-      "Scrape YC company listings. Use https://www.ycombinator.com/companies?query=KEYWORD to find startups in a space. Returns name, batch, tags, description per company. Freshness is unknown — YC listings carry no reliable per-company update date.",
+      "Withdrawn in 0.5.3 pending review of source terms. Returns an error; kept so existing clients get a clear answer.",
     inputSchema: z.object({
       url: z.string().url().describe("YC companies URL e.g. https://www.ycombinator.com/companies?query=mcp"),
       max_length: z.number().optional().default(6000),
@@ -409,10 +409,10 @@ server.registerTool(
   "extract_changelog",
   {
     description:
-      "Extract update history from any product, repo, or package. Accepts a GitHub URL (uses Releases API), an npm package name, or any website URL (auto-discovers /changelog, /releases, /CHANGELOG.md). Returns version numbers, release dates, and entry content — all timestamped. Use this to check if a tool is actively maintained, when a feature shipped, or how fast a team moves.",
+      "Extract update history from a repo or package. Accepts a GitHub repository URL (uses the Releases API) or an npm package name. Returns version numbers, release dates, and entry content — all timestamped. Use this to check if a tool is actively maintained, when a feature shipped, or how fast a team moves.",
     inputSchema: z.object({
       url: z.string().describe(
-        "GitHub repo URL (https://github.com/owner/repo), npm package name (e.g. 'freshcontext-mcp'), or any website URL (https://example.com). Auto-discovers changelog paths."
+        "GitHub repo URL (https://github.com/owner/repo) or npm package name (e.g. 'freshcontext-mcp')."
       ),
       max_length: z.number().optional().default(6000).describe("Max content length"),
     }),

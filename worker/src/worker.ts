@@ -1112,11 +1112,9 @@ async function fetchFinance(tickers: string, maxLength: number, log: LogFields =
 }
 
 // ── YC companies — composite helper (withdrawn in 0.5.3) ─────────────────────
-// This helper used to read a third-party mirror of YC's company index. YC's terms forbid
-// scraping and circumventing access blocks, so the mirror is no longer used and no YC data
-// is fetched. The section stays in the composite output so readers see why it is empty.
+// Withdrawn pending review of source terms; no YC data is fetched.
 async function fetchYC(_query: string, _maxLength: number, _log: LogFields = {}): Promise<AdapterHit> {
-  return { raw: "YC section withdrawn: FreshContext no longer uses third-party mirrors of YC data.", date: null, conf: "low" };
+  return { raw: "YC source withdrawn in 0.5.3 pending review of source terms.", date: null, conf: "low" };
 }
 
 // ── Jobs (Remotive) — composite helper ───────────────────────────────────────
@@ -1517,8 +1515,8 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
         try { parsedInput = new URL(url); } catch { parsedInput = null; }
         if (!parsedInput || url.includes("hn.algolia.com")) {
           let apiUrl: string;
-          if (parsedInput && url.includes("/api/")) {
-            apiUrl = url;
+          if (parsedInput && parsedInput.hostname === "hn.algolia.com" && parsedInput.protocol === "https:" && parsedInput.pathname.startsWith("/api/")) {
+            apiUrl = parsedInput.toString();
           } else {
             // Extract ?q= or ?query= param if present — don't encode the whole URL as the query
             let searchTerm: string;
@@ -1592,40 +1590,10 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
   });
 
   server.registerTool("extract_yc", {
-    // Description previously said "by keyword", but the schema requires a full YC
-    // companies URL (a bare keyword fails z.string().url()) — fixed to match.
-    description: "Scrape YC company listings from a ycombinator.com/companies search URL. Returns name, batch, status, tags, and description per company. Freshness is unknown — YC listings carry no reliable per-company update date.",
-    inputSchema: z.object({ url: z.string().url().describe("YC URL e.g. https://www.ycombinator.com/companies?query=mcp") }),
-    annotations: { readOnlyHint: true, openWorldHint: true },
-  }, async ({ url }) => {
-    return withCache("yc", url, env.CACHE, ctx, async () => {
-      try {
-        const safeUrl = validateUrl(url, "yc");
-        const browser = await puppeteer.launch(env.BROWSER);
-        const page = await browser.newPage();
-        await page.goto(safeUrl, { waitUntil: "networkidle0" });
-        await new Promise(r => setTimeout(r, 1500));
-        const data = await page.evaluate(`(function() {
-          return Array.from(document.querySelectorAll('a._company_i9oky_355')).slice(0, 20).map(function(el) {
-            var name = el.querySelector('._coName_i9oky_470')?.textContent.trim();
-            var desc = el.querySelector('._coDescription_i9oky_478')?.textContent.trim();
-            var batch = el.querySelector('._batch_i9oky_496')?.textContent.trim();
-            var tags = Array.from(el.querySelectorAll('._pill_i9oky_33')).map(function(t) { return t.textContent.trim(); });
-            return { name, desc, batch, tags };
-          });
-        })()`);
-        await browser.close();
-        const items = data as any[];
-        const raw = items.map((c, i) => `[${i+1}] ${c.name ?? "Unknown"} (${c.batch ?? "N/A"})\n${c.desc ?? "No description"}\nTags: ${c.tags?.join(", ") ?? "none"}`).join("\n\n");
-        // Date is null, not today. A YC listing carries no reliable content-freshness date
-        // (the batch is a founding-era marker, not a last-updated signal). Stamping "today"
-        // made a freshness product score every YC result as perpetually fresh — a false
-        // signal in the flattering direction. null = "freshness unknown", which is honest.
-        // Mirrors src/adapters/yc.ts.
-        return ok(stamp(raw, safeUrl, null, "low", "yc"));
-      } catch (err: unknown) { return adapterError("extract_yc", "yc", url, err); }
-    });
-  });
+    description: "Withdrawn in 0.5.3 pending review of source terms. Returns an error; kept so existing clients get a clear answer.",
+    inputSchema: z.object({ url: z.string().url().describe("Previously a ycombinator.com/companies URL") }),
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ url }) => adapterError("extract_yc", "yc", url, new Error("YC source withdrawn in 0.5.3 pending review of source terms.")));
 
   server.registerTool("search_repos", {
     description: "Search GitHub for repositories matching a keyword. Returns top results by stars.",
@@ -2248,9 +2216,8 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
       ).join("\n"));
     }
     case "yc":
-      // Withdrawn in 0.5.3: the cron no longer reads a third-party mirror of YC's index
-      // (YC's terms forbid circumventing access blocks). "[adapter" output stores no row.
-      return "[adapter yc withdrawn: no permitted source]";
+      // Withdrawn in 0.5.3 pending review of source terms. "[adapter" output stores no row.
+      return "[adapter yc withdrawn]";
     case "packagetrends": {
       const pkg = encodeURIComponent(query.trim());
       const [infoRes, dlRes] = await Promise.all([
