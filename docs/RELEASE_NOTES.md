@@ -2,9 +2,10 @@
 
 ## 0.5.3
 
-Security-maintenance release. This is the final planned release of `freshcontext-mcp`; it
-remains MIT-licensed as before and is provided as is. Upgrading is recommended for anyone
-running the local MCP server. No Core behavior changes.
+Security-maintenance release, and the last MIT release of `freshcontext-mcp`. No further
+feature releases will follow. This release and every earlier one remain available under the
+MIT License, as is. Upgrading is recommended for anyone running the local MCP server. No Core
+behavior changes.
 
 - **URL guard hardened.** The local server's URL check could be bypassed with some IPv6,
   trailing-dot and DNS-based host forms, which let the changelog tool's headless browser
