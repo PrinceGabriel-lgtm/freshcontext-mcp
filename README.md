@@ -1,5 +1,10 @@
 # FreshContext
 
+> **This package is no longer developed.** 0.5.3 is the last release of `freshcontext-mcp`.
+> It and every earlier release stay available under the MIT License, as is; there will be no
+> further feature releases. For FreshContext services, see <https://freshcontext.dev>.
+> Security reports: see [SECURITY.md](SECURITY.md).
+
 I asked Claude to help me find a job. It gave me a list of openings. I applied to three of them. Two didn't exist anymore. One had been closed for two years.
 
 Claude had no idea. It presented everything with the same confidence.
