@@ -1,13 +1,11 @@
 import { AdapterResult, ExtractOptions } from "../types.js";
-import { validateUrl } from "../security.js";
+import { SecurityError, validateUrl } from "../security.js";
 
 /**
  * Changelog adapter — extracts update history from any product or repo.
  *
  * Accepts:
- *   - Any URL: https://example.com → auto-discovers /changelog, /releases, /CHANGELOG.md
  *   - GitHub repo URL: https://github.com/owner/repo → uses Releases API
- *   - Direct changelog URL: https://example.com/changelog
  *   - npm package name: e.g. "freshcontext-mcp" → fetches from npm registry
  *
  * What it returns:
@@ -16,25 +14,14 @@ import { validateUrl } from "../security.js";
  *   - Content of each entry (truncated)
  *   - freshness_confidence based on how the date was sourced
  *
+ * Since 0.5.3, only npm package names and GitHub repository URLs are accepted.
+ * Arbitrary-site discovery (a headless browser on the user's machine) was removed.
+ *
  * Why this matters for AI agents:
  *   Agents checking "is this tool still maintained?" or "did they ship X feature?"
  *   need to know WHEN changes happened — not just that they happened.
  *   This adapter makes update cadence a first-class signal.
  */
-
-const CHANGELOG_PATHS = [
-  "/changelog",
-  "/CHANGELOG",
-  "/CHANGELOG.md",
-  "/CHANGELOG.txt",
-  "/releases",
-  "/blog/changelog",
-  "/blog/releases",
-  "/updates",
-  "/whats-new",
-  "/what-s-new",
-  "/release-notes",
-];
 
 function sanitize(s: string): string {
   return s.replace(/[^\x20-\x7E\n]/g, "").trim();
@@ -130,125 +117,6 @@ async function fetchNpmChangelog(packageName: string, maxLength: number): Promis
   return { raw, content_date: newest ?? null, freshness_confidence: newest ? "high" : "medium" };
 }
 
-// ─── Browser-based changelog discovery ───────────────────────────────────────
-async function discoverChangelog(baseUrl: string, maxLength: number): Promise<AdapterResult> {
-  const { chromium } = await import("playwright");
-
-  // Strip trailing slash and path — we want the root for discovery
-  const urlObj = new URL(baseUrl);
-
-  // If the URL already looks like a changelog page, go directly
-  const isDirectChangelog = CHANGELOG_PATHS.some((p) =>
-    urlObj.pathname.toLowerCase().includes(p.replace("/", ""))
-  );
-
-  const targetUrls = isDirectChangelog
-    ? [baseUrl]
-    : [baseUrl, ...CHANGELOG_PATHS.map((p) => `${urlObj.origin}${p}`)];
-
-  const browser = await chromium.launch({ headless: true });
-
-  for (const url of targetUrls) {
-    const page = await browser.newPage();
-    try {
-      const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
-      if (!res || !res.ok()) { await page.close(); continue; }
-
-      // Check if we landed on a real page with content
-      const content = await page.evaluate(`(function() {
-        // Try to find changelog-like content
-        var selectors = [
-          'article', 'main', '.changelog', '.releases', '.release-notes',
-          '[class*="changelog"]', '[class*="release"]', '[id*="changelog"]',
-          '[id*="release"]', '.prose', '.content', '.markdown-body'
-        ];
-
-        var el = null;
-        for (var i = 0; i < selectors.length; i++) {
-          el = document.querySelector(selectors[i]);
-          if (el && el.innerText && el.innerText.length > 100) break;
-        }
-
-        if (!el) el = document.body;
-
-        var text = el ? el.innerText : '';
-
-        // Extract dates — look for version/date patterns
-        var datePattern = /\\b(20\\d{2}[-/.](0[1-9]|1[0-2])[-/.](0[1-9]|[12]\\d|3[01]))\\b/g;
-        var versionPattern = /v?\\d+\\.\\d+(\\.\\d+)?(-\\w+)?/g;
-
-        var dates = (text.match(datePattern) || []).slice(0, 5);
-        var versions = (text.match(versionPattern) || []).slice(0, 5);
-
-        // Truncate to first 3000 chars of meaningful content
-        var truncated = text
-          .split('\\n')
-          .filter(function(l) { return l.trim().length > 0; })
-          .slice(0, 60)
-          .join('\\n');
-
-        return {
-          text: truncated,
-          dates: dates,
-          versions: versions,
-          title: document.title,
-          url: window.location.href,
-          hasContent: text.length > 200
-        };
-      })`);
-
-      const result = content as {
-        text: string;
-        dates: string[];
-        versions: string[];
-        title: string;
-        url: string;
-        hasContent: boolean;
-      };
-
-      if (!result.hasContent) { await page.close(); continue; }
-
-      // Check if this actually looks like a changelog
-      const looksLikeChangelog =
-        result.url.toLowerCase().includes("changelog") ||
-        result.url.toLowerCase().includes("release") ||
-        result.url.toLowerCase().includes("update") ||
-        result.title.toLowerCase().includes("changelog") ||
-        result.title.toLowerCase().includes("release") ||
-        result.dates.length > 0 ||
-        result.versions.length > 1;
-
-      if (!looksLikeChangelog && url !== baseUrl) { await page.close(); continue; }
-
-      await browser.close();
-
-      const raw = [
-        `Source: ${result.url}`,
-        `Title: ${result.title}`,
-        result.versions.length ? `Versions found: ${result.versions.join(", ")}` : null,
-        result.dates.length ? `Dates found: ${result.dates.join(", ")}` : null,
-        ``,
-        sanitize(result.text),
-      ].filter(Boolean).join("\n").slice(0, maxLength);
-
-      // Best date is the first/most recent date found
-      const newestDate = result.dates.length > 0
-        ? result.dates.sort().reverse()[0]
-        : null;
-
-      const confidence = result.dates.length > 0 ? "medium" : "low";
-      return { raw, content_date: newestDate, freshness_confidence: confidence };
-
-    } catch {
-      await page.close();
-      continue;
-    }
-  }
-
-  await browser.close();
-  throw new Error(`No changelog found at ${baseUrl} or common changelog paths`);
-}
-
 // ─── Main export ──────────────────────────────────────────────────────────────
 export async function changelogAdapter(options: ExtractOptions): Promise<AdapterResult> {
   const input = (options.url ?? "").trim();
@@ -261,11 +129,16 @@ export async function changelogAdapter(options: ExtractOptions): Promise<Adapter
 
   // GitHub repo URL → use releases API
   const safeInput = validateUrl(input, "changelog");
-  const ghMatch = safeInput.match(/github\.com\/([^/]+)\/([^/?\s]+)/);
+  const ghUrl = new URL(safeInput);
+  const ghMatch = /^(?:www\.)?github\.com$/i.test(ghUrl.hostname) ? ghUrl.pathname.match(/^\/([^/]+)\/([^/?\s]+)/) : null;
   if (ghMatch) {
     return fetchGitHubReleases(ghMatch[1], ghMatch[2].replace(/\.git$/, ""), maxLength);
   }
 
-  // Any other URL → discover changelog
-  return discoverChangelog(safeInput, maxLength);
+  // Any other URL: arbitrary-site discovery drove a headless browser on the user's machine and was
+  // removed in 0.5.3 for security. Only the npm registry and the GitHub Releases API are used.
+  throw new SecurityError(
+    "Changelog discovery on arbitrary websites was removed in 0.5.3 for security. " +
+      "Pass an npm package name or a GitHub repository URL."
+  );
 }

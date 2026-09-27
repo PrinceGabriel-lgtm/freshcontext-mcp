@@ -3,6 +3,8 @@
  * Input sanitization, domain allowlists, and request validation
  */
 
+import { BlockList, isIP } from "node:net";
+
 // ─── Allowed domains per adapter ────────────────────────────────────────────
 
 export const ALLOWED_DOMAINS: Record<string, string[]> = {
@@ -20,19 +22,96 @@ export const ALLOWED_DOMAINS: Record<string, string[]> = {
 };
 
 // ─── Blocked IP ranges and internal hostnames ────────────────────────────────
+//
+// Checks are made on parsed addresses, not on hostname strings, so bracketed IPv6
+// ("[::1]"), IPv4-mapped IPv6 ("::ffff:127.0.0.1") and trailing-dot hosts
+// ("localhost.") cannot slip past a pattern. Only the literal URL is checked: no adapter
+// that accepts arbitrary hosts fetches them since 0.5.3.
 
-const BLOCKED_PATTERNS = [
-  /^localhost$/i,
-  /^127\.\d+\.\d+\.\d+$/,
-  /^10\.\d+\.\d+\.\d+$/,
-  /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
-  /^192\.168\.\d+\.\d+$/,
-  /^169\.254\.\d+\.\d+$/, // AWS metadata
-  /^0\.0\.0\.0$/,
-  /^::1$/,
-  /^fc00:/i,
-  /^fe80:/i,
-];
+const BLOCKED_V4 = new BlockList();
+for (const [net, prefix] of [
+  ["0.0.0.0", 8],        // "this network"
+  ["10.0.0.0", 8],       // RFC 1918
+  ["100.64.0.0", 10],    // CGNAT, often internal in cloud networks
+  ["127.0.0.0", 8],      // loopback
+  ["169.254.0.0", 16],   // link-local, cloud metadata
+  ["172.16.0.0", 12],    // RFC 1918
+  ["192.0.0.0", 24],     // IETF protocol assignments
+  ["192.0.2.0", 24],     // documentation
+  ["192.88.99.0", 24],   // deprecated 6to4 relay anycast
+  ["192.168.0.0", 16],   // RFC 1918
+  ["198.18.0.0", 15],    // benchmarking
+  ["198.51.100.0", 24],  // documentation
+  ["203.0.113.0", 24],   // documentation
+  ["224.0.0.0", 4],      // multicast
+  ["240.0.0.0", 4],      // reserved, includes broadcast
+] as const) BLOCKED_V4.addSubnet(net, prefix, "ipv4");
+
+const BLOCKED_V6 = new BlockList();
+for (const [net, prefix] of [
+  ["::", 96],            // unspecified, loopback and IPv4-compatible
+  ["64:ff9b:1::", 48],   // local-use NAT64
+  ["100::", 64],         // discard
+  ["2001::", 32],        // Teredo tunnelling
+  ["2001:db8::", 32],    // documentation
+  ["fc00::", 7],         // unique local
+  ["fe80::", 10],        // link-local
+  ["fec0::", 10],        // site-local (deprecated)
+  ["ff00::", 8],         // multicast
+] as const) BLOCKED_V6.addSubnet(net, prefix, "ipv6");
+
+// Names that only ever mean "this machine" or "this private network".
+const BLOCKED_HOST_SUFFIXES = ["localhost", "local", "internal", "home.arpa", "lan", "intranet", "corp"];
+
+/** Expands an IPv6 address (optionally with a dotted IPv4 tail) into eight 16-bit groups. */
+function ipv6Groups(ip: string): number[] | null {
+  let text = ip.toLowerCase().split("%")[0];
+  const v4Tail = /(\d+\.\d+\.\d+\.\d+)$/.exec(text);
+  if (v4Tail) {
+    const o = v4Tail[1].split(".").map(Number);
+    text = text.slice(0, -v4Tail[1].length) + `${((o[0] << 8) | o[1]).toString(16)}:${((o[2] << 8) | o[3]).toString(16)}`;
+  }
+  const halves = text.split("::");
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(":") : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  const fill = halves.length === 2 ? 8 - head.length - tail.length : 0;
+  const groups = [...head, ...Array(Math.max(fill, 0)).fill("0"), ...tail].map((g) => parseInt(g, 16));
+  return groups.length === 8 && groups.every((g) => Number.isInteger(g) && g >= 0 && g <= 0xffff) ? groups : null;
+}
+
+const v4FromGroups = (hi: number, lo: number) => `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+
+/** True for any address that is not a routable public unicast address. Non-addresses are refused. */
+export function isBlockedAddress(ip: string): boolean {
+  const kind = isIP(ip);
+  if (kind === 4) return BLOCKED_V4.check(ip, "ipv4");
+  if (kind !== 6) return true;
+  const g = ipv6Groups(ip);
+  if (!g) return true;
+  // Forms that embed an IPv4 address are judged by that address.
+  if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) return isBlockedAddress(v4FromGroups(g[6], g[7])); // ::ffff:a.b.c.d
+  if (g.slice(0, 4).every((x) => x === 0) && g[4] === 0xffff && g[5] === 0) return isBlockedAddress(v4FromGroups(g[6], g[7])); // ::ffff:0:a.b.c.d (SIIT)
+  if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) return isBlockedAddress(v4FromGroups(g[6], g[7])); // NAT64
+  if (g[0] === 0x2002) return isBlockedAddress(v4FromGroups(g[1], g[2])); // 6to4
+  return BLOCKED_V6.check(g.map((x) => x.toString(16)).join(":"), "ipv6");
+}
+
+/** Lowercases, removes IPv6 brackets and trailing dots. */
+function normalizeHost(hostname: string): string {
+  return hostname.toLowerCase().replace(/^\[(.*)\]$/, "$1").replace(/\.+$/, "");
+}
+
+function assertPublicHostLiteral(host: string): void {
+  if (isIP(host)) {
+    if (isBlockedAddress(host)) throw new SecurityError(`Access to internal/private addresses is not permitted: ${host}`);
+    return;
+  }
+  // A name without a dot resolves through local search domains to LAN hosts ("metadata", "router").
+  if (!host.includes(".") || BLOCKED_HOST_SUFFIXES.some((s) => host === s || host.endsWith(`.${s}`))) {
+    throw new SecurityError(`Access to internal/private addresses is not permitted: ${host}`);
+  }
+}
 
 // ─── Max length limits ────────────────────────────────────────────────────────
 
@@ -80,16 +159,10 @@ export function validateUrl(
     );
   }
 
-  const hostname = parsed.hostname.toLowerCase();
+  const hostname = normalizeHost(parsed.hostname);
 
   // Block internal/private IPs and hostnames
-  for (const pattern of BLOCKED_PATTERNS) {
-    if (pattern.test(hostname)) {
-      throw new SecurityError(
-        `Access to internal/private addresses is not permitted: ${hostname}`
-      );
-    }
-  }
+  assertPublicHostLiteral(hostname);
 
   // Domain allowlist check (skip if allowlist is empty — means no browser used)
   const allowedDomains = ALLOWED_DOMAINS[adapterName];

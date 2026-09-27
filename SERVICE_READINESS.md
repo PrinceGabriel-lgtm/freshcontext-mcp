@@ -7,8 +7,8 @@ Every row here was verified by running the code on the commit this file ships
 with. Where something is not exposed, this document says so rather than rounding
 up — a buyer's technical reviewer will check, and the answer should survive that.
 
-**Verified at:** `package.json` 0.5.2 · `packages/core` 0.5.2 · `server.json` 0.5.2 ·
-npm `latest` 0.5.2 — all four agree, so no version claim here is stale.
+**Verified at:** `package.json` 0.5.3 · `packages/core` 0.5.3 · `server.json` 0.5.3.
+npm `latest` stays 0.5.2 until the owner publishes 0.5.3 through the trusted-publishing workflow.
 
 ## Capability classification
 

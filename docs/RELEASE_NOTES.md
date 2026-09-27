@@ -1,5 +1,27 @@
 # FreshContext Release Notes
 
+## 0.5.3
+
+Security-maintenance release, and the last MIT release of `freshcontext-mcp`. No further
+feature releases will follow. This release and every earlier one remain available under the
+MIT License, as is. Upgrading is recommended for anyone running the local MCP server. No Core
+behavior changes.
+
+- **URL guard hardened.** The local server's URL check could be bypassed with some IPv6,
+  trailing-dot and DNS-based host forms, which let the changelog tool's headless browser
+  load pages on the user's own machine or local network. Addresses are now parsed and
+  checked as addresses (IPv4, IPv6 and IPv4-embedded forms, including shared-carrier,
+  link-local, multicast and reserved ranges), and local-only names (`localhost`, `.local`,
+  `.internal`, single-label hosts) are refused.
+- **Changelog discovery on arbitrary websites removed.** `extract_changelog` now accepts
+  only npm package names and GitHub repository URLs, which it reads through the npm
+  registry and the GitHub Releases API. It no longer starts a browser.
+- **YC tools withdrawn** pending review of source terms. `extract_yc` returns an error, the
+  YC sections of the landscape tools say they are withdrawn, and the hosted scheduled job
+  no longer collects YC data.
+- **Hosted `extract_hackernews`** fetches a caller-supplied Algolia API URL only when its
+  host is exactly `hn.algolia.com`.
+
 ## 0.5.2
 
 Metadata correction and trusted-publishing release. No product behavior changes.

@@ -32,7 +32,7 @@ import {
 } from "./ed25519Attestation.js";
 import type { Ed25519SigningEnv } from "./ed25519Attestation.js";
 
-const SERVICE_VERSION = "0.5.2";
+const SERVICE_VERSION = "0.5.3";
 const SERVICE_UA = `freshcontext-mcp/${SERVICE_VERSION} (https://github.com/PrinceGabriel-lgtm/freshcontext-mcp)`;
 
 const signalInputSchema = z.object({
@@ -1111,28 +1111,10 @@ async function fetchFinance(tickers: string, maxLength: number, log: LogFields =
   return { raw, date, conf: failures.length ? "medium" : "high" };
 }
 
-// ── YC companies (yc-oss feed) — composite helper ────────────────────────────
-async function fetchYC(query: string, maxLength: number, log: LogFields = {}): Promise<AdapterHit> {
-  const res = await sourceFetch("https://yc-oss.github.io/api/companies/all.json", { headers: { "User-Agent": UA } }, { ...log, adapter: "yc" });
-  if (!res.ok) throw new Error(`YC ${res.status}`);
-  const all = await res.json() as Array<{ name: string; one_liner?: string; tags?: string[]; batch?: string; status?: string; website?: string }>;
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const hits = all.filter(c => {
-    const text = `${c.name ?? ""} ${c.one_liner ?? ""} ${(c.tags ?? []).join(" ")}`.toLowerCase();
-    return terms.some(t => text.includes(t));
-  }).slice(0, 15);
-  if (!hits.length) return { raw: `No YC companies for "${query}".`, date: null, conf: "low" };
-  const raw = hits.map((h, i) => [
-    `[${i + 1}] ${h.name} [${h.batch ?? "?"}] ${h.status ?? ""}`,
-    `Tags: ${(h.tags ?? []).join(", ") || "none"}`,
-    `${h.one_liner ?? "N/A"}`,
-    h.website ? `Website: ${h.website}` : null,
-  ].filter(Boolean).join("\n")).join("\n\n").slice(0, maxLength);
-  // Date is null, not today. The yc-oss feed carries no reliable per-company freshness
-  // date (batch is a founding-era marker, not last-updated). Stamping "today" scored
-  // every YC result as perpetually fresh — same bug fixed in extract_yc and
-  // src/adapters/yc.ts on 2026-07-08; this helper was the path that fix missed.
-  return { raw, date: null, conf: "low" };
+// ── YC companies — composite helper (withdrawn in 0.5.3) ─────────────────────
+// Withdrawn pending review of source terms; no YC data is fetched.
+async function fetchYC(_query: string, _maxLength: number, _log: LogFields = {}): Promise<AdapterHit> {
+  return { raw: "YC source withdrawn in 0.5.3 pending review of source terms.", date: null, conf: "low" };
 }
 
 // ── Jobs (Remotive) — composite helper ───────────────────────────────────────
@@ -1533,8 +1515,8 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
         try { parsedInput = new URL(url); } catch { parsedInput = null; }
         if (!parsedInput || url.includes("hn.algolia.com")) {
           let apiUrl: string;
-          if (parsedInput && url.includes("/api/")) {
-            apiUrl = url;
+          if (parsedInput && parsedInput.hostname === "hn.algolia.com" && parsedInput.protocol === "https:" && parsedInput.pathname.startsWith("/api/")) {
+            apiUrl = parsedInput.toString();
           } else {
             // Extract ?q= or ?query= param if present — don't encode the whole URL as the query
             let searchTerm: string;
@@ -1608,40 +1590,10 @@ function createServer(env: Env, ctx: ExecutionContext | null, requestLog: LogFie
   });
 
   server.registerTool("extract_yc", {
-    // Description previously said "by keyword", but the schema requires a full YC
-    // companies URL (a bare keyword fails z.string().url()) — fixed to match.
-    description: "Scrape YC company listings from a ycombinator.com/companies search URL. Returns name, batch, status, tags, and description per company. Freshness is unknown — YC listings carry no reliable per-company update date.",
-    inputSchema: z.object({ url: z.string().url().describe("YC URL e.g. https://www.ycombinator.com/companies?query=mcp") }),
-    annotations: { readOnlyHint: true, openWorldHint: true },
-  }, async ({ url }) => {
-    return withCache("yc", url, env.CACHE, ctx, async () => {
-      try {
-        const safeUrl = validateUrl(url, "yc");
-        const browser = await puppeteer.launch(env.BROWSER);
-        const page = await browser.newPage();
-        await page.goto(safeUrl, { waitUntil: "networkidle0" });
-        await new Promise(r => setTimeout(r, 1500));
-        const data = await page.evaluate(`(function() {
-          return Array.from(document.querySelectorAll('a._company_i9oky_355')).slice(0, 20).map(function(el) {
-            var name = el.querySelector('._coName_i9oky_470')?.textContent.trim();
-            var desc = el.querySelector('._coDescription_i9oky_478')?.textContent.trim();
-            var batch = el.querySelector('._batch_i9oky_496')?.textContent.trim();
-            var tags = Array.from(el.querySelectorAll('._pill_i9oky_33')).map(function(t) { return t.textContent.trim(); });
-            return { name, desc, batch, tags };
-          });
-        })()`);
-        await browser.close();
-        const items = data as any[];
-        const raw = items.map((c, i) => `[${i+1}] ${c.name ?? "Unknown"} (${c.batch ?? "N/A"})\n${c.desc ?? "No description"}\nTags: ${c.tags?.join(", ") ?? "none"}`).join("\n\n");
-        // Date is null, not today. A YC listing carries no reliable content-freshness date
-        // (the batch is a founding-era marker, not a last-updated signal). Stamping "today"
-        // made a freshness product score every YC result as perpetually fresh — a false
-        // signal in the flattering direction. null = "freshness unknown", which is honest.
-        // Mirrors src/adapters/yc.ts.
-        return ok(stamp(raw, safeUrl, null, "low", "yc"));
-      } catch (err: unknown) { return adapterError("extract_yc", "yc", url, err); }
-    });
-  });
+    description: "Withdrawn in 0.5.3 pending review of source terms. Returns an error; kept so existing clients get a clear answer.",
+    inputSchema: z.object({ url: z.string().url().describe("Previously a ycombinator.com/companies URL") }),
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ url }) => adapterError("extract_yc", "yc", url, new Error("YC source withdrawn in 0.5.3 pending review of source terms.")));
 
   server.registerTool("search_repos", {
     description: "Search GitHub for repositories matching a keyword. Returns top results by stars.",
@@ -2263,19 +2215,9 @@ async function runAdapter(adapter: string, query: string, filters: Record<string
         `${p.data.title} | score:${p.data.score} | ${new Date(p.data.created_utc * 1000).toISOString()}`
       ).join("\n"));
     }
-    case "yc": {
-      const res = await sourceFetch("https://yc-oss.github.io/api/companies/all.json", { headers: { "User-Agent": "freshcontext-mcp/cron" } }, { ...log, adapter: "yc" });
-      if (!res.ok) return `YC error ${res.status}`;
-      const all = await res.json() as any[];
-      const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-      const hits = all.filter((c: any) => {
-        const text = `${c.name ?? ""} ${c.one_liner ?? ""} ${(c.tags ?? []).join(" ")}`.toLowerCase();
-        return terms.some(t => text.includes(t));
-      }).slice(0, 10);
-      return hits.length
-        ? sanitize(hits.map((h: any) => `${h.name} [${h.batch ?? "?"}] ${h.status ?? ""} -- ${h.one_liner ?? ""}`).join("\n"))
-        : `No YC companies found for "${query}"`;
-    }
+    case "yc":
+      // Withdrawn in 0.5.3 pending review of source terms. "[adapter" output stores no row.
+      return "[adapter yc withdrawn]";
     case "packagetrends": {
       const pkg = encodeURIComponent(query.trim());
       const [infoRes, dlRes] = await Promise.all([
