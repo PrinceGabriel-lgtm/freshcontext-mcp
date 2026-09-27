@@ -1,3 +1,7 @@
+﻿> **This package is no longer developed.** 0.5.3 is the last release of `freshcontext-mcp`.
+> It and every earlier release stay available under the MIT License, as is; there will be no
+> further feature releases. For FreshContext services, see <https://freshcontext.dev>.
+> Security reports: see SECURITY.md.
 # FreshContext
 
 > **This package is no longer developed.** 0.5.3 is the last release of `freshcontext-mcp`.
@@ -13,21 +17,21 @@ That's the problem freshcontext fixes.
 
 This repository is the integrated FreshContext Core/MCP package.
 
-**Category: context integrity infrastructure.** FreshContext sits between context acquisition and agent action. Its job is to decide whether information entering an AI workflow is still fresh, attributable and coherent enough for the system to rely on. Core is the reusable engine that scores, ranks, explains and turns candidate context into decision-ready context, with signed verdicts recorded in a verifiable ledger. MCP is the first live host interface over that engine — one interface over the methodology, not the product itself.
+**Category: context integrity infrastructure.** FreshContext sits between context acquisition and agent action. Its job is to decide whether information entering an AI workflow is still fresh, attributable and coherent enough for the system to rely on. Core is the reusable engine that scores, ranks, explains and turns candidate context into decision-ready context, with signed verdicts recorded in a verifiable ledger. MCP is the first live host interface over that engine â€” one interface over the methodology, not the product itself.
 
 [![npm version](https://img.shields.io/npm/v/freshcontext-mcp)](https://www.npmjs.com/package/freshcontext-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-Listed-blue)](https://registry.modelcontextprotocol.io)
 
-> **Live demo:** [api.freshcontext.dev/demo](https://api.freshcontext.dev/demo) — same model, same query, two completely different answers. Only the temporal layer changed.
+> **Live demo:** [api.freshcontext.dev/demo](https://api.freshcontext.dev/demo) â€” same model, same query, two completely different answers. Only the temporal layer changed.
 >
-> **Integrate it into an existing stack:** [freshcontext.dev/integration](https://freshcontext.dev/integration) — start with one bounded RAG, agent, retrieval, or governance workflow and objective acceptance criteria.
+> **Integrate it into an existing stack:** [freshcontext.dev/integration](https://freshcontext.dev/integration) â€” start with one bounded RAG, agent, retrieval, or governance workflow and objective acceptance criteria.
 
 ---
 
 ## The problem
 
-Large language models retrieve web data semantically. Cosine similarity finds the documents that match a query best — but cosine doesn't know when a document was written.
+Large language models retrieve web data semantically. Cosine similarity finds the documents that match a query best â€” but cosine doesn't know when a document was written.
 
 So a 2022 blog post and a 2026 paper can score nearly identically. The model gets a context window full of stale documents and faithfully summarizes 2022 advice for a 2026 question.
 
@@ -51,13 +55,13 @@ candidate context
 FreshContext evaluates freshness, source profile, confidence, utility, provenance material, and failure honesty before context reaches the LLM. The temporal core uses Decay-Adjusted Relevancy:
 
 ```
-R_t = R_0 · e^(−λt)
+R_t = R_0 Â· e^(âˆ’Î»t)
 ```
 
-- `R_0` — base semantic relevancy (whatever your retriever already gives you)
-- `λ` — source-specific decay constant (HN ≈14h half-life, blogs ≈29d, academic papers ≈1.6y)
-- `t` — hours elapsed since publication
-- `R_t` — decay-adjusted relevancy at query time
+- `R_0` â€” base semantic relevancy (whatever your retriever already gives you)
+- `Î»` â€” source-specific decay constant (HN â‰ˆ14h half-life, blogs â‰ˆ29d, academic papers â‰ˆ1.6y)
+- `t` â€” hours elapsed since publication
+- `R_t` â€” decay-adjusted relevancy at query time
 
 That's the core correction. No model swap. No re-embedding. No re-indexing. The layer drops onto whatever retrieval pipeline you already have.
 
@@ -82,7 +86,7 @@ Confidence: high
 
 **When** it was retrieved. **Where** it came from. **How confident** we are the date is accurate.
 
-The FreshContext Specification v1.2 is published as an open standard under MIT licence. Any tool, agent, or system that wraps retrieved data in this envelope is FreshContext-compatible. → [Read the spec](./FRESHCONTEXT_SPEC.md) · [Read the methodology](./METHODOLOGY.md)
+The FreshContext Specification v1.2 is published as an open standard under MIT licence. Any tool, agent, or system that wraps retrieved data in this envelope is FreshContext-compatible. â†’ [Read the spec](./FRESHCONTEXT_SPEC.md) Â· [Read the methodology](./METHODOLOGY.md)
 
 ---
 
@@ -179,7 +183,7 @@ FreshContext does not certify truth. It records why context was used, supported,
 
 `evaluate_context` does not fetch URLs, crawl, scrape, browse, read folders, or call adapters. It only evaluates candidate context the caller provides.
 
-Current boundary: `evaluate_context` ships in the npm/local stdio MCP server. The hosted Cloudflare Worker MCP endpoint is a separate deployment surface and is verified independently — check `/v1/health` for its live version and tool count rather than assuming parity with the package. The Worker remains a separate deployment surface, so future package interfaces should be re-verified remotely before being claimed live.
+Current boundary: `evaluate_context` ships in the npm/local stdio MCP server. The hosted Cloudflare Worker MCP endpoint is a separate deployment surface and is verified independently â€” check `/v1/health` for its live version and tool count rather than assuming parity with the package. The Worker remains a separate deployment surface, so future package interfaces should be re-verified remotely before being claimed live.
 
 ### Network Boundary
 
@@ -195,7 +199,7 @@ Beyond the per-call Core/MCP paths, the production Worker deployment exposes a c
 GET /v1/intel/feed/:profile_id?limit=20&min_rt=0
 ```
 
-Every signal is stamped with `base_score`, `rt_score`, `entropy_level` (low / stable / high), `ha_pri_sig` (Ha-Pri v1 SHA-256 provenance reference), `semantic_fingerprint` (cross-adapter dedup), and `published_at`. Ready for direct LLM or agent consumption — no synthesis required.
+Every signal is stamped with `base_score`, `rt_score`, `entropy_level` (low / stable / high), `ha_pri_sig` (Ha-Pri v1 SHA-256 provenance reference), `semantic_fingerprint` (cross-adapter dedup), and `published_at`. Ready for direct LLM or agent consumption â€” no synthesis required.
 
 Production endpoint: `https://api.freshcontext.dev`
 
@@ -210,7 +214,7 @@ The repo ships named reference adapters that demonstrate how different source cl
 |---|---|
 | `extract_github` | README, stars, forks, language, topics, last commit |
 | `extract_hackernews` | Top stories or search results with scores and timestamps |
-| `extract_scholar` | Research papers — titles, authors, years, snippets |
+| `extract_scholar` | Research papers â€” titles, authors, years, snippets |
 | `extract_arxiv` | arXiv papers via official API |
 | `extract_reddit` | Posts and community sentiment from any subreddit |
 
@@ -220,19 +224,19 @@ The repo ships named reference adapters that demonstrate how different source cl
 | `extract_yc` | YC company listings by keyword |
 | `extract_producthunt` | Recent launches by topic |
 | `search_repos` | GitHub repos ranked by stars with activity signals |
-| `package_trends` | npm and PyPI metadata — version history, release cadence |
+| `package_trends` | npm and PyPI metadata â€” version history, release cadence |
 
 ### Market data
 | Adapter | What it returns |
 |---|---|
-| `extract_finance` | No-key Stooq quote data — close, OHLC, volume, quote timestamp, source. Up to 5 tickers. |
+| `extract_finance` | No-key Stooq quote data â€” close, OHLC, volume, quote timestamp, source. Up to 5 tickers. |
 | `search_jobs` | Remote job listings from Remotive, RemoteOK, HN "Who is Hiring" |
 
-### Composites — multiple sources, one call
+### Composites â€” multiple sources, one call
 | Adapter | Sources | Purpose |
 |---|---|---|
 | `extract_landscape` | 6 | YC + GitHub + HN + Reddit + Product Hunt + npm in parallel |
-| `extract_idea_landscape` | 6 | HN + YC + GitHub + Jobs + npm + Product Hunt — full idea validation |
+| `extract_idea_landscape` | 6 | HN + YC + GitHub + Jobs + npm + Product Hunt â€” full idea validation |
 | `extract_gov_landscape` | 4 | Gov contracts + HN + GitHub + changelog |
 | `extract_finance_landscape` | 5 | Finance + HN + Reddit + GitHub + changelog |
 | `extract_company_landscape` | 5 | The full picture on any company |
@@ -241,10 +245,10 @@ The repo ships named reference adapters that demonstrate how different source cl
 | Adapter | Source | What it returns |
 |---|---|---|
 | `extract_changelog` | GitHub Releases / npm / auto-discover | Update history from any repo, package, or website |
-| `extract_govcontracts` | USASpending.gov | US federal contract awards — company, amount, agency, period |
-| `extract_sec_filings` | SEC EDGAR | 8-K filings — legally mandated material event disclosures |
-| `extract_gdelt` | GDELT Project | Global news intelligence — 100+ languages, 15-min updates |
-| `extract_gebiz` | data.gov.sg | Singapore Government procurement tenders — open dataset |
+| `extract_govcontracts` | USASpending.gov | US federal contract awards â€” company, amount, agency, period |
+| `extract_sec_filings` | SEC EDGAR | 8-K filings â€” legally mandated material event disclosures |
+| `extract_gdelt` | GDELT Project | Global news intelligence â€” 100+ languages, 15-min updates |
+| `extract_gebiz` | data.gov.sg | Singapore Government procurement tenders â€” open dataset |
 
 ---
 
@@ -272,7 +276,7 @@ Add to your Claude Desktop config and restart:
 
 Restart Claude. Done.
 
-> Prefer a guided setup? Visit **[freshcontext.dev](https://freshcontext.dev)** — 3 steps, no terminal.
+> Prefer a guided setup? Visit **[freshcontext.dev](https://freshcontext.dev)** â€” 3 steps, no terminal.
 
 ### Local (full Playwright)
 
@@ -314,7 +318,7 @@ Add to Claude Desktop config:
 
 #### Mac troubleshooting
 
-**"command not found: node"** — Use the full path:
+**"command not found: node"** â€” Use the full path:
 ```bash
 which node  # copy this output, replace "node" in config
 ```
@@ -413,7 +417,7 @@ Use the named reference adapters when you want FreshContext's current MCP packag
 ```
 Use extract_idea_landscape with idea "procurement intelligence saas"
 ```
-Returns funding signal, pain signal, crowding signal, market signal, ecosystem signal, and launch signal — all timestamped.
+Returns funding signal, pain signal, crowding signal, market signal, ecosystem signal, and launch signal â€” all timestamped.
 
 **Full company intelligence in one call:**
 ```
@@ -425,7 +429,7 @@ SEC filings + federal contracts + global news + changelog + market data.
 ```
 Use extract_sec_filings with url "Palantir Technologies"
 ```
-8-K filings are legally mandated within 4 business days of any material event — CEO change, acquisition, breach, major contract.
+8-K filings are legally mandated within 4 business days of any material event â€” CEO change, acquisition, breach, major contract.
 
 **Is this dependency still actively maintained?**
 ```
@@ -450,11 +454,11 @@ The reference implementation runs on Cloudflare's global edge:
 | `/watched-queries` | GET | List all watched queries |
 | `/.well-known/freshcontext-signing-keys.json` | GET | Published Ed25519 verification keys (active + retired) |
 
-- **D1 database** — 18 watched queries running on 6-hour cron with relevancy scoring
-- **KV-backed rate limiting** — 60 req/min per IP across all edge nodes
-- **Defensive valves** — clock-skew rejection (5min tolerance), hard floor at R_t<5, lazy decay at read time
-- **Provenance** — feed signals still carry legacy Ha-Pri v1 SHA-256 provenance references; separately, ledger-backed context verdicts are signed with Ed25519 V4 and independently verifiable
-- **Schema migrations** — promise-gated, idempotent, run on first request after deploy
+- **D1 database** â€” 18 watched queries running on 6-hour cron with relevancy scoring
+- **KV-backed rate limiting** â€” 60 req/min per IP across all edge nodes
+- **Defensive valves** â€” clock-skew rejection (5min tolerance), hard floor at R_t<5, lazy decay at read time
+- **Provenance** â€” feed signals still carry legacy Ha-Pri v1 SHA-256 provenance references; separately, ledger-backed context verdicts are signed with Ed25519 V4 and independently verifiable
+- **Schema migrations** â€” promise-gated, idempotent, run on first request after deploy
 
 Production: `https://api.freshcontext.dev`
 
@@ -469,7 +473,7 @@ The engine is deliberately separable from the interface it is reached through. T
 | Standalone | FreshContext runs as its own context-integrity service, as it does today. |
 | Embedded subsystem | Core runs inside an existing AI, data or security platform, invisible to that platform's users. |
 | SDK / API | Integrity primitives are consumed programmatically; no MCP involved. |
-| MCP infrastructure layer | FreshContext evaluates and governs context around MCP-enabled workflows — the live path in this repo. |
+| MCP infrastructure layer | FreshContext evaluates and governs context around MCP-enabled workflows â€” the live path in this repo. |
 | Gateway / control-plane component | Core operates at the policy boundary, before context is admitted into agent execution. |
 | White-label | The engine is surfaced under another product's branding and API. |
 
@@ -481,57 +485,57 @@ Only the MCP and standalone modes are exercised in production today. The others 
 
 Split three ways so that genuine engineering risk is never filed as optionality. Nothing outside **Production core** is a live product claim.
 
-### Production core — built, running, testable
+### Production core â€” built, running, testable
 
 - [x] FreshContext Specification v1.2 published (MIT, open standard)
 - [x] DAR engine with source-specific lambda constants
 - [x] Ha-Pri v1 provenance signatures on stored signals
 - [x] Ha-Pri v2 Core helper and deterministic golden vectors
-- [x] Public `/v1/verify` endpoint — ledger-backed verdict verification, answering for both the legacy HMAC path and Ed25519, and reporting which was used via `verification_method`
+- [x] Public `/v1/verify` endpoint â€” ledger-backed verdict verification, answering for both the legacy HMAC path and Ed25519, and reporting which was used via `verification_method`
 - [x] Generic MCP `evaluate_context` tool for caller-provided candidate context
 - [x] Core-backed envelope generation shared by npm/MCP and the Cloudflare Worker
 - [x] Semantic deduplication via fingerprinting
 - [x] Named reference adapters across intelligence, competitive research, market data, and composites
-- [x] Cloudflare Workers deployment — global edge, KV cache, atomic rate limiting
+- [x] Cloudflare Workers deployment â€” global edge, KV cache, atomic rate limiting
 - [x] Live before/after demo at `/demo`
-- [x] METHODOLOGY.md — methodology and engineering documentation
+- [x] METHODOLOGY.md â€” methodology and engineering documentation
 - [x] Published on npm and listed for MCP usage; Apify/feed assets separated from the MCP runtime package
-- [x] Trusted release publishing workflow — manual `workflow_dispatch` only, OIDC-backed, provenance-enabled, and gated by version/verification checks. One explicit run publishes npm first, verifies it, then publishes the matching manifest to the official MCP Registry with GitHub OIDC
+- [x] Trusted release publishing workflow â€” manual `workflow_dispatch` only, OIDC-backed, provenance-enabled, and gated by version/verification checks. One explicit run publishes npm first, verifies it, then publishes the matching manifest to the official MCP Registry with GitHub OIDC
 - [x] **Independently verifiable Ed25519 attestation (E-2).** Every new verdict row in the
   ledger is signed `FRESHCONTEXT_HA_PRI_V4` with Ed25519. A third party can verify a verdict
-  with no FreshContext account, no API key and no call to FreshContext — using the key
+  with no FreshContext account, no API key and no call to FreshContext â€” using the key
   document the Worker publishes at `/.well-known/freshcontext-signing-keys.json` and either
   verifier shipped in the npm tarball: `scripts/verify-offline.mjs` (Node, standard library)
   or `scripts/verify_offline.py` (Python, no dependencies at all). Written up for the
   sceptic rather than the maintainer in [VERIFYING.md](./docs/VERIFYING.md).
 - [x] Signing key `fc-2026-09-ceced1ab` published and active. Keys are append-only, so a
   rotation never invalidates a verdict signed under a key that has since been retired.
-- [x] `attestation-proof.yml` — obtains a live verdict, verifies it with **both** shipped
+- [x] `attestation-proof.yml` â€” obtains a live verdict, verifies it with **both** shipped
   verifiers, runs tampered-payload and tampered-signature negative controls, and confirms
   the stored ledger row is V4 rather than only the emitted response block. On demand and
   daily; every input it uses is public, so it needs no credentials to run.
 
 In flight on the core, not an expansion surface:
 
-- [ ] Ha-Pri v2 Worker/D1 production enforcement for stored **signals** — the feed rows,
+- [ ] Ha-Pri v2 Worker/D1 production enforcement for stored **signals** â€” the feed rows,
   which still carry Ha-Pri v1 SHA-256 stamps. This is a separate path from the verdict
   ledger above: verdicts are V4/Ed25519 today, signals are not. Design document complete;
   hard tamper enforcement on the signals path is not live.
 
-### Expansion surfaces — deliberately open, not built
+### Expansion surfaces â€” deliberately open, not built
 
 These are integration seams the architecture supports and the engine does not yet implement. Stated in future tense on purpose.
 
-- [ ] **Context safety harness.** Policy enforcement before context reaches an agent: pass / warn / refresh / quarantine / block, with evidence attached to each decision. Today `evaluate_context` emits decisions and warnings; **the enforcement state machine does not exist** — `quarantine` and `block` are not implemented anywhere in the codebase.
+- [ ] **Context safety harness.** Policy enforcement before context reaches an agent: pass / warn / refresh / quarantine / block, with evidence attached to each decision. Today `evaluate_context` emits decisions and warnings; **the enforcement state machine does not exist** â€” `quarantine` and `block` are not implemented anywhere in the codebase.
 - [ ] **Enterprise control plane.** Dashboard over source health, trust score, context drift and provenance lineage. The verdict ledger is the data contract this would read from; the UI is unbuilt.
 - [ ] **Observability telemetry.** Historical integrity state, incidents, upstream degradation and remediation history.
-- [ ] **Autonomous remediation.** Automatic refresh, source substitution and re-evaluation — closed-loop rather than detection-only.
+- [ ] **Autonomous remediation.** Automatic refresh, source substitution and re-evaluation â€” closed-loop rather than detection-only.
 - [ ] **Vertical policy packs.** Domain-specific integrity thresholds for regulated workflows.
-- [ ] Webhook triggers — push high-entropy signals on threshold
+- [ ] Webhook triggers â€” push high-entropy signals on threshold
 
-### Research frontier — exploration, not commitment
+### Research frontier â€” exploration, not commitment
 
-- [ ] GKG upgrade for `extract_gdelt` — tone scores, goldstein scale, event codes
+- [ ] GKG upgrade for `extract_gdelt` â€” tone scores, goldstein scale, event codes
 - [ ] Contradiction detection across concurrent sources
 
 Future work is organized in [FreshContext Future Lanes](./docs/FUTURE_LANES.md). Roadmap items are not live product claims until implemented and validated.
@@ -540,7 +544,7 @@ Future work is organized in [FreshContext Future Lanes](./docs/FUTURE_LANES.md).
 
 ## Contributing
 
-PRs welcome. The highest-value contributions improve the caller-provided context path, decision output, host integrations, and FreshContext-compatible signal quality. New reference adapters are useful when they preserve source boundaries and emit timestamped, failure-honest context — see `src/adapters/` for examples and [`FRESHCONTEXT_SPEC.md`](./FRESHCONTEXT_SPEC.md) for the compatibility contract.
+PRs welcome. The highest-value contributions improve the caller-provided context path, decision output, host integrations, and FreshContext-compatible signal quality. New reference adapters are useful when they preserve source boundaries and emit timestamped, failure-honest context â€” see `src/adapters/` for examples and [`FRESHCONTEXT_SPEC.md`](./FRESHCONTEXT_SPEC.md) for the compatibility contract.
 
 If you're building something FreshContext-compatible, open an issue and we'll add you to the ecosystem list.
 
@@ -564,9 +568,9 @@ MIT
 
 ---
 
-*Built by Immanuel Gabriel — Namibia 🇳🇦*
+*Built by Immanuel Gabriel â€” Namibia ðŸ‡³ðŸ‡¦*
 *"The work isn't gone. It's just waiting to be continued."*
 
 ---
 
-**Also on:** [MCP Registry](https://registry.modelcontextprotocol.io) · [npm](https://www.npmjs.com/package/freshcontext-mcp)
+**Also on:** [MCP Registry](https://registry.modelcontextprotocol.io) Â· [npm](https://www.npmjs.com/package/freshcontext-mcp)
