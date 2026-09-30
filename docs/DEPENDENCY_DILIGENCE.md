@@ -2,6 +2,38 @@
 
 This document records dependency and license diligence notes from the Trust L4/L5 cleanup. It is not legal advice and does not replace professional review for external review, distribution, or formal diligence.
 
+## Dependency Risk Snapshot — 2026-09-30
+
+A live CI audit on 2026-09-30 surfaced newly published/adopted advisory data against two
+transitive production packages even though the application source had not changed. The
+blocking root production audit moved from clean to **2 moderate findings**:
+`fast-uri@3.1.7` and `ip-address@10.4.0`. The Worker advisory audit also picked up
+the same families at `fast-uri@3.1.6` and `ip-address@10.7.0`.
+
+**Remediation.** The repository now raises the transitive security floors and refreshes
+the corresponding lock entries:
+
+- `fast-uri`: root and Worker -> `3.1.8`;
+- `ip-address`: root and Worker -> `10.7.2`.
+
+The change is deliberately dependency-only: no application or Worker source code was
+modified. The floors are held through npm `overrides` so a future lockfile rebuild
+cannot silently resolve back below the patched versions.
+
+**Verification.** PR #107 CI run `36733643264` completed both `Verify` and
+`Dependency audit` successfully. The root blocking command
+`npm audit --omit=dev` reports **0 vulnerabilities**. The Worker production audit is
+back to the previously accepted `extract-zip` chain only: **3 high findings**, all
+under `@cloudflare/puppeteer -> @puppeteer/browsers -> extract-zip`, with the
+artifact-level exclusion gate still enforced by CI. The complete source-checkout
+installs still contain development-only advisory counts (root: 7; Worker: 13); those
+counts are not represented as shipped-runtime exposure.
+
+**Why this matters.** The audit database is live evidence, not a property frozen into
+the commit. A previously green dependency graph can become red without a repository
+change. The 2026-09-30 event is a concrete example and is why the root production audit
+remains a blocking CI gate.
+
 ## Dependency Risk Snapshot — 2026-09-22
 
 A read-only dependency-risk triage of both trees at root `aed32ae` (`freshcontext-mcp@0.5.2`,
