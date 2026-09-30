@@ -21,6 +21,11 @@
 name: Canonical endpoint proof
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/canonical-endpoint-proof.yml"
   workflow_dispatch:
     inputs:
       diagnose:
@@ -81,6 +86,7 @@ jobs:
 
       - name: GET /health
         id: health
+        continue-on-error: true
         run: |
           set -uo pipefail
           body=""
@@ -104,10 +110,18 @@ jobs:
           echo "ok  /health — version $version"
 
       - name: GET /v1/health
+        id: v1health
+        continue-on-error: true
         run: |
           set -uo pipefail
-          body="$(curl -fsS --max-time 20 "$CANONICAL_BASE/v1/health")" \
-            || { echo "::error::$CANONICAL_BASE/v1/health did not answer. The mounted REST surface has its own route gate, so this can fail while /health passes."; exit 1; }
+          body=""
+          for attempt in 1 2 3; do
+            if body="$(curl -fsS --connect-timeout 10 --max-time 20 "$CANONICAL_BASE/v1/health")"; then break; fi
+            echo "attempt $attempt: $CANONICAL_BASE/v1/health did not answer"
+            body=""
+            sleep 5
+          done
+          [ -n "$body" ] || { echo "::error::$CANONICAL_BASE/v1/health never answered after 3 attempts. The mounted REST surface has its own route gate, so this can fail while /health passes."; exit 1; }
           printf '%s\n' "$body"
           node -e '
             const b = JSON.parse(process.argv[1]);
@@ -118,10 +132,18 @@ jobs:
       # The URL published in the specification and in verification instructions. A third party
       # who cannot fetch this cannot verify anything, no matter how well the signing works.
       - name: GET the published signing key document
+        id: keys
+        continue-on-error: true
         run: |
           set -uo pipefail
-          body="$(curl -fsS --max-time 20 "$CANONICAL_BASE/.well-known/freshcontext-signing-keys.json")" \
-            || { echo "::error::the published key document is unreachable at $CANONICAL_BASE. Offline verification is documented against this URL."; exit 1; }
+          body=""
+          for attempt in 1 2 3; do
+            if body="$(curl -fsS --connect-timeout 10 --max-time 20 "$CANONICAL_BASE/.well-known/freshcontext-signing-keys.json")"; then break; fi
+            echo "attempt $attempt: published signing key document did not answer"
+            body=""
+            sleep 5
+          done
+          [ -n "$body" ] || { echo "::error::the published key document is unreachable at $CANONICAL_BASE after 3 attempts. Offline verification is documented against this URL."; exit 1; }
           printf '%s\n' "$body"
           node -e '
             const b = JSON.parse(process.argv[1]);
@@ -152,11 +174,18 @@ jobs:
       # one nothing asserted. It now has to answer, and answer in both representations.
       - name: GET / — the published inspection link
         id: root
+        continue-on-error: true
         run: |
           set -uo pipefail
 
-          json="$(curl -fsS --max-time 20 -H 'Accept: application/json' "$CANONICAL_BASE/")" \
-            || { echo "::error::$CANONICAL_BASE/ did not answer. This is the bare hostname published as a public inspection point."; exit 1; }
+          json=""
+          for attempt in 1 2 3; do
+            if json="$(curl -fsS --connect-timeout 10 --max-time 20 -H 'Accept: application/json' "$CANONICAL_BASE/")"; then break; fi
+            echo "attempt $attempt: $CANONICAL_BASE/ did not answer JSON"
+            json=""
+            sleep 5
+          done
+          [ -n "$json" ] || { echo "::error::$CANONICAL_BASE/ did not answer JSON after 3 attempts. This is the bare hostname published as a public inspection point."; exit 1; }
           node -e '
             const b = JSON.parse(process.argv[1]);
             const fail = (m) => { console.error(`::error::the service document ${m}`); process.exit(1); };
@@ -171,8 +200,14 @@ jobs:
 
           # A browser asks for text/html. If that returns JSON the link still "works" and
           # still fails the only job it had, which is what started this check existing.
-          ctype="$(curl -fsS --max-time 20 -o /tmp/root.html -w '%{content_type}' -H 'Accept: text/html' "$CANONICAL_BASE/")" \
-            || { echo "::error::$CANONICAL_BASE/ did not answer a browser Accept header."; exit 1; }
+          ctype=""
+          for attempt in 1 2 3; do
+            if ctype="$(curl -fsS --connect-timeout 10 --max-time 20 -o /tmp/root.html -w '%{content_type}' -H 'Accept: text/html' "$CANONICAL_BASE/")"; then break; fi
+            echo "attempt $attempt: $CANONICAL_BASE/ did not answer a browser Accept header"
+            ctype=""
+            sleep 5
+          done
+          [ -n "$ctype" ] || { echo "::error::$CANONICAL_BASE/ did not answer a browser Accept header after 3 attempts."; exit 1; }
           case "$ctype" in
             text/html*) echo "ok  / — serves HTML to a browser ($ctype)" ;;
             *) echo "::error::$CANONICAL_BASE/ answered a browser with $ctype, not text/html. Content negotiation has regressed and a reviewer following this link sees raw JSON."; exit 1 ;;
@@ -184,10 +219,17 @@ jobs:
       # reviewer sent both judges the project on whichever one they open first.
       - name: GET the documentation site
         id: site
+        continue-on-error: true
         run: |
           set -uo pipefail
-          ctype="$(curl -fsS --max-time 20 -o /tmp/site.html -w '%{content_type}' "$SITE_BASE/")" \
-            || { echo "::error::$SITE_BASE did not answer. It is published as a public inspection point and deploys separately from this Worker."; exit 1; }
+          ctype=""
+          for attempt in 1 2 3; do
+            if ctype="$(curl -fsS --connect-timeout 10 --max-time 20 -o /tmp/site.html -w '%{content_type}' "$SITE_BASE/")"; then break; fi
+            echo "attempt $attempt: $SITE_BASE did not answer"
+            ctype=""
+            sleep 5
+          done
+          [ -n "$ctype" ] || { echo "::error::$SITE_BASE did not answer after 3 attempts. It is published as a public inspection point and deploys separately from this Worker."; exit 1; }
           case "$ctype" in
             text/html*) echo "ok  $SITE_BASE — $ctype" ;;
             *) echo "::error::$SITE_BASE answered with $ctype, not text/html."; exit 1 ;;
@@ -202,7 +244,7 @@ jobs:
       #
       # No credentials are sent and every path probed is public, so nothing here can leak.
       - name: Characterise the refusal
-        if: failure() || inputs.diagnose
+        if: ${{ inputs.diagnose || steps.health.outcome == 'failure' || steps.v1health.outcome == 'failure' || steps.keys.outcome == 'failure' || steps.root.outcome == 'failure' || steps.site.outcome == 'failure' }}
         run: |
           set -uo pipefail
           BROWSER_UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36'
@@ -268,3 +310,30 @@ jobs:
             echo "This proves the canonical domain serves this Worker and publishes the expected"
             echo "signing key. It does not verify a signature — \`attestation-proof\` does that."
           } >> "$GITHUB_STEP_SUMMARY"
+
+
+      - name: Enforce canonical proof result
+        if: always()
+        env:
+          HEALTH_OUTCOME: ${{ steps.health.outcome }}
+          V1_HEALTH_OUTCOME: ${{ steps.v1health.outcome }}
+          KEYS_OUTCOME: ${{ steps.keys.outcome }}
+          ROOT_OUTCOME: ${{ steps.root.outcome }}
+          SITE_OUTCOME: ${{ steps.site.outcome }}
+        run: |
+          set -euo pipefail
+          failed=0
+          check () {
+            local label="$1" outcome="$2"
+            if [ "$outcome" != "success" ]; then
+              echo "::error::$label outcome was $outcome"
+              failed=1
+            fi
+          }
+          check "/health" "$HEALTH_OUTCOME"
+          check "/v1/health" "$V1_HEALTH_OUTCOME"
+          check "signing key document" "$KEYS_OUTCOME"
+          check "/" "$ROOT_OUTCOME"
+          check "$SITE_BASE" "$SITE_OUTCOME"
+          [ "$failed" -eq 0 ] || exit 1
+          echo "Canonical endpoint proof passed all public-surface checks."
